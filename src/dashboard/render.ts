@@ -137,7 +137,8 @@ export function renderFrame(
 
     if (isSel) {
       const plain = line.replace(/\x1b\[[0-9;]*m/g, '');
-      buf += moveTo(row, 1) + COLORS.inverse + truncate(plain, treeW).padEnd(treeW) + COLORS.reset;
+      const selectedText = truncate(plain, treeW);
+      buf += moveTo(row, 1) + COLORS.inverse + selectedText + ' '.repeat(Math.max(0, treeW - selectedText.length)) + COLORS.reset;
     } else {
       buf += moveTo(row, 1) + truncate(line, treeW);
     }
@@ -189,8 +190,8 @@ export function renderFrame(
     buf += moveTo(1, leftW + 2) + COLORS.dim + 'No messages yet' + COLORS.reset;
   }
 
-  const hint = '? help';
-  buf += moveTo(size.rows - 1, size.cols - hint.length - 1) + COLORS.dim + hint + COLORS.reset;
+  const shortcutBar = '↑↓/jk:Navigate  Enter:Toggle  ?:Help  q:Quit';
+  buf += moveTo(size.rows - 1, 0) + COLORS.dim + truncate(shortcutBar, size.cols).padEnd(size.cols) + COLORS.reset;
 
   // Details panel
   const detailCol = leftW + 2;
