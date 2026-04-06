@@ -14,12 +14,16 @@ export async function startApp(): Promise<void> {
   const statusPoller = new StatusPoller();
   const tree = new TreeState();
   const feed = new MessageFeed();
+  let showHelp = false;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
 
   onInput(async (key) => {
     switch (key) {
       case 'up': tree.moveUp(); draw(); break;
       case 'down': tree.moveDown(); draw(); break;
+      case 'help': showHelp = !showHelp; draw(); break;
+      case 'home': tree.moveToTop(); draw(); break;
+      case 'end': tree.moveToBottom(); draw(); break;
       case 'enter': case 'space':
         tree.toggleCollapse();
         tree.build(stateReader.current.agents, stateReader.current.rooms, statusPoller.all);
@@ -61,6 +65,15 @@ export async function startApp(): Promise<void> {
     const agentName = tree.selectedAgentName;
     const agent = agentName ? state.agents[agentName] ?? null : null;
     const status = agentName ? statusPoller.getStatus(agentName) : null;
-    writeFrame(renderFrame(size, tree.items, tree.selected, feed.messages, agent, status, stateReader.isAvailable));
+    writeFrame(renderFrame(
+      size,
+      tree.items,
+      tree.selected,
+      feed.messages,
+      agent,
+      status,
+      stateReader.isAvailable,
+      showHelp,
+    ));
   }
 }

@@ -79,6 +79,8 @@ export class TreeState {
 
   moveUp(): void { this.autoSelect = false; if (this.selectedIndex > 0) this.selectedIndex--; }
   moveDown(): void { this.autoSelect = false; if (this.selectedIndex < this.nodes.length - 1) this.selectedIndex++; }
+  moveToTop(): void { this.autoSelect = false; if (this.nodes.length > 0) this.selectedIndex = 0; }
+  moveToBottom(): void { this.autoSelect = false; if (this.nodes.length > 0) this.selectedIndex = this.nodes.length - 1; }
   toggleCollapse(): void {
     const n = this.selectedNode;
     if (n?.type === 'room') {

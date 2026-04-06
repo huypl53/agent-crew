@@ -88,6 +88,13 @@ export function onInput(handler: InputHandler): void {
     if (hex === '1b5b42') return handler('down', data);
     if (hex === '1b5b43') return handler('right', data);
     if (hex === '1b5b44') return handler('left', data);
+    if (data[0] === 0x6a) return handler('down', data);  // j
+    if (data[0] === 0x6b) return handler('up', data);    // k
+    if (hex === '6767') return handler('home', data);     // gg
+    if (data[0] === 0x47) return handler('end', data);    // G
+    if (data[0] === 0x3f) return handler('help', data);   // ?
+    if (data[0] === 0x09) return handler('tab', data);    // Tab
+    if (data[0] === 0x2f) return handler('search', data); // /
     if (data[0] === 0x71) return handler('q', data);
     if (data[0] === 0x03) return handler('ctrl-c', data);
     if (data[0] === 0x0d) return handler('enter', data);

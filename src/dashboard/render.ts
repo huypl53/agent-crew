@@ -32,10 +32,32 @@ function drawBox(x: number, y: number, w: number, h: number, title: string): str
   return buf;
 }
 
+function renderHelpOverlay(size: TerminalSize): string {
+  const lines = [
+    '╭─── Help ───────────────────╮',
+    '│  ↑/k    Move up            │',
+    '│  ↓/j    Move down          │',
+    '│  gg     Jump to top        │',
+    '│  G      Jump to bottom     │',
+    '│  Enter  Toggle collapse    │',
+    '│  ?      Toggle this help   │',
+    '│  q      Quit               │',
+    '╰───────────────────────────-╯',
+  ];
+  const startRow = Math.floor((size.rows - lines.length) / 2);
+  const startCol = Math.floor((size.cols - 30) / 2);
+  let buf = '';
+  for (let i = 0; i < lines.length; i++) {
+    buf += moveTo(startRow + i, startCol) + COLORS.bold + lines[i] + COLORS.reset;
+  }
+  return buf;
+}
+
 export function renderFrame(
   size: TerminalSize, treeNodes: TreeNode[], selectedIndex: number,
   feedMessages: FormattedMessage[], selectedAgent: Agent | null,
   selectedAgentStatus: AgentStatusEntry | null, stateAvailable: boolean,
+  showHelp = false,
 ): string {
   let buf = '\x1b[2J';
   const leftW = Math.max(20, Math.floor(size.cols * 0.3));
@@ -98,6 +120,9 @@ export function renderFrame(
     buf += moveTo(1, leftW + 2) + COLORS.dim + 'No messages yet' + COLORS.reset;
   }
 
+  const hint = '? help';
+  buf += moveTo(size.rows - 1, size.cols - hint.length - 1) + COLORS.dim + hint + COLORS.reset;
+
   // Details panel
   const detailCol = leftW + 2;
   let detailRow = topH + 1;
@@ -118,6 +143,8 @@ export function renderFrame(
       buf += moveTo(detailRow++, detailCol) + `Last activity: ${COLORS.dim}${ago} ago${COLORS.reset}`;
     }
   }
+
+  if (showHelp) buf += renderHelpOverlay(size);
 
   return buf;
 }
