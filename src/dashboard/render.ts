@@ -18,6 +18,20 @@ function truncate(str: string, max: number): string {
   return str.slice(0, max - 1) + '…';
 }
 
+function wrapLines(text: string, width: number, maxLines: number): string[] {
+  const lines: string[] = [];
+  for (const raw of text.split('\n')) {
+    let remaining = raw;
+    while (remaining.length > width && lines.length < maxLines) {
+      lines.push(remaining.slice(0, width));
+      remaining = remaining.slice(width);
+    }
+    if (lines.length < maxLines) lines.push(remaining);
+    if (lines.length >= maxLines) break;
+  }
+  return lines.slice(0, maxLines);
+}
+
 function drawBox(x: number, y: number, w: number, h: number, title: string): string {
   let buf = '';
   const inner = w - 2;
@@ -166,15 +180,25 @@ export function renderFrame(
   } else {
     const status = selectedAgentStatus?.status ?? 'unknown';
     const sc = STATUS_COLORS[status];
+    const roomTopic = roomFilter ? rooms?.[roomFilter]?.topic : undefined;
     buf += moveTo(detailRow++, detailCol) + `${COLORS.bold}${selectedAgent.name}${COLORS.reset}`;
     buf += moveTo(detailRow++, detailCol) + `Role: ${selectedAgent.role}`;
     buf += moveTo(detailRow++, detailCol) + `Rooms: ${selectedAgent.rooms.join(', ')}`;
+    if (roomTopic) {
+      buf += moveTo(detailRow++, detailCol) + `Topic: ${truncate(roomTopic, rightW - 6)}`;
+    }
     buf += moveTo(detailRow++, detailCol) + `Status: ${sc}${status}${COLORS.reset}`;
     buf += moveTo(detailRow++, detailCol) + `Pane: ${COLORS.dim}${selectedAgent.tmux_target}${COLORS.reset}`;
     if (selectedAgent.last_activity) {
       const secs = Math.floor((Date.now() - new Date(selectedAgent.last_activity).getTime()) / 1000);
       const ago = secs < 60 ? `${secs}s` : secs < 3600 ? `${Math.floor(secs / 60)}m` : `${Math.floor(secs / 3600)}h`;
       buf += moveTo(detailRow++, detailCol) + `Last activity: ${COLORS.dim}${ago} ago${COLORS.reset}`;
+    }
+    if (selectedAgentStatus?.summary) {
+      buf += moveTo(detailRow++, detailCol) + 'Activity:';
+      for (const line of wrapLines(selectedAgentStatus.summary, Math.max(10, rightW - 6), 3)) {
+        buf += moveTo(detailRow++, detailCol) + `${COLORS.dim}${truncate(line, rightW - 6)}${COLORS.reset}`;
+      }
     }
   }
 

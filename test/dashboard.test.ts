@@ -35,11 +35,26 @@ describe('dashboard render', () => {
 
   test('renders agent details', () => {
     const agent: Agent = { agent_id: 'l1', name: 'lead-1', role: 'leader', rooms: ['co', 'fe'], tmux_target: '%101', joined_at: '2026-01-01' };
-    const frame = renderFrame(minSize, [], 0, [], agent, { status: 'busy', lastChange: Date.now() }, true);
+    const rooms: Record<string, Room> = {
+      fe: { name: 'fe', members: ['lead-1'], created_at: '', topic: 'Build login flow' },
+    };
+    const frame = renderFrame(
+      minSize,
+      [],
+      0,
+      [],
+      agent,
+      { status: 'busy', lastChange: Date.now(), summary: 'Editing src/Login.tsx' },
+      true,
+      'fe',
+      rooms,
+    );
     expect(frame).toContain('lead-1');
     expect(frame).toContain('leader');
     expect(frame).toContain('co, fe');
     expect(frame).toContain('busy');
+    expect(frame).toContain('Build login flow');
+    expect(frame).toContain('Editing src/Login.tsx');
   });
 
   test('renders at minimum 80x24', () => {
@@ -62,7 +77,7 @@ describe('dashboard tree', () => {
     const now = Date.now();
     const statuses = new Map<string, AgentStatusEntry>([
       ['boss', { status: 'idle', lastChange: now - 5000 }],
-      ['lead-1', { status: 'busy', lastChange: now - 1000 }],
+      ['lead-1', { status: 'busy', lastChange: now - 1000, summary: 'Working on auth flow' }],
       ['w1', { status: 'dead', lastChange: now }],
     ]);
     return { agents, rooms, statuses };
