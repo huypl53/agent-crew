@@ -242,7 +242,7 @@ export function renderFrame(
     if (rawOutput && detailRow < detailBoxEnd) {
       buf += moveTo(detailRow++, detailCol) + COLORS.dim + '\u2500 pane \u2500' + COLORS.reset;
       const maxPaneRows = detailBoxEnd - detailRow;
-      const paneLines = rawOutput.split('\n').filter(l => l.trim()).slice(-maxPaneRows);
+      const paneLines = rawOutput.split(/\r?\n/).map(l => l.replace(/\r/g, '')).filter(l => l.trim()).slice(-maxPaneRows);
       for (const line of paneLines) {
         if (detailRow >= detailBoxEnd) break;
         const cleanLine = stripControlCodes(line);
