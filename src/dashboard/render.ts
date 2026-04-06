@@ -190,7 +190,8 @@ export function renderFrame(
       : '';
     const targetText = msg.target === 'ALL' ? 'ALL' : msg.target;
     const prefixLen = ` ${msg.timestamp} ${kindBadgeText}[${msg.sender}@${msg.room}] → ${targetText}: `.length;
-    const text = truncate(msg.text, Math.max(5, feedW - prefixLen));
+    const msgText = msg.text.replace(/[\n\r]/g, ' ');
+    const text = truncate(msgText, Math.max(5, feedW - prefixLen));
     const line = ` ${COLORS.dim}${msg.timestamp}${COLORS.reset} ${kindBadge}${msg.roomColor}[${msg.sender}@${msg.room}]${COLORS.reset} → ${target}: ${text}`;
     buf += moveTo(1 + i, leftW + 1) + truncate(line, feedW);
   }
