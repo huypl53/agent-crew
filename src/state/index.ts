@@ -1,4 +1,4 @@
-import type { Agent, AgentRole, Room, Message } from '../shared/types.ts';
+import type { Agent, AgentRole, Room, Message, MessageKind } from '../shared/types.ts';
 import { isPaneDead } from '../tmux/index.ts';
 
 const STATE_DIR = '/tmp/cc-tmux/state';
@@ -7,6 +7,9 @@ const STATE_DIR = '/tmp/cc-tmux/state';
 const agents = new Map<string, Agent>();
 const rooms = new Map<string, Room>();
 const inboxes = new Map<string, Message[]>(); // agent_name -> messages
+const roomMessages = new Map<string, Message[]>(); // room -> messages (canonical store)
+const cursors = new Map<string, Map<string, number>>(); // agent_name -> room -> last_read_sequence
+const MAX_ROOM_MESSAGES = 1000;
 let nextSequence = 1;
 let diskSyncEnabled = true;
 
@@ -133,6 +136,7 @@ export function addMessage(
   text: string,
   mode: 'push' | 'pull',
   targetName: string | null,
+  kind: MessageKind = 'chat',
 ): Message {
   const msg: Message = {
     message_id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -140,20 +144,71 @@ export function addMessage(
     room,
     to: targetName,
     text,
+    kind,
     timestamp: new Date().toISOString(),
     sequence: nextSequence++,
     mode,
   };
 
-  let inbox = inboxes.get(to);
-  if (!inbox) {
-    inbox = [];
-    inboxes.set(to, inbox);
+  // Write to room log (canonical store)
+  let roomLog = roomMessages.get(room);
+  if (!roomLog) { roomLog = []; roomMessages.set(room, roomLog); }
+  roomLog.push(msg);
+  if (roomLog.length > MAX_ROOM_MESSAGES) {
+    roomLog.splice(0, roomLog.length - MAX_ROOM_MESSAGES);
   }
-  inbox.push(msg);
+
+  // Keep inbox for backward compat (skip '__room__' broadcast sentinel)
+  if (to !== '__room__') {
+    let inbox = inboxes.get(to);
+    if (!inbox) { inbox = []; inboxes.set(to, inbox); }
+    inbox.push(msg);
+  }
 
   flushState();
   return msg;
+}
+
+export function getRoomMessages(room: string, sinceSequence?: number, limit?: number): Message[] {
+  const msgs = roomMessages.get(room) ?? [];
+  let filtered = msgs;
+  if (sinceSequence !== undefined) {
+    filtered = filtered.filter(m => m.sequence > sinceSequence);
+  }
+  if (limit) {
+    filtered = filtered.slice(-limit);
+  }
+  return filtered;
+}
+
+export function getCursor(agentName: string, room: string): number {
+  return cursors.get(agentName)?.get(room) ?? 0;
+}
+
+export function advanceCursor(agentName: string, room: string, sequence: number): void {
+  let agentCursors = cursors.get(agentName);
+  if (!agentCursors) { agentCursors = new Map(); cursors.set(agentName, agentCursors); }
+  const current = agentCursors.get(room) ?? 0;
+  if (sequence > current) agentCursors.set(room, sequence);
+}
+
+export function readRoomMessages(
+  agentName: string,
+  room: string,
+  kinds?: string[],
+  limit: number = 50,
+): { messages: Message[]; next_sequence: number } {
+  const cursor = getCursor(agentName, room);
+  let msgs = getRoomMessages(room, cursor);
+  if (kinds && kinds.length > 0) {
+    msgs = msgs.filter(m => kinds.includes(m.kind));
+  }
+  if (msgs.length > limit) msgs = msgs.slice(-limit);
+
+  const maxSeq = msgs.length > 0 ? Math.max(...msgs.map(m => m.sequence)) : cursor;
+  advanceCursor(agentName, room, maxSeq);
+
+  return { messages: msgs, next_sequence: maxSeq };
 }
 
 export function readMessages(
@@ -388,6 +443,8 @@ export function clearState(): void {
   agents.clear();
   rooms.clear();
   inboxes.clear();
+  roomMessages.clear();
+  cursors.clear();
   nextSequence = 1;
   diskSyncEnabled = false; // Disable sync after clear (re-enabled on loadState)
   // Also clean disk state to prevent syncFromDisk from loading stale data

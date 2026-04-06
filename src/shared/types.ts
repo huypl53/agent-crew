@@ -17,12 +17,15 @@ export interface Room {
   created_at: string;
 }
 
+export type MessageKind = 'task' | 'completion' | 'question' | 'error' | 'status' | 'chat';
+
 export interface Message {
   message_id: string;
   from: string;
   room: string;
   to: string | null;
   text: string;
+  kind: MessageKind;
   timestamp: string;
   sequence: number;
   mode: 'push' | 'pull';

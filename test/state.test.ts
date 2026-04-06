@@ -2,6 +2,7 @@ import { describe, expect, test, beforeEach } from 'bun:test';
 import {
   addAgent, getAgent, removeAgent, getRoom, getAllRooms,
   getRoomMembers, isNameTakenInRoom, addMessage, readMessages,
+  getRoomMessages, getCursor, advanceCursor, readRoomMessages,
   clearState,
 } from '../src/state/index.ts';
 
@@ -120,6 +121,102 @@ describe('state module', () => {
       const result = readMessages('a', 'room1');
       expect(result.messages.length).toBe(1);
       expect(result.messages[0]!.room).toBe('room1');
+    });
+
+    test('message has kind field', () => {
+      addAgent('a', 'worker', 'r', '%100');
+      addAgent('b', 'leader', 'r', '%101');
+      const msg = addMessage('a', 'b', 'r', 'hello', 'push', 'a', 'chat');
+      expect(msg.kind).toBe('chat');
+    });
+
+    test('message kind defaults to chat', () => {
+      addAgent('a', 'worker', 'r', '%100');
+      addAgent('b', 'leader', 'r', '%101');
+      const msg = addMessage('a', 'b', 'r', 'hello', 'push', 'a');
+      expect(msg.kind).toBe('chat');
+    });
+  });
+
+  describe('room messages', () => {
+    test('message is stored in room log', () => {
+      addAgent('a', 'leader', 'frontend', '%100');
+      addAgent('b', 'worker', 'frontend', '%101');
+      addMessage('b', 'a', 'frontend', 'build login', 'push', 'b', 'task');
+
+      const roomMsgs = getRoomMessages('frontend');
+      expect(roomMsgs.length).toBe(1);
+      expect(roomMsgs[0]!.text).toBe('build login');
+      expect(roomMsgs[0]!.from).toBe('a');
+    });
+
+    test('all room members can read room messages', () => {
+      addAgent('lead', 'leader', 'frontend', '%100');
+      addAgent('w1', 'worker', 'frontend', '%101');
+      addAgent('w2', 'worker', 'frontend', '%102');
+
+      addMessage('w1', 'lead', 'frontend', 'build login', 'push', 'w1', 'task');
+
+      const roomMsgs = getRoomMessages('frontend');
+      expect(roomMsgs.length).toBe(1);
+    });
+
+    test('broadcast is one canonical message', () => {
+      addAgent('lead', 'leader', 'team', '%100');
+      addAgent('w1', 'worker', 'team', '%101');
+      addAgent('w2', 'worker', 'team', '%102');
+
+      addMessage('__room__', 'lead', 'team', 'standup', 'push', null, 'chat');
+
+      const roomMsgs = getRoomMessages('team');
+      expect(roomMsgs.length).toBe(1);
+      expect(roomMsgs[0]!.to).toBeNull();
+    });
+
+    test('room log is capped at MAX_ROOM_MESSAGES', () => {
+      addAgent('a', 'leader', 'r', '%100');
+      addAgent('b', 'worker', 'r', '%101');
+
+      for (let i = 0; i < 1005; i++) {
+        addMessage('b', 'a', 'r', `msg-${i}`, 'push', 'b', 'chat');
+      }
+
+      const msgs = getRoomMessages('r');
+      expect(msgs.length).toBe(1000);
+      expect(msgs[0]!.text).toBe('msg-5'); // oldest 5 evicted
+    });
+  });
+
+  describe('cursors', () => {
+    test('getCursor returns 0 for new agent-room pair', () => {
+      addAgent('a', 'worker', 'r', '%100');
+      expect(getCursor('a', 'r')).toBe(0);
+    });
+
+    test('advanceCursor updates read position', () => {
+      addAgent('a', 'worker', 'r', '%100');
+      advanceCursor('a', 'r', 5);
+      expect(getCursor('a', 'r')).toBe(5);
+    });
+
+    test('readRoomMessages advances cursor', () => {
+      addAgent('lead', 'leader', 'r', '%100');
+      addAgent('w1', 'worker', 'r', '%101');
+
+      addMessage('w1', 'lead', 'r', 'task1', 'push', 'w1', 'task');
+      addMessage('w1', 'lead', 'r', 'task2', 'push', 'w1', 'task');
+
+      // First read: gets both messages
+      const first = readRoomMessages('w1', 'r');
+      expect(first.messages.length).toBe(2);
+
+      // Add a third message
+      addMessage('w1', 'lead', 'r', 'task3', 'push', 'w1', 'task');
+
+      // Second read: only new message
+      const second = readRoomMessages('w1', 'r');
+      expect(second.messages.length).toBe(1);
+      expect(second.messages[0]!.text).toBe('task3');
     });
   });
 });
