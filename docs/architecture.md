@@ -151,8 +151,27 @@ Room messages (`room-messages.json`) are capped per-room at `MAX_ROOM_MESSAGES =
 ```
 Left (30%): Room/agent tree with collapse, status colors, multi-room badges
 Right-top (70% x 65%): Chronological message feed, color-coded rooms
-Right-bottom (70% x 35%): Selected agent details
+Right-bottom (70% x 35%): Selected agent details (name, role, rooms, topic, status, activity)
+Bottom row: Persistent shortcut bar — ↑↓/jk:Navigate  Enter:Toggle  ?:Help  q:Quit
 ```
+
+### ANSI-Aware Text Truncation
+
+`render.ts` contains two helpers used on every rendered line:
+
+- `visibleLength(str)` — strips SGR escape codes (`\x1b\[[0-9;]*m`) before measuring length
+- `truncate(str, max)` — walks the string character by character, passing ANSI codes through without counting them as visible width; appends `…\x1b[0m` at the cut point so no color codes leak past the boundary
+
+This prevents status-dot colors, dim badges, room colors, and kind badges from inflating the measured width and causing text to overflow box borders.
+
+### Details Panel Content
+
+The details panel shows different content depending on selection:
+
+- **Agent selected:** name (bold), role, rooms, room topic (if set), status (colored), tmux pane target, last activity age, activity summary (up to 3 wrapped lines from `status.summary`)
+- **Room selected:** room name, topic, member count
+
+`status.summary` is populated by the status poller (`src/dashboard/status.ts`) which extracts recent pane activity text via `capture-pane` alongside the idle/busy detection.
 
 ## Installation Architecture
 

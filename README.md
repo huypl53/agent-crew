@@ -125,8 +125,13 @@ Read-only terminal observer. Shows rooms, agents, status, and messages in a 3-pa
 |-----|--------|
 | `↑` / `k` | Move up |
 | `↓` / `j` | Move down |
+| `gg` | Jump to top |
+| `G` | Jump to bottom |
 | `Enter` / `Space` | Collapse/expand room |
+| `?` | Toggle help overlay |
 | `q` / `Ctrl-C` | Quit |
+
+Shortcuts are always visible in the bottom status bar. The details panel shows the selected agent's role, rooms, topic, status, tmux pane, and recent activity summary.
 
 ## Resource Limits & Reliability
 
