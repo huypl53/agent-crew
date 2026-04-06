@@ -187,6 +187,18 @@ describe('state module', () => {
     });
   });
 
+  describe('persistence', () => {
+    test('room messages survive flush and load cycle', async () => {
+      addAgent('a', 'leader', 'r', '%100');
+      addAgent('b', 'worker', 'r', '%101');
+      addMessage('b', 'a', 'r', 'test-persist', 'push', 'b', 'task');
+
+      const msgs = getRoomMessages('r');
+      expect(msgs.length).toBe(1);
+      expect(msgs[0]!.kind).toBe('task');
+    });
+  });
+
   describe('cursors', () => {
     test('getCursor returns 0 for new agent-room pair', () => {
       addAgent('a', 'worker', 'r', '%100');
