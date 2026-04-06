@@ -83,6 +83,49 @@ This is a tmux push only (no inbox entry). Leaders receive the notification in t
 
 Calling `read_messages` with `room` param uses this path. Calling without `room` falls back to legacy inbox.
 
+## Resource Management
+
+### Graceful Shutdown
+
+`src/index.ts` registers handlers for `SIGTERM` and `SIGINT`:
+
+```typescript
+async function shutdown(): Promise<void> {
+  await flushAsync();   // final write before exit
+  process.exit(0);
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+```
+
+Without this, an in-flight fire-and-forget `flushAsync()` could be interrupted mid-write, leaving a truncated or invalid JSON file. The handler ensures the last known state is always safely on disk.
+
+`flushAsync` is exported from `src/state/index.ts` so both the shutdown handler and tests can call it directly.
+
+### Inbox Capping
+
+Each agent's inbox is capped at `MAX_INBOX_MESSAGES = 500` entries. On overflow, the oldest messages are evicted via `splice(0, length - 500)`. This prevents unbounded memory growth in long-running sessions with many pull messages.
+
+### Cursor Cleanup
+
+Agent read cursors are cleaned up when an agent departs:
+- `removeAgent(name, room)` — calls `cursors.delete(name)` (all rooms cleared on any departure)
+- `removeAgentFully(name)` — calls `cursors.delete(name)`
+
+Cursor cleanup prevents the `cursors` map from accumulating entries for agents that no longer exist.
+
+### Message Retention
+
+`flushAsync()` caps `messages.json` (the legacy inbox log) at **5000 entries** before writing to disk. Entries beyond this limit are evicted oldest-first. This bounds disk usage regardless of session length.
+
+Room messages (`room-messages.json`) are capped per-room at `MAX_ROOM_MESSAGES = 1000` at write time in `addMessage()`.
+
+| Store | Cap | Eviction |
+|-------|-----|----------|
+| Per-agent inbox (in-memory) | 500 | Oldest-first on each `addMessage` |
+| `messages.json` (disk) | 5000 | Oldest-first in `flushAsync` |
+| Per-room log (in-memory + disk) | 1000 | Oldest-first on each `addMessage` |
+
 ## Key Patterns
 
 - **Naming:** snake_case for MCP (tools, params, JSON), camelCase for TS, kebab-case for files

@@ -128,6 +128,17 @@ Read-only terminal observer. Shows rooms, agents, status, and messages in a 3-pa
 | `Enter` / `Space` | Collapse/expand room |
 | `q` / `Ctrl-C` | Quit |
 
+## Resource Limits & Reliability
+
+| Resource | Limit | Notes |
+|----------|-------|-------|
+| Per-agent inbox | 500 messages | Oldest evicted on overflow |
+| Per-room log | 1000 messages | Oldest evicted on overflow |
+| `messages.json` on disk | 5000 entries | Trimmed on every flush |
+| Graceful shutdown | SIGTERM + SIGINT | Final `flushAsync()` before exit |
+
+The MCP server flushes all in-memory state to disk on `SIGTERM`/`SIGINT`, so no messages are lost when Claude Code exits normally.
+
 ## Project Structure
 
 ```
