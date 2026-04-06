@@ -43,6 +43,53 @@ A task is complete when:
 
 Always call `read_messages` when you see a worker go idle — they may have reported completion, asked a question, or hit an error.
 
+## Room Conversation
+
+All messages in a room are visible to all members. Read the room log to see the full conversation:
+
+```
+read_messages({ name: "your-name", room: "your-room" })
+```
+
+This returns all messages since your last read — tasks assigned, worker reports, questions.
+
+### Auto-Notifications
+
+When a worker sends a `completion`, `error`, or `question` message, you'll automatically receive a brief push notification in your pane:
+
+```
+[system@frontend]: builder-1 completed: "Login component done"
+```
+
+Read the full message via `read_messages` for details.
+
+### Message Kinds
+
+Use explicit `kind` when sending tasks:
+
+```
+send_message({
+  room: "your-room",
+  to: "builder-1",
+  text: "Create Login.tsx with form validation",
+  name: "your-name",
+  mode: "push",
+  kind: "task"
+})
+```
+
+### Room Topic
+
+Set the current objective so all members know what you're working on:
+
+```
+set_room_topic({
+  room: "your-room",
+  text: "Build auth system — OAuth2 + Google Calendar",
+  name: "your-name"
+})
+```
+
 ## Escalation
 
 Report to the boss in the company room when:

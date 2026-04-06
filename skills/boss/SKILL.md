@@ -44,6 +44,47 @@ Common escalations:
 - **Milestone complete** — acknowledge and assign next phase
 - **Blocked** — help unblock or reprioritize
 
+## Room Logs
+
+Rooms now have a shared conversation log. Read a room to see the full context, not just direct reports:
+
+```
+read_messages({ name: "your-name", room: "company" })
+```
+
+Use this to review leader updates, decisions, and coordination history.
+
+## Message Kinds
+
+Encourage leaders to use explicit `kind` values so progress is machine-readable and auto-notify works correctly:
+
+```
+send_message({
+  room: "company",
+  to: "frontend-lead",
+  text: "Begin auth implementation with login and session handling",
+  name: "your-name",
+  mode: "push",
+  kind: "task"
+})
+```
+
+Useful kinds: `task`, `completion`, `question`, `error`, `status`, `chat`
+
+When leaders or workers send `completion`, `error`, or `question`, leaders receive automatic push notifications.
+
+## Room Topic
+
+Use the room topic to set the current objective for a team:
+
+```
+set_room_topic({
+  room: "company",
+  text: "Ship authentication MVP this sprint",
+  name: "your-name"
+})
+```
+
 ## Resource Allocation
 
 You decide which leaders work on what. If a project needs more workers, tell the human to start new CC sessions and have them join rooms.
