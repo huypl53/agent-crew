@@ -3,7 +3,7 @@ import {
   addAgent, getAgent, removeAgent, getRoom, getAllRooms,
   getRoomMembers, isNameTakenInRoom, addMessage, readMessages,
   getRoomMessages, getCursor, advanceCursor, readRoomMessages,
-  flushAsync, clearState,
+  flushAsync, clearState, removeAgentFully,
 } from '../src/state/index.ts';
 
 describe('state module', () => {
@@ -136,6 +136,20 @@ describe('state module', () => {
       const msg = addMessage('a', 'b', 'r', 'hello', 'push', 'a');
       expect(msg.kind).toBe('chat');
     });
+
+    test('inbox is capped at MAX_INBOX_MESSAGES', () => {
+      addAgent('sender', 'leader', 'room', '%100');
+      addAgent('receiver', 'worker', 'room', '%101');
+
+      for (let i = 0; i < 505; i++) {
+        addMessage('receiver', 'sender', 'room', `msg-${i}`, 'push', 'receiver');
+      }
+
+      const result = readMessages('receiver');
+      expect(result.messages.length).toBe(500);
+      expect(result.messages[0]!.text).toBe('msg-5');
+      expect(result.messages.at(-1)!.text).toBe('msg-504');
+    });
   });
 
   describe('room messages', () => {
@@ -235,6 +249,51 @@ describe('state module', () => {
       const second = readRoomMessages('w1', 'r');
       expect(second.messages.length).toBe(1);
       expect(second.messages[0]!.text).toBe('task3');
+    });
+
+    test('removeAgent clears agent cursors', () => {
+      addAgent('a', 'worker', 'r', '%100');
+      advanceCursor('a', 'r', 5);
+      expect(getCursor('a', 'r')).toBe(5);
+
+      removeAgent('a', 'r');
+      expect(getCursor('a', 'r')).toBe(0);
+    });
+
+    test('removeAgentFully clears agent cursors', () => {
+      addAgent('a', 'worker', 'r', '%100');
+      advanceCursor('a', 'r', 7);
+      expect(getCursor('a', 'r')).toBe(7);
+
+      removeAgentFully('a');
+      expect(getCursor('a', 'r')).toBe(0);
+    });
+  });
+
+  describe('retention', () => {
+    test('flushAsync caps messages.json to last 5000 entries', async () => {
+      addAgent('sender', 'leader', 'room', '%100');
+      addAgent('receiver', 'worker', 'room', '%101');
+      await Bun.spawn(['mkdir', '-p', '/tmp/cc-tmux/state'], { stdout: 'pipe', stderr: 'pipe' }).exited;
+      const existing = Array.from({ length: 5005 }, (_, i) => ({
+        message_id: `seed-${i}`,
+        from: 'sender',
+        room: 'room',
+        to: 'receiver',
+        text: `msg-${i}`,
+        kind: 'chat',
+        timestamp: new Date(2026, 0, 1, 0, 0, 0, i).toISOString(),
+        sequence: i + 1,
+        mode: 'push',
+      }));
+      await Bun.write('/tmp/cc-tmux/state/messages.json', JSON.stringify(existing, null, 2));
+
+      await flushAsync();
+
+      const data = JSON.parse(await Bun.file('/tmp/cc-tmux/state/messages.json').text()) as Array<{ text: string }>;
+      expect(data.length).toBe(5000);
+      expect(data[0]!.text).toBe('msg-5');
+      expect(data.at(-1)!.text).toBe('msg-5004');
     });
   });
 });

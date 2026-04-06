@@ -9,6 +9,7 @@ const rooms = new Map<string, Room>();
 const inboxes = new Map<string, Message[]>(); // agent_name -> messages
 const roomMessages = new Map<string, Message[]>(); // room -> messages (canonical store)
 const cursors = new Map<string, Map<string, number>>(); // agent_name -> room -> last_read_sequence
+const MAX_INBOX_MESSAGES = 500;
 const MAX_ROOM_MESSAGES = 1000;
 let nextSequence = 1;
 let diskSyncEnabled = true;
@@ -79,6 +80,7 @@ export function removeAgent(name: string, room: string): boolean {
     const filtered = inbox.filter(m => m.room !== room);
     inboxes.set(name, filtered);
   }
+  cursors.delete(name);
 
   // If agent has no rooms left, fully remove
   if (agent.rooms.length === 0) {
@@ -103,6 +105,7 @@ export function removeAgentFully(name: string): void {
   }
   agents.delete(name);
   inboxes.delete(name);
+  cursors.delete(name);
 }
 
 // --- Room operations ---
@@ -171,6 +174,9 @@ export function addMessage(
     let inbox = inboxes.get(to);
     if (!inbox) { inbox = []; inboxes.set(to, inbox); }
     inbox.push(msg);
+    if (inbox.length > MAX_INBOX_MESSAGES) {
+      inbox.splice(0, inbox.length - MAX_INBOX_MESSAGES);
+    }
   }
 
   flushState();
@@ -340,6 +346,9 @@ export async function flushAsync(): Promise<void> {
   }
 
   mergedMessages.sort((a, b) => a.sequence - b.sequence);
+  if (mergedMessages.length > 5000) {
+    mergedMessages.splice(0, mergedMessages.length - 5000);
+  }
 
   // Serialize room messages
   const roomMsgData: Record<string, Message[]> = {};
