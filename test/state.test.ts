@@ -221,6 +221,40 @@ describe('state module', () => {
       expect(msgs.length).toBe(1);
       expect(msgs[0]!.kind).toBe('task');
     });
+
+    test('flushAsync merges room-messages.json from disk (multi-process)', async () => {
+      const stateDir = process.env.CC_TMUX_STATE_DIR!;
+
+      // Set up agents and add w2's message, wait for all flushes to complete
+      addAgent('lead', 'leader', 'frontend', '%100');
+      addAgent('w2', 'worker', 'frontend', '%101');
+      addMessage('lead', 'w2', 'frontend', 'w2 done', 'pull', 'lead', 'completion');
+      await flushAsync(); // waits for lock, guarantees all prior flushes done
+
+      // Disk now has w2's message. Manually add w1's (simulating another process)
+      const diskData = JSON.parse(await Bun.file(`${stateDir}/room-messages.json`).text()) as Record<string, any[]>;
+      diskData['frontend']!.push({
+        message_id: 'msg-other-process',
+        from: 'w1',
+        room: 'frontend',
+        to: 'lead',
+        text: 'w1 done',
+        kind: 'completion',
+        timestamp: new Date().toISOString(),
+        sequence: 50,
+        mode: 'pull',
+      });
+      await Bun.write(`${stateDir}/room-messages.json`, JSON.stringify(diskData, null, 2));
+
+      // Flush should merge disk (w1+w2) with memory (w2), preserving both
+      await flushAsync();
+
+      const data = JSON.parse(await Bun.file(`${stateDir}/room-messages.json`).text()) as Record<string, Array<{ text: string }>>;
+      const frontendMsgs = data['frontend']!;
+      const texts = frontendMsgs.map(m => m.text);
+      expect(texts).toContain('w1 done');
+      expect(texts).toContain('w2 done');
+    });
   });
 
   describe('cursors', () => {
@@ -276,9 +310,11 @@ describe('state module', () => {
 
   describe('retention', () => {
     test('flushAsync caps messages.json to last 5000 entries', async () => {
+      const stateDir = process.env.CC_TMUX_STATE_DIR!;
       addAgent('sender', 'leader', 'room', '%100');
       addAgent('receiver', 'worker', 'room', '%101');
-      await Bun.spawn(['mkdir', '-p', '/tmp/cc-tmux/state'], { stdout: 'pipe', stderr: 'pipe' }).exited;
+      await flushAsync(); // let setup flushes complete
+
       const existing = Array.from({ length: 5005 }, (_, i) => ({
         message_id: `seed-${i}`,
         from: 'sender',
@@ -290,11 +326,11 @@ describe('state module', () => {
         sequence: i + 1,
         mode: 'push',
       }));
-      await Bun.write('/tmp/cc-tmux/state/messages.json', JSON.stringify(existing, null, 2));
+      await Bun.write(`${stateDir}/messages.json`, JSON.stringify(existing, null, 2));
 
       await flushAsync();
 
-      const data = JSON.parse(await Bun.file('/tmp/cc-tmux/state/messages.json').text()) as Array<{ text: string }>;
+      const data = JSON.parse(await Bun.file(`${stateDir}/messages.json`).text()) as Array<{ text: string }>;
       expect(data.length).toBe(5000);
       expect(data[0]!.text).toBe('msg-5');
       expect(data.at(-1)!.text).toBe('msg-5004');
