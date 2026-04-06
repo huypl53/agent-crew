@@ -246,6 +246,53 @@ export function getAllMessages(): Message[] {
   return (getDb().query('SELECT * FROM messages ORDER BY id').all() as Record<string, unknown>[]).map(rowToMessage);
 }
 
+// --- Refresh / migration ---
+
+export async function refreshAgent(name: string, newPane: string): Promise<Agent | undefined> {
+  const db = getDb();
+
+  // Fast path: agent exists in SQLite — update pane and return
+  const existing = db.query('SELECT * FROM agents WHERE name = ?').get(name) as Record<string, unknown> | null;
+  if (existing) {
+    db.run('UPDATE agents SET pane = ? WHERE name = ?', [newPane, name]);
+    return getAgent(name);
+  }
+
+  // Fallback: try agents.json from legacy JSON state
+  const stateDir = process.env.CC_TMUX_STATE_DIR ?? '/tmp/cc-tmux/state';
+  const agentsFile = Bun.file(`${stateDir}/agents.json`);
+  if (!(await agentsFile.exists())) return undefined;
+
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(await agentsFile.text());
+  } catch {
+    return undefined;
+  }
+
+  const legacy = data[name] as { role?: string; rooms?: string[]; joined_at?: string } | undefined;
+  if (!legacy) return undefined;
+
+  const role = legacy.role as string ?? 'worker';
+  const rooms: string[] = Array.isArray(legacy.rooms) ? legacy.rooms : [];
+  const ts = legacy.joined_at as string ?? new Date().toISOString();
+
+  // Insert agent
+  db.run(
+    `INSERT INTO agents (name, role, pane, registered_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(name) DO UPDATE SET pane = excluded.pane`,
+    [name, role, newPane, ts],
+  );
+
+  // Insert rooms and memberships
+  for (const room of rooms) {
+    db.run('INSERT OR IGNORE INTO rooms (name, created_at) VALUES (?, ?)', [room, ts]);
+    db.run('INSERT OR IGNORE INTO members (room, agent, joined_at) VALUES (?, ?, ?)', [room, name, ts]);
+  }
+
+  return getAgent(name);
+}
+
 // --- Liveness ---
 
 export async function validateLiveness(): Promise<string[]> {

@@ -8,6 +8,7 @@ import { handleReadMessages } from '../src/tools/read-messages.ts';
 import { handleSendMessage } from '../src/tools/send-message.ts';
 import { clearState } from '../src/state/index.ts';
 import { handleSetRoomTopic } from '../src/tools/set-room-topic.ts';
+import { handleRefresh } from '../src/tools/refresh.ts';
 import { createTestSession, destroyTestSession, cleanupAllTestSessions, captureFromPane } from './helpers.ts';
 
 let testPaneA: string;
@@ -261,6 +262,37 @@ describe('MCP tools', () => {
     test('rejects non-member setting topic', async () => {
       await handleJoinRoom({ room: 'frontend', role: 'leader', name: 'lead-1', tmux_target: testPaneA });
       const result = await handleSetRoomTopic({ room: 'frontend', text: 'Hack', name: 'outsider' });
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  describe('refresh', () => {
+    test('refreshes agent pane', async () => {
+      await handleJoinRoom({ room: 'r', role: 'worker', name: 'w1', tmux_target: testPaneA });
+      const result = await handleRefresh({ name: 'w1', tmux_target: testPaneB });
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.name).toBe('w1');
+      expect(data.rooms).toContain('r');
+      expect(data.tmux_target).toBe(testPaneB);
+      expect(result.isError).toBeUndefined();
+    });
+
+    test('preserves rooms after refresh', async () => {
+      await handleJoinRoom({ room: 'r1', role: 'leader', name: 'lead', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'r2', role: 'leader', name: 'lead', tmux_target: testPaneA });
+      const result = await handleRefresh({ name: 'lead', tmux_target: testPaneB });
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.rooms).toEqual(['r1', 'r2']);
+    });
+
+    test('errors for unknown agent', async () => {
+      const result = await handleRefresh({ name: 'nobody', tmux_target: testPaneA });
+      expect(result.isError).toBe(true);
+    });
+
+    test('errors for invalid pane', async () => {
+      await handleJoinRoom({ room: 'r', role: 'worker', name: 'w1', tmux_target: testPaneA });
+      const result = await handleRefresh({ name: 'w1', tmux_target: '%99999' });
       expect(result.isError).toBe(true);
     });
   });

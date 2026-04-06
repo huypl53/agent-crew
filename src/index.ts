@@ -15,6 +15,7 @@ import { handleSendMessage } from './tools/send-message.ts';
 import { handleReadMessages } from './tools/read-messages.ts';
 import { handleGetStatus } from './tools/get-status.ts';
 import { handleSetRoomTopic } from './tools/set-room-topic.ts';
+import { handleRefresh } from './tools/refresh.ts';
 import { err } from './shared/types.ts';
 
 // Validate tmux
@@ -127,6 +128,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: 'refresh',
+      description: 'Re-register an existing agent with current tmux pane. Use after resuming a CC session. Migrates from legacy JSON state if needed.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          name: { type: 'string', description: 'Your agent name' },
+          tmux_target: { type: 'string', description: 'Override auto-detected tmux pane (optional)' },
+        },
+        required: ['name'],
+      },
+    },
+    {
       name: 'set_room_topic',
       description: 'Set the current objective/topic for a room. Only room members can set the topic.',
       inputSchema: {
@@ -162,6 +175,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleReadMessages(args as any);
       case 'get_status':
         return await handleGetStatus(args as any);
+      case 'refresh':
+        return await handleRefresh(args as any);
       case 'set_room_topic':
         return await handleSetRoomTopic(args as any);
       default:
