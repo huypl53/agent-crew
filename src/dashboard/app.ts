@@ -73,6 +73,7 @@ export async function startApp(): Promise<void> {
       agent,
       status,
       stateReader.isAvailable,
+      state.rooms,
       showHelp,
     ));
   }

@@ -2,7 +2,7 @@ import type { TerminalSize } from './terminal.ts';
 import { COLORS } from './terminal.ts';
 import type { TreeNode } from './tree.ts';
 import type { FormattedMessage } from './feed.ts';
-import type { Agent, AgentStatus } from '../shared/types.ts';
+import type { Agent, AgentStatus, Room } from '../shared/types.ts';
 import type { AgentStatusEntry } from './status.ts';
 
 const BOX = { tl: '┌', tr: '┐', bl: '└', br: '┘', h: '─', v: '│' } as const;
@@ -57,7 +57,7 @@ export function renderFrame(
   size: TerminalSize, treeNodes: TreeNode[], selectedIndex: number,
   feedMessages: FormattedMessage[], selectedAgent: Agent | null,
   selectedAgentStatus: AgentStatusEntry | null, stateAvailable: boolean,
-  showHelp = false,
+  rooms?: Record<string, Room>, showHelp = false,
 ): string {
   let buf = '\x1b[2J';
   const leftW = Math.max(20, Math.floor(size.cols * 0.3));
@@ -128,7 +128,18 @@ export function renderFrame(
   let detailRow = topH + 1;
 
   if (!selectedAgent) {
-    buf += moveTo(detailRow, detailCol) + COLORS.dim + 'No agent selected' + COLORS.reset;
+    const selectedNode = treeNodes[selectedIndex];
+    if (selectedNode?.type === 'room') {
+      const roomName = selectedNode.label;
+      const room = rooms?.[roomName] as (Room & { topic?: string }) | undefined;
+      buf += moveTo(detailRow++, detailCol) + `${COLORS.bold}${roomName}${COLORS.reset}`;
+      if (room?.topic) {
+        buf += moveTo(detailRow++, detailCol) + `Topic: ${room.topic}`;
+      }
+      buf += moveTo(detailRow++, detailCol) + `Members: ${selectedNode.memberCount}`;
+    } else {
+      buf += moveTo(detailRow, detailCol) + COLORS.dim + 'No agent selected' + COLORS.reset;
+    }
   } else {
     const status = selectedAgentStatus?.status ?? 'unknown';
     const sc = STATUS_COLORS[status];
