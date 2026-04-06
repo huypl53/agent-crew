@@ -23,10 +23,24 @@ Communication: push messages (tmux send-keys for commands) + pull messages (serv
 - Bun runtime
 - Claude Code with plugin support
 
-## Installation (local dev)
+## Installation
 
 ```bash
-claude --plugin-dir ./cc-tmux
+bun install
+claude --plugin-dir ./
+```
+
+## Usage
+
+```bash
+# Start MCP server (auto-started by Claude Code plugin)
+bun run start
+
+# Launch TUI dashboard (separate terminal/pane)
+bun run dashboard
+
+# Run tests
+bun test
 ```
 
 ## MCP Tools
@@ -48,6 +62,35 @@ claude --plugin-dir ./cc-tmux
 - `/cc-tmux:worker` — Worker task handling patterns
 - `/cc-tmux:boss` — Boss management patterns
 
-## Status
+## TUI Dashboard
 
-Architecture complete. Implementation pending. See `docs/architecture.md` for details.
+Read-only terminal observer. Shows rooms, agents, status, and messages in a 3-panel layout.
+
+```
+┌─ Rooms & Agents ──────────┐┌─ Messages ─────────────────────────┐
+│ ▼ company (2)              ││ 14:32:01 [boss@company] → lead-1   │
+│   ● boss        idle       ││   Build the auth system             │
+│   ● lead-1      busy       ││                                     │
+│ ▼ frontend (3)             │├─ Details ────────────────────────────┤
+│   ● lead-1 [+company] busy ││ Selected: lead-1                     │
+│   ● builder-1   idle       ││ Role: leader | Rooms: company, front │
+└────────────────────────────┘└─────────────────────────────────────┘
+```
+
+Controls: `↑`/`↓` navigate, `Enter`/`Space` collapse/expand, `q` quit.
+
+## Project Structure
+
+```
+src/
+├── index.ts          # MCP server entrypoint
+├── tools/            # 7 MCP tool handlers
+├── tmux/             # tmux CLI wrapper
+├── state/            # In-memory state + JSON persistence
+├── delivery/         # Push (tmux) + pull (queue) delivery
+├── shared/           # Types, status patterns (shared with dashboard)
+├── dashboard.ts      # Dashboard entrypoint
+└── dashboard/        # TUI dashboard modules
+skills/               # 4 role-based skills
+test/                 # Test suite
+```

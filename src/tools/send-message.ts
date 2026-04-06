@@ -1,0 +1,65 @@
+import { ok, err } from '../shared/types.ts';
+import type { ToolResult } from '../shared/types.ts';
+import { getAgent, getRoom } from '../state/index.ts';
+import { deliverMessage } from '../delivery/index.ts';
+
+interface SendMessageParams {
+  room: string;
+  text: string;
+  to?: string;
+  mode?: 'push' | 'pull';
+  name: string; // sender identity
+}
+
+export async function handleSendMessage(params: SendMessageParams): Promise<ToolResult> {
+  const { room, text, to, mode = 'push', name } = params;
+
+  if (!room || !text || !name) {
+    return err('Missing required params: room, text, name');
+  }
+
+  const sender = getAgent(name);
+  if (!sender) {
+    return err(`Sender "${name}" is not registered`);
+  }
+
+  if (!sender.rooms.includes(room)) {
+    return err(`Sender "${name}" is not a member of room "${room}"`);
+  }
+
+  const r = getRoom(room);
+  if (!r) {
+    return err(`Room "${room}" does not exist`);
+  }
+
+  // Validate target if directed message
+  if (to) {
+    const target = getAgent(to);
+    if (!target) {
+      return err(`Target agent "${to}" is not registered`);
+    }
+    if (!target.rooms.includes(room)) {
+      return err(`Target "${to}" is not a member of room "${room}"`);
+    }
+  }
+
+  const results = await deliverMessage(name, room, text, to ?? null, mode);
+
+  if (results.length === 1) {
+    return ok({
+      message_id: results[0]!.message_id,
+      delivered: results[0]!.delivered,
+      queued: results[0]!.queued,
+    });
+  }
+
+  // Broadcast: return summary
+  const delivered = results.filter(r => r.delivered).length;
+  return ok({
+    broadcast: true,
+    recipients: results.length,
+    delivered,
+    queued: results.length,
+    message_ids: results.map(r => r.message_id),
+  });
+}

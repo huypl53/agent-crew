@@ -1,71 +1,67 @@
 # cc-tmux Architecture
 
-cc-tmux is a Claude Code plugin (MCP server + skills) that lets Claude Code agents coordinate with each other via tmux rooms.
+## Overview
 
-## Design Philosophy
+cc-tmux is a Claude Code MCP server plugin + TUI dashboard. Agents register into rooms with roles (boss/leader/worker) and communicate via tmux.
 
-**Registration-first, coordination hub, smart agents.**
-
-- Agents register themselves into rooms via slash commands
-- The MCP server is a coordination hub, not a session manager
-- tmux `send-keys` is the push delivery transport
-- Dual-mode messaging: push (interrupt) + pull (queue)
-
-## Hierarchy
+## Data Flow
 
 ```
-Boss (company room) — the human's CC session
-├── Leader-1 (company room + project-alpha room)
-│   ├── Worker-1 (project-alpha room)
-│   └── Worker-2 (project-alpha room)
-└── Leader-2 (company room + project-beta room)
-    └── Worker-3 (project-beta room)
+Agent calls MCP tool
+  → src/index.ts routes to tool handler in src/tools/
+  → tool calls src/state/ for data operations
+  → if send_message: tool calls src/delivery/
+    → delivery calls state.addMessage() (always, NFR6)
+    → delivery calls tmux.sendKeys() (push mode only)
+  → tool returns MCP JSON response
+
+Dashboard reads /tmp/cc-tmux/state/*.json via fs.watch
+  → polls tmux capture-pane every 2s for status
+  → renders 3-panel ANSI layout to stdout
 ```
 
-## Core MCP Tools (7)
+## Module Boundaries
 
-| Tool | Purpose |
-|------|---------|
-| `join_room` | Register agent in a room with role + name |
-| `leave_room` | Deregister from a room |
-| `list_rooms` | List active rooms with member counts |
-| `list_members` | List agents in a room |
-| `send_message` | Send push or pull message to agent/room |
-| `read_messages` | Read from agent's inbox queue |
-| `get_status` | Check agent status (idle/busy/dead) |
+- **src/tools/** — One handler per MCP tool. Imports from state/tmux/delivery. Never calls another tool.
+- **src/state/** — Owns all data. In-memory primary, JSON flush to `/tmp/cc-tmux/state/`. No other module reads/writes files.
+- **src/tmux/** — Pure tmux CLI wrapper via Bun.spawn(). No business logic. Strips ANSI from capture-pane output.
+- **src/delivery/** — Push (tmux send-keys) + pull (queue). Always queues first, then delivers.
+- **src/shared/** — Types, status regex patterns. Used by both MCP server and dashboard.
+- **src/dashboard/** — TUI modules. Reads state files (read-only), polls tmux, renders ANSI.
+- **skills/** — Pure markdown. No code execution.
 
-## Module Structure
+## Dependency Graph (acyclic)
 
 ```
-src/
-├── index.ts          # MCP server entrypoint
-├── tools/            # One file per MCP tool
-├── tmux/             # Thin tmux CLI wrapper (send-keys, capture-pane)
-├── state/            # Rooms, registry, message queues (file-backed JSON)
-└── delivery/         # Push (tmux) + pull (queue) delivery logic
+tools → {state, delivery, tmux}
+delivery → {state, tmux}
+dashboard → {shared, tmux (for polling)}
+state → tmux (for liveness validation)
 ```
 
-## Key Technical Decisions
+## Key Patterns
 
-- **Runtime:** Bun (native TS, no build step)
-- **State:** File-backed JSON in `/tmp/cc-tmux/state/`
-- **Push delivery:** `tmux send-keys -l` (literal mode) + separate Enter
-- **Status detection:** Regex on CC's status line from `capture-pane` output
-- **ANSI stripping:** `strip-ansi` applied to all capture-pane output
-- **No background polling:** All detection is on-demand
+- **Naming:** snake_case for MCP (tools, params, JSON), camelCase for TS, kebab-case for files
+- **Messages:** Always queued to inbox before push delivery (NFR6/NFR9)
+- **Push format:** `[sender@room]: text` via `tmux send-keys -l`
+- **Status detection:** On-demand `capture-pane` + strip-ansi + regex match (idle/busy/dead/unknown)
+- **State persistence:** Write-through JSON flush after every mutation
+- **Error handling:** Tool handlers never throw — return `{ error: "..." }` with `isError: true`
+- **Terminal safety:** Dashboard registers cleanup on SIGINT/SIGTERM/uncaughtException
 
-## CC Status Line Patterns (empirically validated)
+## CC Status Line Regexes (from UAT)
 
-- **Idle:** Empty `❯` prompt between separator lines
-- **Busy:** Spinner char (`·`, `*`, `✶`, `✽`, `✻`) + verb + `…` + timer
-- **Complete:** `✻ {Verb} for {time}` (e.g. "Baked for 1m 2s")
-- **Dead:** `#{pane_dead}` via `tmux list-panes -F`
+| State | Pattern | Example |
+|-------|---------|---------|
+| Idle | `^❯\s*$` | Empty prompt |
+| Busy | `/^[·*✶✽✻]\s+\w+…\s+\(\d/` | `· Contemplating… (3s)` |
+| Complete | `/^✻\s+\w+\s+for\s+/` | `✻ Baked for 1m 2s` |
+| Dead | `tmux list-panes #{pane_dead}` | Pane doesn't exist |
 
-## Planning Artifacts
+## Dashboard Panel Layout
 
-Full design documents in `_bmad-output/`:
-- `brainstorming/brainstorming-session-2026-04-05-1500.md` — Architecture decisions
-- `planning-artifacts/prd.md` — Product Requirements (34 FRs, 14 NFRs)
-- `planning-artifacts/architecture.md` — Formal architecture document
-- `planning-artifacts/epics.md` — 7 epics, 20 stories for MVP
-- `test-artifacts/uat-tmux-primitives.md` — UAT test results
+```
+Left (30%): Room/agent tree with collapse, status colors, multi-room badges
+Right-top (70% x 65%): Chronological message feed, color-coded rooms
+Right-bottom (70% x 35%): Selected agent details
+```

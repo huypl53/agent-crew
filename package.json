@@ -1,0 +1,22 @@
+{
+  "name": "cc-tmux",
+  "version": "0.1.0",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dashboard": "bun run src/dashboard.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "strip-ansi": "^7.2.0"
+  }
+}

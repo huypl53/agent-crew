@@ -1,0 +1,5 @@
+{
+  "name": "cc-tmux",
+  "version": "0.1.0",
+  "description": "Turn your terminal into an AI development team. Register Claude Code agents into rooms with roles and coordinate via tmux."
+}
