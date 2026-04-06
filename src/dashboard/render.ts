@@ -13,9 +13,33 @@ const STATUS_COLORS: Record<AgentStatus, string> = {
 
 function moveTo(row: number, col: number): string { return `\x1b[${row + 1};${col + 1}H`; }
 
+function visibleLength(str: string): number {
+  return str.replace(/\x1b\[[0-9;]*m/g, '').length;
+}
+
 function truncate(str: string, max: number): string {
-  if (str.length <= max) return str;
-  return str.slice(0, max - 1) + '…';
+  if (visibleLength(str) <= max) return str;
+  let result = '';
+  let visible = 0;
+  let i = 0;
+  while (i < str.length) {
+    if (str[i] === '\x1b' && str[i + 1] === '[') {
+      // Consume ANSI escape sequence (ends at first letter after '[')
+      let j = i + 2;
+      while (j < str.length && !/[A-Za-z]/.test(str[j])) j++;
+      result += str.slice(i, j + 1);
+      i = j + 1;
+    } else {
+      if (visible >= max - 1) {
+        result += '…\x1b[0m';
+        return result;
+      }
+      result += str[i];
+      visible++;
+      i++;
+    }
+  }
+  return result;
 }
 
 function wrapLines(text: string, width: number, maxLines: number): string[] {
@@ -115,7 +139,7 @@ export function renderFrame(
       const plain = line.replace(/\x1b\[[0-9;]*m/g, '');
       buf += moveTo(row, 1) + COLORS.inverse + truncate(plain, treeW).padEnd(treeW) + COLORS.reset;
     } else {
-      buf += moveTo(row, 1) + truncate(line, treeW + 20);
+      buf += moveTo(row, 1) + truncate(line, treeW);
     }
   }
 
@@ -144,13 +168,21 @@ export function renderFrame(
   for (let i = 0; i < visibleMsgs.length; i++) {
     const msg = visibleMsgs[i]!;
     const target = msg.target === 'ALL' ? `${COLORS.bold}ALL${COLORS.reset}` : msg.target;
+    const kindBadgeText = msg.kind === 'completion' ? '[DONE] '
+      : msg.kind === 'error' ? '[ERR] '
+      : msg.kind === 'question' ? '[?] '
+      : msg.kind === 'task' ? '[TASK] '
+      : '';
     const kindBadge = msg.kind === 'completion' ? `${COLORS.green}[DONE]${COLORS.reset} `
       : msg.kind === 'error' ? `${COLORS.red}[ERR]${COLORS.reset} `
       : msg.kind === 'question' ? `${COLORS.yellow}[?]${COLORS.reset} `
       : msg.kind === 'task' ? `${COLORS.cyan}[TASK]${COLORS.reset} `
       : '';
-    const line = ` ${COLORS.dim}${msg.timestamp}${COLORS.reset} ${kindBadge}${msg.roomColor}[${msg.sender}@${msg.room}]${COLORS.reset} → ${target}: ${msg.text}`;
-    buf += moveTo(1 + i, leftW + 1) + truncate(line, feedW + 40);
+    const targetText = msg.target === 'ALL' ? 'ALL' : msg.target;
+    const prefixLen = ` ${msg.timestamp} ${kindBadgeText}[${msg.sender}@${msg.room}] → ${targetText}: `.length;
+    const text = truncate(msg.text, Math.max(5, feedW - prefixLen));
+    const line = ` ${COLORS.dim}${msg.timestamp}${COLORS.reset} ${kindBadge}${msg.roomColor}[${msg.sender}@${msg.room}]${COLORS.reset} → ${target}: ${text}`;
+    buf += moveTo(1 + i, leftW + 1) + truncate(line, feedW);
   }
 
   if (visibleMsgs.length === 0) {
