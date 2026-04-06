@@ -267,7 +267,7 @@ function flushState(): void {
   flushAsync().catch(() => {});
 }
 
-async function flushAsync(): Promise<void> {
+export async function flushAsync(): Promise<void> {
   await ensureDir();
 
   // Read-merge-write: merge disk state with in-memory to support multi-process

@@ -3,7 +3,7 @@ import {
   addAgent, getAgent, removeAgent, getRoom, getAllRooms,
   getRoomMembers, isNameTakenInRoom, addMessage, readMessages,
   getRoomMessages, getCursor, advanceCursor, readRoomMessages,
-  clearState,
+  flushAsync, clearState,
 } from '../src/state/index.ts';
 
 describe('state module', () => {
@@ -188,6 +188,12 @@ describe('state module', () => {
   });
 
   describe('persistence', () => {
+    test('flushAsync is exported and callable without error', async () => {
+      addAgent('a', 'leader', 'r', '%100');
+      addMessage('b', 'a', 'r', 'hello', 'push', 'b');
+      await expect(flushAsync()).resolves.toBeUndefined();
+    });
+
     test('room messages survive flush and load cycle', async () => {
       addAgent('a', 'leader', 'r', '%100');
       addAgent('b', 'worker', 'r', '%101');

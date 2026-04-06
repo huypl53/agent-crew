@@ -5,7 +5,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { validateTmux } from './tmux/index.ts';
-import { loadState, validateLiveness } from './state/index.ts';
+import { loadState, validateLiveness, flushAsync } from './state/index.ts';
 import { handleJoinRoom } from './tools/join-room.ts';
 import { handleLeaveRoom } from './tools/leave-room.ts';
 import { handleListRooms } from './tools/list-rooms.ts';
@@ -168,6 +168,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     return err(`Internal error: ${e instanceof Error ? e.message : String(e)}`);
   }
 });
+
+// Graceful shutdown: flush state before exit so no in-flight writes are lost
+async function shutdown(): Promise<void> {
+  await flushAsync();
+  process.exit(0);
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 // Start server
 const transport = new StdioServerTransport();
