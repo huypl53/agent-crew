@@ -467,6 +467,12 @@ export async function syncFromDisk(): Promise<void> {
       }
     }
   } catch { /* disk read failed — use stale in-memory */ }
+
+  // If disk state is missing but we have in-memory agents, re-persist
+  const agentsFile = Bun.file(`${STATE_DIR}/agents.json`);
+  if (agents.size > 0 && !(await agentsFile.exists())) {
+    flushState();
+  }
 }
 
 export async function validateLiveness(): Promise<string[]> {
