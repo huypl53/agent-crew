@@ -10,6 +10,7 @@ export interface FormattedMessage {
   room: string;
   target: string;
   text: string;
+  kind: string;
   roomColor: string;
 }
 
@@ -40,6 +41,7 @@ export class MessageFeed {
     return {
       timestamp: ts, sender: msg.from, room: msg.room,
       target: msg.to ?? 'ALL', text: msg.text,
+      kind: msg.kind ?? 'chat',
       roomColor: this.getRoomColor(msg.room),
     };
   }

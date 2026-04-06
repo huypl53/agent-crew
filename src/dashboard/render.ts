@@ -105,6 +105,13 @@ export function renderFrame(
     }
   }
 
+  if (startIdx > 0) {
+    buf += moveTo(1, leftW - 2) + COLORS.dim + '▲' + COLORS.reset;
+  }
+  if (startIdx + treeMaxLines < treeNodes.length) {
+    buf += moveTo(size.rows - 2, leftW - 2) + COLORS.dim + '▼' + COLORS.reset;
+  }
+
   // Message feed
   const feedMaxLines = topH - 2;
   const feedW = rightW - 3;
@@ -113,11 +120,22 @@ export function renderFrame(
     displayMsgs = feedMessages.filter(m => m.room === roomFilter);
   }
   const visibleMsgs = displayMsgs.slice(-feedMaxLines);
+  const totalFilteredMsgs = displayMsgs.length;
+
+  if (totalFilteredMsgs > feedMaxLines) {
+    const moreAbove = totalFilteredMsgs - feedMaxLines;
+    buf += moveTo(1, leftW + rightW - 12) + COLORS.dim + `↑ ${moreAbove} more` + COLORS.reset;
+  }
 
   for (let i = 0; i < visibleMsgs.length; i++) {
     const msg = visibleMsgs[i]!;
     const target = msg.target === 'ALL' ? `${COLORS.bold}ALL${COLORS.reset}` : msg.target;
-    const line = ` ${COLORS.dim}${msg.timestamp}${COLORS.reset} ${msg.roomColor}[${msg.sender}@${msg.room}]${COLORS.reset} → ${target}: ${msg.text}`;
+    const kindBadge = msg.kind === 'completion' ? `${COLORS.green}[DONE]${COLORS.reset} `
+      : msg.kind === 'error' ? `${COLORS.red}[ERR]${COLORS.reset} `
+      : msg.kind === 'question' ? `${COLORS.yellow}[?]${COLORS.reset} `
+      : msg.kind === 'task' ? `${COLORS.cyan}[TASK]${COLORS.reset} `
+      : '';
+    const line = ` ${COLORS.dim}${msg.timestamp}${COLORS.reset} ${kindBadge}${msg.roomColor}[${msg.sender}@${msg.room}]${COLORS.reset} → ${target}: ${msg.text}`;
     buf += moveTo(1 + i, leftW + 1) + truncate(line, feedW + 40);
   }
 
