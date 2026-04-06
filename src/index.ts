@@ -5,7 +5,8 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { validateTmux } from './tmux/index.ts';
-import { loadState, validateLiveness, flushAsync } from './state/index.ts';
+import { validateLiveness } from './state/index.ts';
+import { initDb } from './state/db.ts';
 import { handleJoinRoom } from './tools/join-room.ts';
 import { handleLeaveRoom } from './tools/leave-room.ts';
 import { handleListRooms } from './tools/list-rooms.ts';
@@ -23,8 +24,10 @@ if (!tmuxCheck.ok) {
   process.exit(1);
 }
 
-// Load persisted state and validate liveness
-await loadState();
+// Initialize SQLite database
+initDb();
+
+// Validate liveness on startup
 const deadAgents = await validateLiveness();
 if (deadAgents.length > 0) {
   console.error(`Cleaned up ${deadAgents.length} dead agent(s): ${deadAgents.join(', ')}`);
@@ -168,14 +171,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     return err(`Internal error: ${e instanceof Error ? e.message : String(e)}`);
   }
 });
-
-// Graceful shutdown: flush state before exit so no in-flight writes are lost
-async function shutdown(): Promise<void> {
-  await flushAsync();
-  process.exit(0);
-}
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
 
 // Start server
 const transport = new StdioServerTransport();

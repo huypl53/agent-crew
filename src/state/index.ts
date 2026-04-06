@@ -1,150 +1,167 @@
 import type { Agent, AgentRole, Room, Message, MessageKind } from '../shared/types.ts';
 import { isPaneDead } from '../tmux/index.ts';
+import { getDb, initDb, closeDb, getDbPath } from './db.ts';
 
-// Lazy getter so tests can set CC_TMUX_STATE_DIR before first use
-function getStateDir(): string { return process.env.CC_TMUX_STATE_DIR ?? '/tmp/cc-tmux/state'; }
+// Re-export for callers
+export { initDb, closeDb };
 
-// In-memory state
-const agents = new Map<string, Agent>();
-const rooms = new Map<string, Room>();
-const inboxes = new Map<string, Message[]>(); // agent_name -> messages
-const roomMessages = new Map<string, Message[]>(); // room -> messages (canonical store)
-const cursors = new Map<string, Map<string, number>>(); // agent_name -> room -> last_read_sequence
-const MAX_INBOX_MESSAGES = 500;
-const MAX_ROOM_MESSAGES = 1000;
-let nextSequence = 1;
-let diskSyncEnabled = true;
-let flushLock: Promise<void> | null = null; // serialize concurrent flushes
-let flushGeneration = 0; // incremented on clearState to invalidate stale flushes
+// --- Helpers ---
+
+function now(): string { return new Date().toISOString(); }
+
+function dbAgentToAgent(row: Record<string, unknown>, agentRooms: string[]): Agent {
+  return {
+    agent_id: row.name as string,
+    name: row.name as string,
+    role: row.role as AgentRole,
+    rooms: agentRooms,
+    tmux_target: row.pane as string,
+    joined_at: row.registered_at as string,
+    last_activity: row.last_activity as string | undefined,
+  };
+}
+
+function dbRoomToRoom(row: Record<string, unknown>, members: string[]): Room {
+  return {
+    name: row.name as string,
+    members,
+    topic: row.topic as string | undefined,
+    created_at: row.created_at as string,
+  };
+}
+
+function rowToMessage(row: Record<string, unknown>): Message {
+  return {
+    message_id: String(row.id),
+    from: row.sender as string,
+    room: row.room as string,
+    to: row.recipient as string | null,
+    text: row.text as string,
+    kind: row.kind as MessageKind,
+    timestamp: row.timestamp as string,
+    sequence: row.id as number,
+    mode: row.mode as 'push' | 'pull',
+  };
+}
 
 // --- Agent operations ---
 
 export function getAgent(name: string): Agent | undefined {
-  return agents.get(name);
+  const db = getDb();
+  const row = db.query('SELECT * FROM agents WHERE name = ?').get(name) as Record<string, unknown> | null;
+  if (!row) return undefined;
+  const agentRooms = (db.query('SELECT room FROM members WHERE agent = ? ORDER BY joined_at').all(name) as { room: string }[]).map(r => r.room);
+  return dbAgentToAgent(row, agentRooms);
 }
 
 export function getAllAgents(): Agent[] {
-  return Array.from(agents.values());
+  const db = getDb();
+  const rows = db.query('SELECT * FROM agents').all() as Record<string, unknown>[];
+  return rows.map(row => {
+    const agentRooms = (db.query('SELECT room FROM members WHERE agent = ? ORDER BY joined_at').all(row.name) as { room: string }[]).map(r => r.room);
+    return dbAgentToAgent(row, agentRooms);
+  });
 }
 
 export function addAgent(name: string, role: AgentRole, room: string, tmuxTarget: string): Agent {
-  let agent = agents.get(name);
-  if (agent) {
-    // Existing agent joining another room
-    if (!agent.rooms.includes(room)) {
-      agent.rooms.push(room);
-    }
-  } else {
-    agent = {
-      agent_id: name,
-      name,
-      role,
-      rooms: [room],
-      tmux_target: tmuxTarget,
-      joined_at: new Date().toISOString(),
-    };
-    agents.set(name, agent);
-    inboxes.set(name, []);
-  }
+  const db = getDb();
+  const ts = now();
 
-  // Ensure room exists and has this agent
-  let r = rooms.get(room);
-  if (!r) {
-    r = { name: room, members: [], created_at: new Date().toISOString() };
-    rooms.set(room, r);
-  }
-  if (!r.members.includes(name)) {
-    r.members.push(name);
-  }
+  db.run(
+    `INSERT INTO agents (name, role, pane, registered_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(name) DO UPDATE SET pane = excluded.pane`,
+    [name, role, tmuxTarget, ts],
+  );
 
-  flushState();
-  return agent;
+  db.run(
+    'INSERT OR IGNORE INTO rooms (name, created_at) VALUES (?, ?)',
+    [room, ts],
+  );
+
+  db.run(
+    'INSERT OR IGNORE INTO members (room, agent, joined_at) VALUES (?, ?, ?)',
+    [room, name, ts],
+  );
+
+  return getAgent(name)!;
 }
 
 export function removeAgent(name: string, room: string): boolean {
-  const agent = agents.get(name);
-  if (!agent) return false;
+  const db = getDb();
+  const changes = db.run('DELETE FROM members WHERE room = ? AND agent = ?', [room, name]).changes;
+  if (changes === 0) return false;
 
-  // Remove from room
-  const r = rooms.get(room);
-  if (r) {
-    r.members = r.members.filter(m => m !== name);
-    if (r.members.length === 0) {
-      rooms.delete(room);
-    }
+  // Delete room if empty
+  const count = (db.query('SELECT COUNT(*) as c FROM members WHERE room = ?').get(room) as { c: number }).c;
+  if (count === 0) db.run('DELETE FROM rooms WHERE name = ?', [room]);
+
+  // Delete agent if no rooms left
+  const agentRooms = (db.query('SELECT COUNT(*) as c FROM members WHERE agent = ?').get(name) as { c: number }).c;
+  if (agentRooms === 0) {
+    db.run('DELETE FROM agents WHERE name = ?', [name]);
+    db.run('DELETE FROM cursors WHERE agent = ?', [name]);
   }
 
-  // Remove room from agent
-  agent.rooms = agent.rooms.filter(rm => rm !== room);
-
-  // Remove messages for that room from inbox
-  const inbox = inboxes.get(name);
-  if (inbox) {
-    const filtered = inbox.filter(m => m.room !== room);
-    inboxes.set(name, filtered);
-  }
-  cursors.delete(name);
-
-  // If agent has no rooms left, fully remove
-  if (agent.rooms.length === 0) {
-    agents.delete(name);
-    inboxes.delete(name);
-  }
-
-  flushState();
   return true;
 }
 
 export function removeAgentFully(name: string): void {
-  const agent = agents.get(name);
-  if (!agent) return;
-
-  for (const room of agent.rooms) {
-    const r = rooms.get(room);
-    if (r) {
-      r.members = r.members.filter(m => m !== name);
-      if (r.members.length === 0) rooms.delete(room);
-    }
+  const db = getDb();
+  // Delete memberships first, then clean up empty rooms
+  const agentRooms = (db.query('SELECT room FROM members WHERE agent = ?').all(name) as { room: string }[]).map(r => r.room);
+  db.run('DELETE FROM members WHERE agent = ?', [name]);
+  for (const room of agentRooms) {
+    const count = (db.query('SELECT COUNT(*) as c FROM members WHERE room = ?').get(room) as { c: number }).c;
+    if (count === 0) db.run('DELETE FROM rooms WHERE name = ?', [room]);
   }
-  agents.delete(name);
-  inboxes.delete(name);
-  cursors.delete(name);
+  db.run('DELETE FROM agents WHERE name = ?', [name]);
+  db.run('DELETE FROM cursors WHERE agent = ?', [name]);
 }
 
 // --- Room operations ---
 
 export function getRoom(name: string): Room | undefined {
-  return rooms.get(name);
+  const db = getDb();
+  const row = db.query('SELECT * FROM rooms WHERE name = ?').get(name) as Record<string, unknown> | null;
+  if (!row) return undefined;
+  const members = (db.query('SELECT agent FROM members WHERE room = ? ORDER BY joined_at').all(name) as { agent: string }[]).map(r => r.agent);
+  return dbRoomToRoom(row, members);
 }
 
 export function getAllRooms(): Room[] {
-  return Array.from(rooms.values());
+  const db = getDb();
+  const rows = db.query('SELECT * FROM rooms').all() as Record<string, unknown>[];
+  return rows.map(row => {
+    const members = (db.query('SELECT agent FROM members WHERE room = ? ORDER BY joined_at').all(row.name) as { agent: string }[]).map(r => r.agent);
+    return dbRoomToRoom(row, members);
+  });
 }
 
 export function getRoomMembers(room: string): Agent[] {
-  const r = rooms.get(room);
-  if (!r) return [];
-  return r.members.map(name => agents.get(name)).filter((a): a is Agent => a !== undefined);
+  const db = getDb();
+  const rows = db.query(
+    'SELECT a.* FROM agents a JOIN members m ON m.agent = a.name WHERE m.room = ? ORDER BY m.joined_at',
+  ).all(room) as Record<string, unknown>[];
+  return rows.map(row => {
+    const agentRooms = (db.query('SELECT room FROM members WHERE agent = ? ORDER BY joined_at').all(row.name) as { room: string }[]).map(r => r.room);
+    return dbAgentToAgent(row, agentRooms);
+  });
 }
 
 export function setRoomTopic(roomName: string, topic: string): boolean {
-  const room = rooms.get(roomName);
-  if (!room) return false;
-  room.topic = topic;
-  flushState();
-  return true;
+  const changes = getDb().run('UPDATE rooms SET topic = ? WHERE name = ?', [topic, roomName]).changes;
+  return changes > 0;
 }
 
 export function isNameTakenInRoom(name: string, room: string): boolean {
-  const r = rooms.get(room);
-  if (!r) return false;
-  return r.members.includes(name);
+  const row = getDb().query('SELECT 1 FROM members WHERE room = ? AND agent = ?').get(room, name);
+  return row !== null;
 }
 
 // --- Message operations ---
 
 export function addMessage(
-  to: string,
+  _to: string,
   from: string,
   room: string,
   text: string,
@@ -152,79 +169,60 @@ export function addMessage(
   targetName: string | null,
   kind: MessageKind = 'chat',
 ): Message {
-  const msg: Message = {
-    message_id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    from,
-    room,
-    to: targetName,
-    text,
-    kind,
-    timestamp: new Date().toISOString(),
-    sequence: nextSequence++,
-    mode,
-  };
-
-  // Write to room log (canonical store)
-  let roomLog = roomMessages.get(room);
-  if (!roomLog) { roomLog = []; roomMessages.set(room, roomLog); }
-  roomLog.push(msg);
-  if (roomLog.length > MAX_ROOM_MESSAGES) {
-    roomLog.splice(0, roomLog.length - MAX_ROOM_MESSAGES);
-  }
-
-  // Keep inbox for backward compat (skip '__room__' broadcast sentinel)
-  if (to !== '__room__') {
-    let inbox = inboxes.get(to);
-    if (!inbox) { inbox = []; inboxes.set(to, inbox); }
-    inbox.push(msg);
-    if (inbox.length > MAX_INBOX_MESSAGES) {
-      inbox.splice(0, inbox.length - MAX_INBOX_MESSAGES);
-    }
-  }
-
-  flushState();
-  return msg;
+  const db = getDb();
+  const stmt = db.run(
+    'INSERT INTO messages (sender, room, recipient, text, kind, mode, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [from, room, targetName, text, kind, mode, now()],
+  );
+  const row = db.query('SELECT * FROM messages WHERE id = ?').get(stmt.lastInsertRowid) as Record<string, unknown>;
+  return rowToMessage(row);
 }
 
 export function getRoomMessages(room: string, sinceSequence?: number, limit?: number): Message[] {
-  const msgs = roomMessages.get(room) ?? [];
-  let filtered = msgs;
-  if (sinceSequence !== undefined) {
-    filtered = filtered.filter(m => m.sequence > sinceSequence);
-  }
-  if (limit) {
-    filtered = filtered.slice(-limit);
-  }
-  return filtered;
+  const db = getDb();
+  let sql = 'SELECT * FROM messages WHERE room = ?';
+  const params: unknown[] = [room];
+  if (sinceSequence !== undefined) { sql += ' AND id > ?'; params.push(sinceSequence); }
+  sql += ' ORDER BY id';
+  if (limit) { sql += ' LIMIT ?'; params.push(limit); }
+  return (db.query(sql).all(...params) as Record<string, unknown>[]).map(rowToMessage);
 }
 
 export function getCursor(agentName: string, room: string): number {
-  return cursors.get(agentName)?.get(room) ?? 0;
+  const row = getDb().query('SELECT last_seq FROM cursors WHERE agent = ? AND room = ?').get(agentName, room) as { last_seq: number } | null;
+  return row?.last_seq ?? 0;
 }
 
 export function advanceCursor(agentName: string, room: string, sequence: number): void {
-  let agentCursors = cursors.get(agentName);
-  if (!agentCursors) { agentCursors = new Map(); cursors.set(agentName, agentCursors); }
-  const current = agentCursors.get(room) ?? 0;
-  if (sequence > current) agentCursors.set(room, sequence);
+  const current = getCursor(agentName, room);
+  if (sequence > current) {
+    getDb().run(
+      'INSERT OR REPLACE INTO cursors (agent, room, last_seq) VALUES (?, ?, ?)',
+      [agentName, room, sequence],
+    );
+  }
 }
 
 export function readRoomMessages(
   agentName: string,
   room: string,
   kinds?: string[],
-  limit: number = 50,
+  limit = 50,
 ): { messages: Message[]; next_sequence: number } {
+  const db = getDb();
   const cursor = getCursor(agentName, room);
-  let msgs = getRoomMessages(room, cursor);
+  let sql = 'SELECT * FROM messages WHERE room = ? AND id > ?';
+  const params: unknown[] = [room, cursor];
   if (kinds && kinds.length > 0) {
-    msgs = msgs.filter(m => kinds.includes(m.kind));
+    sql += ` AND kind IN (${kinds.map(() => '?').join(',')})`;
+    params.push(...kinds);
   }
-  if (msgs.length > limit) msgs = msgs.slice(-limit);
-
-  const maxSeq = msgs.length > 0 ? Math.max(...msgs.map(m => m.sequence)) : cursor;
+  sql += ' ORDER BY id';
+  const allMsgs = (db.query(sql).all(...params) as Record<string, unknown>[]).map(rowToMessage);
+  // Take last `limit` messages
+  const msgs = allMsgs.length > limit ? allMsgs.slice(-limit) : allMsgs;
+  const maxSeq = msgs.length > 0 ? msgs[msgs.length - 1]!.sequence : cursor;
   advanceCursor(agentName, room, maxSeq);
-
   return { messages: msgs, next_sequence: maxSeq };
 }
 
@@ -233,318 +231,37 @@ export function readMessages(
   room?: string,
   sinceSequence?: number,
 ): { messages: Message[]; next_sequence: number } {
-  const inbox = inboxes.get(agentName) ?? [];
-  let filtered = inbox;
-
-  if (room) {
-    filtered = filtered.filter(m => m.room === room);
-  }
-  if (sinceSequence !== undefined) {
-    filtered = filtered.filter(m => m.sequence > sinceSequence);
-  }
-
-  const maxSeq = filtered.length > 0
-    ? Math.max(...filtered.map(m => m.sequence))
-    : sinceSequence ?? 0;
-
-  return { messages: filtered, next_sequence: maxSeq };
+  const db = getDb();
+  let sql = 'SELECT * FROM messages WHERE recipient = ?';
+  const params: unknown[] = [agentName];
+  if (room) { sql += ' AND room = ?'; params.push(room); }
+  if (sinceSequence !== undefined) { sql += ' AND id > ?'; params.push(sinceSequence); }
+  sql += ' ORDER BY id';
+  const msgs = (db.query(sql).all(...params) as Record<string, unknown>[]).map(rowToMessage);
+  const maxSeq = msgs.length > 0 ? msgs[msgs.length - 1]!.sequence : sinceSequence ?? 0;
+  return { messages: msgs, next_sequence: maxSeq };
 }
 
 export function getAllMessages(): Message[] {
-  const all: Message[] = [];
-  for (const msgs of inboxes.values()) {
-    all.push(...msgs);
-  }
-  // Deduplicate by message_id (same message in multiple inboxes)
-  const seen = new Set<string>();
-  return all.filter(m => {
-    if (seen.has(m.message_id)) return false;
-    seen.add(m.message_id);
-    return true;
-  }).sort((a, b) => a.sequence - b.sequence);
+  return (getDb().query('SELECT * FROM messages ORDER BY id').all() as Record<string, unknown>[]).map(rowToMessage);
 }
 
-// --- Persistence ---
-
-async function ensureDir(): Promise<void> {
-  const proc = Bun.spawn(['mkdir', '-p', getStateDir()], { stdout: 'pipe', stderr: 'pipe' });
-  await proc.exited;
-}
-
-function flushState(): void {
-  // Fire-and-forget async write (NFR4: don't block tool calls)
-  flushAsync().catch(() => {});
-}
-
-export async function flushAsync(): Promise<void> {
-  // Serialize concurrent flushes to prevent race conditions
-  while (flushLock) await flushLock;
-  const gen = flushGeneration;
-  let resolve: () => void;
-  const myLock = new Promise<void>(r => { resolve = r; });
-  flushLock = myLock;
-  try {
-    await _doFlush(gen);
-  } finally {
-    // Only clear if no other flush has taken the lock
-    if (flushLock === myLock) flushLock = null;
-    resolve!();
-  }
-}
-
-async function _doFlush(gen: number): Promise<void> {
-  await ensureDir();
-  // Abort if clearState was called since this flush started
-  if (gen !== flushGeneration) return;
-
-  // Read-merge-write: merge disk state with in-memory to support multi-process
-  const mergedAgents: Record<string, Agent> = {};
-  const mergedRooms: Record<string, Room> = {};
-
-  // Read existing disk state first
-  try {
-    const agentsFile = Bun.file(`${getStateDir()}/agents.json`);
-    if (await agentsFile.exists()) {
-      const diskAgents = JSON.parse(await agentsFile.text()) as Record<string, Agent>;
-      for (const [k, v] of Object.entries(diskAgents)) mergedAgents[k] = v;
-    }
-  } catch { /* ignore corrupt file */ }
-
-  try {
-    const roomsFile = Bun.file(`${getStateDir()}/rooms.json`);
-    if (await roomsFile.exists()) {
-      const diskRooms = JSON.parse(await roomsFile.text()) as Record<string, Room>;
-      for (const [k, v] of Object.entries(diskRooms)) mergedRooms[k] = v;
-    }
-  } catch { /* ignore corrupt file */ }
-
-  // Overlay in-memory state (authoritative for this process's agents)
-  for (const [k, v] of agents) mergedAgents[k] = v;
-
-  // Merge room membership: union of disk + in-memory members
-  for (const [k, v] of rooms) {
-    const existing = mergedRooms[k];
-    if (existing) {
-      const allMembers = new Set([...existing.members, ...v.members]);
-      mergedRooms[k] = { ...v, members: Array.from(allMembers) };
-    } else {
-      mergedRooms[k] = v;
-    }
-  }
-
-  // Remove agents that were fully removed by this process
-  for (const name of Object.keys(mergedAgents)) {
-    if (!agents.has(name)) {
-      // Check if another process owns this agent (it has a different pane)
-      // Only remove if this process explicitly deleted it (via removeAgentFully)
-      // We track this by checking if the agent was ever in our memory
-      // Simple heuristic: keep agents we don't know about (from other processes)
-    }
-  }
-
-  // Merge messages: union by message_id
-  const mergedMessages: Message[] = [];
-  const seenIds = new Set<string>();
-
-  try {
-    const msgFile = Bun.file(`${getStateDir()}/messages.json`);
-    if (await msgFile.exists()) {
-      const diskMsgs = JSON.parse(await msgFile.text()) as Message[];
-      for (const m of diskMsgs) {
-        if (!seenIds.has(m.message_id)) {
-          seenIds.add(m.message_id);
-          mergedMessages.push(m);
-        }
-      }
-    }
-  } catch { /* ignore */ }
-
-  for (const m of getAllMessages()) {
-    if (!seenIds.has(m.message_id)) {
-      seenIds.add(m.message_id);
-      mergedMessages.push(m);
-    }
-  }
-
-  mergedMessages.sort((a, b) => a.sequence - b.sequence);
-  if (mergedMessages.length > 5000) {
-    mergedMessages.splice(0, mergedMessages.length - 5000);
-  }
-
-  // Read-merge-write for room messages (same as agents/rooms/messages above)
-  const mergedRoomMsgs: Record<string, Message[]> = {};
-  try {
-    const roomMsgFile = Bun.file(`${getStateDir()}/room-messages.json`);
-    if (await roomMsgFile.exists()) {
-      const diskRoomMsgs = JSON.parse(await roomMsgFile.text()) as Record<string, Message[]>;
-      for (const [k, v] of Object.entries(diskRoomMsgs)) mergedRoomMsgs[k] = v;
-    }
-  } catch { /* ignore corrupt file */ }
-
-  // Overlay in-memory room messages, merging by message_id
-  for (const [room, msgs] of roomMessages) {
-    const existing = mergedRoomMsgs[room];
-    if (existing) {
-      const seenIds = new Set(existing.map(m => m.message_id));
-      for (const m of msgs) {
-        if (!seenIds.has(m.message_id)) existing.push(m);
-      }
-      existing.sort((a, b) => a.sequence - b.sequence);
-      if (existing.length > MAX_ROOM_MESSAGES) existing.splice(0, existing.length - MAX_ROOM_MESSAGES);
-    } else {
-      mergedRoomMsgs[room] = msgs;
-    }
-  }
-
-  await Promise.all([
-    Bun.write(`${getStateDir()}/agents.json`, JSON.stringify(mergedAgents, null, 2)),
-    Bun.write(`${getStateDir()}/rooms.json`, JSON.stringify(mergedRooms, null, 2)),
-    Bun.write(`${getStateDir()}/messages.json`, JSON.stringify(mergedMessages, null, 2)),
-    Bun.write(`${getStateDir()}/room-messages.json`, JSON.stringify(mergedRoomMsgs, null, 2)),
-  ]);
-}
-
-export async function loadState(): Promise<void> {
-  diskSyncEnabled = true;
-  try {
-    const agentsFile = Bun.file(`${getStateDir()}/agents.json`);
-    if (await agentsFile.exists()) {
-      const data = JSON.parse(await agentsFile.text()) as Record<string, Agent>;
-      for (const [k, v] of Object.entries(data)) agents.set(k, v);
-    }
-
-    const roomsFile = Bun.file(`${getStateDir()}/rooms.json`);
-    if (await roomsFile.exists()) {
-      const data = JSON.parse(await roomsFile.text()) as Record<string, Room>;
-      for (const [k, v] of Object.entries(data)) rooms.set(k, v);
-    }
-
-    const messagesFile = Bun.file(`${getStateDir()}/messages.json`);
-    if (await messagesFile.exists()) {
-      const data = JSON.parse(await messagesFile.text()) as Message[];
-      // Rebuild inboxes from messages
-      let maxSeq = 0;
-      for (const msg of data) {
-        if (msg.to) {
-          let inbox = inboxes.get(msg.to);
-          if (!inbox) { inbox = []; inboxes.set(msg.to, inbox); }
-          inbox.push(msg);
-        }
-        if (msg.sequence > maxSeq) maxSeq = msg.sequence;
-      }
-      nextSequence = maxSeq + 1;
-    }
-
-    const roomMsgFile = Bun.file(`${getStateDir()}/room-messages.json`);
-    if (await roomMsgFile.exists()) {
-      const data = JSON.parse(await roomMsgFile.text()) as Record<string, Message[]>;
-      for (const [k, v] of Object.entries(data)) roomMessages.set(k, v);
-    }
-  } catch {
-    // State files corrupted or missing — start fresh
-  }
-}
-
-// Re-sync in-memory state from disk (pick up other processes' changes)
-export async function syncFromDisk(): Promise<void> {
-  if (!diskSyncEnabled) return;
-  try {
-    const agentsFile = Bun.file(`${getStateDir()}/agents.json`);
-    if (await agentsFile.exists()) {
-      const data = JSON.parse(await agentsFile.text()) as Record<string, Agent>;
-      for (const [k, v] of Object.entries(data)) {
-        if (!agents.has(k)) agents.set(k, v);
-      }
-    }
-
-    const roomsFile = Bun.file(`${getStateDir()}/rooms.json`);
-    if (await roomsFile.exists()) {
-      const data = JSON.parse(await roomsFile.text()) as Record<string, Room>;
-      for (const [k, v] of Object.entries(data)) {
-        const existing = rooms.get(k);
-        if (existing) {
-          // Merge members
-          const allMembers = new Set([...existing.members, ...v.members]);
-          existing.members = Array.from(allMembers);
-        } else {
-          rooms.set(k, v);
-        }
-      }
-    }
-
-    const messagesFile = Bun.file(`${getStateDir()}/messages.json`);
-    if (await messagesFile.exists()) {
-      const data = JSON.parse(await messagesFile.text()) as Message[];
-      const existingIds = new Set<string>();
-      for (const msgs of inboxes.values()) {
-        for (const m of msgs) existingIds.add(m.message_id);
-      }
-      let maxSeq = nextSequence;
-      for (const msg of data) {
-        if (!existingIds.has(msg.message_id) && msg.to) {
-          let inbox = inboxes.get(msg.to);
-          if (!inbox) { inbox = []; inboxes.set(msg.to, inbox); }
-          inbox.push(msg);
-        }
-        if (msg.sequence >= maxSeq) maxSeq = msg.sequence + 1;
-      }
-      nextSequence = maxSeq;
-    }
-
-    const roomMsgFile = Bun.file(`${getStateDir()}/room-messages.json`);
-    if (await roomMsgFile.exists()) {
-      const data = JSON.parse(await roomMsgFile.text()) as Record<string, Message[]>;
-      for (const [k, v] of Object.entries(data)) {
-        const existing = roomMessages.get(k);
-        if (existing) {
-          const seenIds = new Set(existing.map(m => m.message_id));
-          for (const m of v) {
-            if (!seenIds.has(m.message_id)) existing.push(m);
-          }
-          existing.sort((a, b) => a.sequence - b.sequence);
-          if (existing.length > MAX_ROOM_MESSAGES) existing.splice(0, existing.length - MAX_ROOM_MESSAGES);
-        } else {
-          roomMessages.set(k, v);
-        }
-      }
-    }
-  } catch { /* disk read failed — use stale in-memory */ }
-
-  // If disk state is missing but we have in-memory agents, re-persist
-  const agentsFile = Bun.file(`${getStateDir()}/agents.json`);
-  if (agents.size > 0 && !(await agentsFile.exists())) {
-    flushState();
-  }
-}
+// --- Liveness ---
 
 export async function validateLiveness(): Promise<string[]> {
-  const deadAgents: string[] = [];
-  for (const [name, agent] of agents) {
-    const dead = await isPaneDead(agent.tmux_target);
-    if (dead) {
-      deadAgents.push(name);
-      removeAgentFully(name);
+  const dead: string[] = [];
+  for (const agent of getAllAgents()) {
+    if (await isPaneDead(agent.tmux_target)) {
+      removeAgentFully(agent.name);
+      dead.push(agent.name);
     }
   }
-  if (deadAgents.length > 0) {
-    flushState();
-  }
-  return deadAgents;
+  return dead;
 }
 
+// --- Test helpers ---
+
 export function clearState(): void {
-  agents.clear();
-  rooms.clear();
-  inboxes.clear();
-  roomMessages.clear();
-  cursors.clear();
-  nextSequence = 1;
-  flushLock = null;
-  flushGeneration++;
-  diskSyncEnabled = false; // Disable sync after clear (re-enabled on loadState)
-  // Also clean disk state to prevent syncFromDisk from loading stale data
-  try {
-    const fs = require('node:fs');
-    fs.rmSync(getStateDir(), { recursive: true, force: true });
-  } catch { /* ignore */ }
+  const db = getDb();
+  db.exec('DELETE FROM messages; DELETE FROM cursors; DELETE FROM members; DELETE FROM rooms; DELETE FROM agents;');
 }

@@ -1,8 +1,5 @@
 import { describe, expect, test, beforeEach, afterAll } from 'bun:test';
-
-// Isolate test state from production
-process.env.CC_TMUX_STATE_DIR = '/tmp/cc-tmux/test-state';
-
+import { initDb, closeDb } from '../src/state/db.ts';
 import { handleJoinRoom } from '../src/tools/join-room.ts';
 import { handleLeaveRoom } from '../src/tools/leave-room.ts';
 import { handleListRooms } from '../src/tools/list-rooms.ts';
@@ -20,7 +17,7 @@ const SESSION_B = 'tools-b';
 
 describe('MCP tools', () => {
   beforeEach(async () => {
-    clearState();
+    initDb(':memory:');
     const a = await createTestSession(SESSION_A);
     const b = await createTestSession(SESSION_B);
     testPaneA = a.pane;
@@ -29,6 +26,7 @@ describe('MCP tools', () => {
 
   afterAll(async () => {
     await cleanupAllTestSessions();
+    closeDb();
   });
 
   describe('join_room', () => {

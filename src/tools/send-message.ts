@@ -1,6 +1,6 @@
 import { ok, err } from '../shared/types.ts';
 import type { ToolResult } from '../shared/types.ts';
-import { getAgent, getRoom, syncFromDisk } from '../state/index.ts';
+import { getAgent, getRoom } from '../state/index.ts';
 import { deliverMessage } from '../delivery/index.ts';
 
 interface SendMessageParams {
@@ -19,7 +19,6 @@ export async function handleSendMessage(params: SendMessageParams): Promise<Tool
     return err('Missing required params: room, text, name');
   }
 
-  await syncFromDisk();
   const sender = getAgent(name);
   if (!sender) {
     return err(`Sender "${name}" is not registered`);

@@ -1,7 +1,9 @@
-import { watch, type FSWatcher } from 'fs';
+import { Database } from 'bun:sqlite';
 import type { Agent, Room, Message } from '../shared/types.ts';
 
-const STATE_DIR = '/tmp/cc-tmux/state';
+const STATE_DIR = process.env.CC_TMUX_STATE_DIR ?? '/tmp/cc-tmux/state';
+const DB_PATH = `${STATE_DIR}/cc-tmux.db`;
+const POLL_INTERVAL = 500;
 
 export interface DashboardState {
   agents: Record<string, Agent>;
@@ -11,18 +13,50 @@ export interface DashboardState {
 
 export type StateChangeHandler = (state: DashboardState) => void;
 
+type AgentRow = {
+  name: string;
+  role: Agent['role'];
+  pane: string;
+  registered_at: string;
+  last_activity: string | null;
+};
+
+type RoomRow = {
+  name: string;
+  topic: string | null;
+  created_at: string;
+};
+
+type MemberRow = {
+  room: string;
+  agent: string;
+  joined_at: string;
+};
+
+type MessageRow = {
+  id: number;
+  sender: string;
+  room: string;
+  recipient: string | null;
+  text: string;
+  kind: Message['kind'];
+  mode: Message['mode'];
+  timestamp: string;
+};
+
 export class StateReader {
   private state: DashboardState = { agents: {}, rooms: {}, messages: [] };
-  private watcher: FSWatcher | null = null;
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
   private onChange: StateChangeHandler | null = null;
   private stateExists = false;
+  private lastMessageId = 0;
 
   get current(): DashboardState { return this.state; }
   get isAvailable(): boolean { return this.stateExists; }
 
   async init(): Promise<DashboardState> {
     await this.readAll();
-    this.startWatching();
+    this.startPolling();
     return this.state;
   }
 
@@ -31,67 +65,139 @@ export class StateReader {
   }
 
   private async readAll(): Promise<void> {
-    if (!await this.checkDir()) {
+    if (!await this.dbExists()) {
       this.stateExists = false;
+      this.lastMessageId = 0;
+      this.state = { agents: {}, rooms: {}, messages: [] };
       return;
     }
-    this.stateExists = true;
 
-    const [agents, rooms, messages] = await Promise.all([
-      this.readJson<Record<string, Agent>>(`${STATE_DIR}/agents.json`, {}),
-      this.readJson<Record<string, Room>>(`${STATE_DIR}/rooms.json`, {}),
-      this.readJson<Message[]>(`${STATE_DIR}/messages.json`, []),
-    ]);
-    this.state = { agents, rooms, messages };
-  }
-
-  private async checkDir(): Promise<boolean> {
+    let db: Database | null = null;
     try {
-      const proc = Bun.spawn(['test', '-d', STATE_DIR], { stdout: 'pipe', stderr: 'pipe' });
-      return (await proc.exited) === 0;
-    } catch { return false; }
-  }
+      db = new Database(DB_PATH, { readonly: true });
 
-  private async readJson<T>(path: string, fallback: T): Promise<T> {
-    try {
-      const file = Bun.file(path);
-      if (!await file.exists()) return fallback;
-      return JSON.parse(await file.text()) as T;
+      const agentRows = db.query<AgentRow, []>(
+        'SELECT name, role, pane, registered_at, last_activity FROM agents'
+      ).all();
+      const roomRows = db.query<RoomRow, []>(
+        'SELECT name, topic, created_at FROM rooms'
+      ).all();
+      const memberRows = db.query<MemberRow, []>(
+        'SELECT room, agent, joined_at FROM members'
+      ).all();
+      const messageRows = db.query<MessageRow, []>(
+        'SELECT id, sender, room, recipient, text, kind, mode, timestamp FROM messages ORDER BY id ASC'
+      ).all();
+
+      const rooms: Record<string, Room> = {};
+      for (const row of roomRows) {
+        rooms[row.name] = {
+          name: row.name,
+          topic: row.topic ?? undefined,
+          members: [],
+          created_at: row.created_at,
+        };
+      }
+
+      const agentRooms = new Map<string, string[]>();
+      for (const row of memberRows) {
+        if (!rooms[row.room]) {
+          rooms[row.room] = { name: row.room, members: [], created_at: row.joined_at };
+        }
+        rooms[row.room]!.members.push(row.agent);
+        const existing = agentRooms.get(row.agent) ?? [];
+        existing.push(row.room);
+        agentRooms.set(row.agent, existing);
+      }
+
+      const agents: Record<string, Agent> = {};
+      for (const row of agentRows) {
+        agents[row.name] = {
+          agent_id: row.name,
+          name: row.name,
+          role: row.role,
+          rooms: agentRooms.get(row.name) ?? [],
+          tmux_target: row.pane,
+          joined_at: row.registered_at,
+          last_activity: row.last_activity ?? undefined,
+        };
+      }
+
+      const messages: Message[] = messageRows.map(row => ({
+        message_id: String(row.id),
+        from: row.sender,
+        room: row.room,
+        to: row.recipient,
+        text: row.text,
+        kind: row.kind,
+        timestamp: row.timestamp,
+        sequence: row.id,
+        mode: row.mode,
+      }));
+
+      this.state = { agents, rooms, messages };
+      this.stateExists = true;
+      this.lastMessageId = messageRows.at(-1)?.id ?? 0;
     } catch {
-      try {
-        await Bun.sleep(50);
-        return JSON.parse(await Bun.file(path).text()) as T;
-      } catch { return fallback; }
+      this.stateExists = false;
+      this.lastMessageId = 0;
+      this.state = { agents: {}, rooms: {}, messages: [] };
+    } finally {
+      db?.close(false);
     }
   }
 
-  private startWatching(): void {
+  private async dbExists(): Promise<boolean> {
     try {
-      this.watcher = watch(STATE_DIR, { persistent: false }, async (_event, filename) => {
-        if (filename?.endsWith('.json')) {
+      return await Bun.file(DB_PATH).exists();
+    } catch {
+      return false;
+    }
+  }
+
+  private startPolling(): void {
+    this.pollTimer = setInterval(async () => {
+      if (!await this.dbExists()) {
+        if (this.stateExists) {
+          this.stateExists = false;
+          this.lastMessageId = 0;
+          this.state = { agents: {}, rooms: {}, messages: [] };
+          this.onChange?.(this.state);
+        }
+        return;
+      }
+
+      let db: Database | null = null;
+      try {
+        db = new Database(DB_PATH, { readonly: true });
+        const row = db.query<{ max_id: number | null }, []>('SELECT MAX(id) AS max_id FROM messages').get();
+        const nextMax = row?.max_id ?? 0;
+
+        if (!this.stateExists) {
+          await this.readAll();
+          this.onChange?.(this.state);
+          return;
+        }
+
+        if (nextMax !== this.lastMessageId) {
           await this.readAll();
           this.onChange?.(this.state);
         }
-      });
-      this.watcher.on('error', () => { this.stateExists = false; });
-    } catch {
-      this.pollForDir();
-    }
-  }
-
-  private pollForDir(): void {
-    const check = setInterval(async () => {
-      if (await this.checkDir()) {
-        clearInterval(check);
-        await this.readAll();
-        this.startWatching();
-        this.onChange?.(this.state);
+      } catch {
+        if (this.stateExists) {
+          this.stateExists = false;
+          this.lastMessageId = 0;
+          this.state = { agents: {}, rooms: {}, messages: [] };
+          this.onChange?.(this.state);
+        }
+      } finally {
+        db?.close(false);
       }
-    }, 2000);
+    }, POLL_INTERVAL);
   }
 
   stop(): void {
-    this.watcher?.close();
-    this.watcher = null;
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = null;
   }
 }

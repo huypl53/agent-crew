@@ -9,15 +9,16 @@ cc-tmux is a Claude Code MCP server plugin + TUI dashboard. Agents register into
 ```
 Agent calls MCP tool
   → src/index.ts routes to tool handler in src/tools/
-  → tool calls src/state/ for data operations
+  → tool calls src/state/ for data operations (synchronous SQLite queries)
   → if send_message: tool calls src/delivery/
-    → delivery calls state.addMessage() (always, writes to roomMessages + inbox)
+    → delivery calls state.addMessage() (always, writes to messages table)
     → delivery calls tmux.sendKeys() (push mode only)
     → if kind ∈ {completion, error, question} and sender is worker:
         delivery calls tmux.sendKeys() for each leader (auto-notify)
   → tool returns MCP JSON response
 
-Dashboard reads /tmp/cc-tmux/state/*.json via fs.watch
+Dashboard opens SQLite DB in readonly mode
+  → polls SELECT MAX(id) FROM messages every 500ms for change detection
   → polls tmux capture-pane every 2s for status
   → renders 3-panel ANSI layout to stdout
 ```
@@ -25,11 +26,12 @@ Dashboard reads /tmp/cc-tmux/state/*.json via fs.watch
 ## Module Boundaries
 
 - **src/tools/** — One handler per MCP tool. Imports from state/tmux/delivery. Never calls another tool.
-- **src/state/** — Owns all data. In-memory primary, JSON flush to `/tmp/cc-tmux/state/`. No other module reads/writes files.
+- **src/state/db.ts** — Database singleton: `initDb()`, `getDb()`, `closeDb()`. Owns schema DDL.
+- **src/state/index.ts** — All state operations as synchronous SQLite queries. No in-memory caching.
 - **src/tmux/** — Pure tmux CLI wrapper via Bun.spawn(). No business logic. Strips ANSI from capture-pane output.
 - **src/delivery/** — Push (tmux send-keys) + pull (queue). Always queues first, then delivers.
 - **src/shared/** — Types, status regex patterns. Used by both MCP server and dashboard.
-- **src/dashboard/** — TUI modules. Reads state files (read-only), polls tmux, renders ANSI.
+- **src/dashboard/** — TUI modules. Reads SQLite DB (read-only), polls tmux, renders ANSI.
 - **skills/** — Pure markdown. No code execution.
 
 ## Dependency Graph (acyclic)
@@ -37,17 +39,64 @@ Dashboard reads /tmp/cc-tmux/state/*.json via fs.watch
 ```
 tools → {state, delivery, tmux}
 delivery → {state, tmux}
-dashboard → {shared, tmux (for polling)}
-state → tmux (for liveness validation)
+state/index → {state/db, tmux}
+dashboard → {shared, tmux (for polling), bun:sqlite (readonly)}
+```
+
+## State Management — SQLite
+
+State is stored in `${CC_TMUX_STATE_DIR}/cc-tmux.db` (default `/tmp/cc-tmux/state/cc-tmux.db`).
+
+### Why SQLite (not JSON files)
+
+The original architecture used 4 JSON files (`agents.json`, `rooms.json`, `messages.json`, `room-messages.json`) with an in-memory primary store and async read-merge-write flush pattern. This had three problems:
+
+1. **Cross-process races** — Multiple MCP server processes (one per CC session) could flush concurrently, causing data loss even with per-process flush locks
+2. **Write amplification** — Every mutation rewrote all 4 files
+3. **Merge complexity** — ~200 lines of dedup-by-message-id, set-union membership, generation counters, and ESM import hoisting workarounds
+
+SQLite via `bun:sqlite` eliminates all three: WAL mode handles concurrent access, writes are row-level, and every operation is a simple SQL query.
+
+### Schema
+
+```sql
+PRAGMA journal_mode = WAL;
+PRAGMA foreign_keys = ON;
+PRAGMA busy_timeout = 5000;
+
+agents   (name PK, role, pane, registered_at, last_activity)
+rooms    (name PK, topic, created_at)
+members  (room FK, agent FK, joined_at) — junction table
+messages (id AUTOINCREMENT, sender, room, recipient, text, kind, mode, timestamp)
+cursors  (agent, room, last_seq) — per-agent read position
+
+idx_messages_room      ON messages(room, id)
+idx_messages_recipient ON messages(recipient, id)
+```
+
+### Key Properties
+
+- **WAL mode** — Multiple processes read concurrently, SQLite serializes writes atomically
+- **Synchronous API** — All state operations are sync (no flushAsync/syncFromDisk)
+- **Immediate consistency** — No stale in-memory cache; every read hits the DB
+- **Autoincrement ID** — Replaces both `message_id` and `sequence` fields
+- **Cursors persist** — Survive MCP server restarts (stored in `cursors` table)
+
+### Debugging
+
+```bash
+sqlite3 /tmp/cc-tmux/state/cc-tmux.db '.tables'
+sqlite3 /tmp/cc-tmux/state/cc-tmux.db 'SELECT * FROM agents;'
+sqlite3 /tmp/cc-tmux/state/cc-tmux.db 'SELECT * FROM messages ORDER BY id DESC LIMIT 10;'
 ```
 
 ## Room Conversation Log
 
-Room is the canonical message store (v2 model):
+Room is the canonical message store:
 
-- `roomMessages: Map<room, Message[]>` — all messages in a room, in order, capped at 1000
-- `inboxes: Map<agent, Message[]>` — kept for backward compat (legacy `read_messages` without room param)
-- `cursors: Map<agent, Map<room, sequence>>` — per-agent read position per room
+- All messages are stored in the `messages` table with a `room` column
+- Cursors in `cursors` table track per-agent read position per room
+- No separate inbox storage — `readMessages` queries by `recipient` column
 
 ### Message Kind
 
@@ -70,72 +119,42 @@ When a worker sends `kind ∈ {completion, error, question}`, delivery automatic
 [system@frontend]: builder-1 completion: "Login component done"
 ```
 
-This is a tmux push only (no inbox entry). Leaders receive the notification in their pane without polling.
+This is a tmux push only (no DB entry). Leaders receive the notification in their pane without polling.
 
 ### Cursor-Based Room Reads
 
 `readRoomMessages(agentName, room, kinds?, limit?)`:
 1. Gets cursor position for agent+room (0 if never read)
-2. Filters room log for messages with `sequence > cursor`
+2. Queries messages table for `room = ? AND id > cursor`
 3. Optionally filters by `kinds` array
-4. Advances cursor to max sequence seen
+4. Advances cursor to max id seen
 5. Returns `{ messages, next_sequence }`
 
-Calling `read_messages` with `room` param uses this path. Calling without `room` falls back to legacy inbox.
+Calling `read_messages` with `room` param uses this path. Calling without `room` queries by `recipient` column.
 
 ## Resource Management
-
-### Graceful Shutdown
-
-`src/index.ts` registers handlers for `SIGTERM` and `SIGINT`:
-
-```typescript
-async function shutdown(): Promise<void> {
-  await flushAsync();   // final write before exit
-  process.exit(0);
-}
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
-```
-
-Without this, an in-flight fire-and-forget `flushAsync()` could be interrupted mid-write, leaving a truncated or invalid JSON file. The handler ensures the last known state is always safely on disk.
-
-`flushAsync` is exported from `src/state/index.ts` so both the shutdown handler and tests can call it directly.
-
-### Inbox Capping
-
-Each agent's inbox is capped at `MAX_INBOX_MESSAGES = 500` entries. On overflow, the oldest messages are evicted via `splice(0, length - 500)`. This prevents unbounded memory growth in long-running sessions with many pull messages.
 
 ### Cursor Cleanup
 
 Agent read cursors are cleaned up when an agent departs:
-- `removeAgent(name, room)` — calls `cursors.delete(name)` (all rooms cleared on any departure)
-- `removeAgentFully(name)` — calls `cursors.delete(name)`
+- `removeAgent(name, room)` — deletes cursors if agent has no remaining rooms
+- `removeAgentFully(name)` — deletes all cursors for agent
 
-Cursor cleanup prevents the `cursors` map from accumulating entries for agents that no longer exist.
+### Foreign Key Cascades
 
-### Message Retention
-
-`flushAsync()` caps `messages.json` (the legacy inbox log) at **5000 entries** before writing to disk. Entries beyond this limit are evicted oldest-first. This bounds disk usage regardless of session length.
-
-Room messages (`room-messages.json`) are capped per-room at `MAX_ROOM_MESSAGES = 1000` at write time in `addMessage()`.
-
-| Store | Cap | Eviction |
-|-------|-----|----------|
-| Per-agent inbox (in-memory) | 500 | Oldest-first on each `addMessage` |
-| `messages.json` (disk) | 5000 | Oldest-first in `flushAsync` |
-| Per-room log (in-memory + disk) | 1000 | Oldest-first on each `addMessage` |
+`members` table has `ON DELETE CASCADE` for both `rooms(name)` and `agents(name)`. When an agent is deleted, all memberships are removed. Empty rooms are cleaned up explicitly after membership deletion.
 
 ## Key Patterns
 
 - **Naming:** snake_case for MCP (tools, params, JSON), camelCase for TS, kebab-case for files
-- **Messages:** Written to room log first, then inbox (backward compat), then push delivery
+- **Messages:** Written to messages table, then push delivery if mode=push
+- **Broadcast:** One message per recipient with `recipient` set to each target's name
 - **Push format:** `[sender@room]: text` via `tmux send-keys -l`
 - **Auto-notify format:** `[system@room]: worker kind: "summary"` via `tmux send-keys -l`
 - **Status detection:** On-demand `capture-pane` + strip-ansi + regex match (idle/busy/dead/unknown)
-- **State persistence:** Write-through JSON flush after every mutation (agents, rooms, messages, room-messages)
 - **Error handling:** Tool handlers never throw — return `{ error: "..." }` with `isError: true`
 - **Terminal safety:** Dashboard registers cleanup on SIGINT/SIGTERM/uncaughtException
+- **Test isolation:** Tests use `initDb(':memory:')` — no temp directories needed
 
 ## CC Status Line Regexes (from UAT)
 
@@ -193,28 +212,17 @@ install.sh --project (from any project dir)
 - JSON merging uses python3 (available on macOS + Linux) — preserves existing entries
 - No `.claude-plugin/` or `--plugin-dir` needed — direct config approach
 
-## UAT Insights
+## Multi-process Architecture
 
-### Push message format in tmux panes
-`[sender@room]: text` is delivered via `tmux send-keys -l` + Enter. Zsh shells show `no matches found` because brackets are glob chars — irrelevant in real CC usage since CC reads stdin directly.
+Each CC session spawns its own MCP server subprocess (via stdio transport). All share a single SQLite database file with WAL mode:
 
-### Multi-process state sharing
-Each CC session spawns its own MCP server subprocess (via stdio transport). They share state through `/tmp/cc-tmux/state/*.json` files using a **read-merge-write** pattern:
+- Writes are serialized by SQLite's internal locking (`busy_timeout = 5000ms`)
+- Reads never block — WAL allows concurrent readers
+- The dashboard opens the DB in readonly mode and polls for changes
+- No manual merge, flush, or lock code needed
 
-- `flushAsync()` reads existing disk state, merges with in-memory, then writes. This prevents processes from clobbering each other's data.
-- `syncFromDisk()` is called before every read operation (list_rooms, list_members, send_message, read_messages, get_status) to pick up state changes from other processes.
-- Room membership uses set-union during merge — members from all processes are combined.
-- Messages are deduplicated by `message_id` during merge.
+## Test Architecture
 
-This was discovered and fixed during UAT when 3 simultaneous CC processes were overwriting each other's agent registrations.
-
-### Status detection scope
-CC-specific regexes (idle/busy/complete) only match the CC status line. A plain shell prompt returns "unknown" — correct behavior. Dead detection uses `tmux list-panes #{pane_dead}`, which returns true for non-existent panes.
-
-### Dashboard raw mode navigation
-The TUI dashboard runs in raw stdin mode (alternate screen). Navigation requires raw escape sequences (`\x1b[A`/`\x1b[B`), not tmux named keys like `Down`. The `q` key exits cleanly to the normal terminal.
-
-### Test architecture
-- **Unit tests**: Mock tmux via test helpers, test state/tools/patterns/dashboard rendering in isolation
-- **UAT tests**: Call real tool handlers against real tmux panes, verify push delivery via `capturePane`, state persistence via file reads, auto-notify via pane capture
-- **Dashboard UAT**: Visual verification by tmux agent — launch, capture, navigate, quit
+- **Unit tests** (`test/state.test.ts`): Use `:memory:` SQLite DB, test state operations in isolation
+- **Tool tests** (`test/tools.test.ts`): Use `:memory:` DB + real tmux sessions, test MCP tool handlers end-to-end
+- **Dashboard tests**: Visual verification by tmux agent — launch, capture, navigate, quit

@@ -1,6 +1,6 @@
 import { ok, err } from '../shared/types.ts';
 import type { ToolResult, AgentStatus } from '../shared/types.ts';
-import { getAgent, syncFromDisk } from '../state/index.ts';
+import { getAgent } from '../state/index.ts';
 import { capturePane, isPaneDead } from '../tmux/index.ts';
 import { matchStatusLine } from '../shared/status-patterns.ts';
 
@@ -16,7 +16,6 @@ export async function handleGetStatus(params: GetStatusParams): Promise<ToolResu
     return err('Missing required param: agent_name or name');
   }
 
-  await syncFromDisk();
   const agent = getAgent(targetName);
   if (!agent) {
     return err(`Agent "${targetName}" is not registered`);

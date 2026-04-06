@@ -36,7 +36,8 @@ export async function deliverMessage(
 
   for (const to of targets) {
     // Always queue first (NFR6)
-    const msg = addMessage(to, senderName, room, text, mode, targetName, kind);
+    // For broadcast (targetName=null), store each recipient's copy with their name
+    const msg = addMessage(to, senderName, room, text, mode, targetName ?? to, kind);
 
     if (mode === 'push') {
       const agent = getAgent(to);

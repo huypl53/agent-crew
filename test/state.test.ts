@@ -1,18 +1,19 @@
-import { describe, expect, test, beforeEach } from 'bun:test';
-
-// Isolate test state from production
-process.env.CC_TMUX_STATE_DIR = '/tmp/cc-tmux/test-state';
-
+import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
+import { initDb, closeDb } from '../src/state/db.ts';
 import {
   addAgent, getAgent, removeAgent, getRoom, getAllRooms,
   getRoomMembers, isNameTakenInRoom, addMessage, readMessages,
   getRoomMessages, getCursor, advanceCursor, readRoomMessages,
-  flushAsync, clearState, removeAgentFully,
+  clearState, removeAgentFully,
 } from '../src/state/index.ts';
 
 describe('state module', () => {
   beforeEach(() => {
-    clearState();
+    initDb(':memory:');
+  });
+
+  afterEach(() => {
+    closeDb();
   });
 
   describe('agents', () => {
@@ -105,13 +106,13 @@ describe('state module', () => {
 
     test('cursor-based reading with since_sequence', () => {
       addAgent('a', 'worker', 'r', '%100');
-      addMessage('a', 'b', 'r', 'msg1', 'push', null);
-      addMessage('a', 'b', 'r', 'msg2', 'push', null);
+      addMessage('a', 'b', 'r', 'msg1', 'push', 'a');
+      addMessage('a', 'b', 'r', 'msg2', 'push', 'a');
 
       const first = readMessages('a');
       expect(first.messages.length).toBe(2);
 
-      addMessage('a', 'b', 'r', 'msg3', 'push', null);
+      addMessage('a', 'b', 'r', 'msg3', 'push', 'a');
       const second = readMessages('a', undefined, first.next_sequence);
       expect(second.messages.length).toBe(1);
       expect(second.messages[0]!.text).toBe('msg3');
@@ -119,8 +120,8 @@ describe('state module', () => {
 
     test('filters by room', () => {
       addAgent('a', 'worker', 'room1', '%100');
-      addMessage('a', 'b', 'room1', 'hello', 'push', null);
-      addMessage('a', 'b', 'room2', 'world', 'push', null);
+      addMessage('a', 'b', 'room1', 'hello', 'push', 'a');
+      addMessage('a', 'b', 'room2', 'world', 'push', 'a');
 
       const result = readMessages('a', 'room1');
       expect(result.messages.length).toBe(1);
@@ -139,20 +140,6 @@ describe('state module', () => {
       addAgent('b', 'leader', 'r', '%101');
       const msg = addMessage('a', 'b', 'r', 'hello', 'push', 'a');
       expect(msg.kind).toBe('chat');
-    });
-
-    test('inbox is capped at MAX_INBOX_MESSAGES', () => {
-      addAgent('sender', 'leader', 'room', '%100');
-      addAgent('receiver', 'worker', 'room', '%101');
-
-      for (let i = 0; i < 505; i++) {
-        addMessage('receiver', 'sender', 'room', `msg-${i}`, 'push', 'receiver');
-      }
-
-      const result = readMessages('receiver');
-      expect(result.messages.length).toBe(500);
-      expect(result.messages[0]!.text).toBe('msg-5');
-      expect(result.messages.at(-1)!.text).toBe('msg-504');
     });
   });
 
@@ -189,71 +176,6 @@ describe('state module', () => {
       const roomMsgs = getRoomMessages('team');
       expect(roomMsgs.length).toBe(1);
       expect(roomMsgs[0]!.to).toBeNull();
-    });
-
-    test('room log is capped at MAX_ROOM_MESSAGES', () => {
-      addAgent('a', 'leader', 'r', '%100');
-      addAgent('b', 'worker', 'r', '%101');
-
-      for (let i = 0; i < 1005; i++) {
-        addMessage('b', 'a', 'r', `msg-${i}`, 'push', 'b', 'chat');
-      }
-
-      const msgs = getRoomMessages('r');
-      expect(msgs.length).toBe(1000);
-      expect(msgs[0]!.text).toBe('msg-5'); // oldest 5 evicted
-    });
-  });
-
-  describe('persistence', () => {
-    test('flushAsync is exported and callable without error', async () => {
-      addAgent('a', 'leader', 'r', '%100');
-      addMessage('b', 'a', 'r', 'hello', 'push', 'b');
-      await expect(flushAsync()).resolves.toBeUndefined();
-    });
-
-    test('room messages survive flush and load cycle', async () => {
-      addAgent('a', 'leader', 'r', '%100');
-      addAgent('b', 'worker', 'r', '%101');
-      addMessage('b', 'a', 'r', 'test-persist', 'push', 'b', 'task');
-
-      const msgs = getRoomMessages('r');
-      expect(msgs.length).toBe(1);
-      expect(msgs[0]!.kind).toBe('task');
-    });
-
-    test('flushAsync merges room-messages.json from disk (multi-process)', async () => {
-      const stateDir = process.env.CC_TMUX_STATE_DIR!;
-
-      // Set up agents and add w2's message, wait for all flushes to complete
-      addAgent('lead', 'leader', 'frontend', '%100');
-      addAgent('w2', 'worker', 'frontend', '%101');
-      addMessage('lead', 'w2', 'frontend', 'w2 done', 'pull', 'lead', 'completion');
-      await flushAsync(); // waits for lock, guarantees all prior flushes done
-
-      // Disk now has w2's message. Manually add w1's (simulating another process)
-      const diskData = JSON.parse(await Bun.file(`${stateDir}/room-messages.json`).text()) as Record<string, any[]>;
-      diskData['frontend']!.push({
-        message_id: 'msg-other-process',
-        from: 'w1',
-        room: 'frontend',
-        to: 'lead',
-        text: 'w1 done',
-        kind: 'completion',
-        timestamp: new Date().toISOString(),
-        sequence: 50,
-        mode: 'pull',
-      });
-      await Bun.write(`${stateDir}/room-messages.json`, JSON.stringify(diskData, null, 2));
-
-      // Flush should merge disk (w1+w2) with memory (w2), preserving both
-      await flushAsync();
-
-      const data = JSON.parse(await Bun.file(`${stateDir}/room-messages.json`).text()) as Record<string, Array<{ text: string }>>;
-      const frontendMsgs = data['frontend']!;
-      const texts = frontendMsgs.map(m => m.text);
-      expect(texts).toContain('w1 done');
-      expect(texts).toContain('w2 done');
     });
   });
 
@@ -305,35 +227,6 @@ describe('state module', () => {
 
       removeAgentFully('a');
       expect(getCursor('a', 'r')).toBe(0);
-    });
-  });
-
-  describe('retention', () => {
-    test('flushAsync caps messages.json to last 5000 entries', async () => {
-      const stateDir = process.env.CC_TMUX_STATE_DIR!;
-      addAgent('sender', 'leader', 'room', '%100');
-      addAgent('receiver', 'worker', 'room', '%101');
-      await flushAsync(); // let setup flushes complete
-
-      const existing = Array.from({ length: 5005 }, (_, i) => ({
-        message_id: `seed-${i}`,
-        from: 'sender',
-        room: 'room',
-        to: 'receiver',
-        text: `msg-${i}`,
-        kind: 'chat',
-        timestamp: new Date(2026, 0, 1, 0, 0, 0, i).toISOString(),
-        sequence: i + 1,
-        mode: 'push',
-      }));
-      await Bun.write(`${stateDir}/messages.json`, JSON.stringify(existing, null, 2));
-
-      await flushAsync();
-
-      const data = JSON.parse(await Bun.file(`${stateDir}/messages.json`).text()) as Array<{ text: string }>;
-      expect(data.length).toBe(5000);
-      expect(data[0]!.text).toBe('msg-5');
-      expect(data.at(-1)!.text).toBe('msg-5004');
     });
   });
 });

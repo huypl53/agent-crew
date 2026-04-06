@@ -133,16 +133,15 @@ Read-only terminal observer. Shows rooms, agents, status, and messages in a 3-pa
 
 Shortcuts are always visible in the bottom status bar. The details panel shows the selected agent's role, rooms, topic, status, tmux pane, and recent activity summary.
 
-## Resource Limits & Reliability
+## State Management
 
-| Resource | Limit | Notes |
-|----------|-------|-------|
-| Per-agent inbox | 500 messages | Oldest evicted on overflow |
-| Per-room log | 1000 messages | Oldest evicted on overflow |
-| `messages.json` on disk | 5000 entries | Trimmed on every flush |
-| Graceful shutdown | SIGTERM + SIGINT | Final `flushAsync()` before exit |
+State is stored in a SQLite database at `${CC_TMUX_STATE_DIR}/cc-tmux.db` (default `/tmp/cc-tmux/state/cc-tmux.db`) using WAL mode for safe multi-process access. All state operations are synchronous — no flush/sync machinery needed.
 
-The MCP server flushes all in-memory state to disk on `SIGTERM`/`SIGINT`, so no messages are lost when Claude Code exits normally.
+```bash
+# Debug: inspect state directly
+sqlite3 /tmp/cc-tmux/state/cc-tmux.db 'SELECT * FROM agents;'
+sqlite3 /tmp/cc-tmux/state/cc-tmux.db 'SELECT * FROM messages ORDER BY id DESC LIMIT 10;'
+```
 
 ## Project Structure
 
@@ -151,7 +150,7 @@ src/
 ├── index.ts          # MCP server entrypoint
 ├── tools/            # 8 MCP tool handlers
 ├── tmux/             # tmux CLI wrapper
-├── state/            # In-memory state + JSON persistence
+├── state/            # SQLite state (db.ts = schema, index.ts = queries)
 ├── delivery/         # Push (tmux) + pull (queue) delivery
 ├── shared/           # Types, status patterns (shared with dashboard)
 ├── dashboard.ts      # Dashboard entrypoint
