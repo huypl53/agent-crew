@@ -60,7 +60,7 @@ function drawBox(x: number, y: number, w: number, h: number, title: string): str
   let buf = '';
   const inner = w - 2;
   const t = title ? ` ${title} ` : '';
-  const rem = Math.max(0, inner - t.length);
+  const rem = Math.max(0, inner - t.length - 1);
   buf += moveTo(y, x) + COLORS.dim + BOX.tl + BOX.h + COLORS.reset + COLORS.bold + t + COLORS.reset + COLORS.dim + BOX.h.repeat(rem) + BOX.tr + COLORS.reset;
   for (let r = 1; r < h - 1; r++) {
     buf += moveTo(y + r, x) + COLORS.dim + BOX.v + COLORS.reset;
