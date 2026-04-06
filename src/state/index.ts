@@ -1,7 +1,7 @@
 import type { Agent, AgentRole, Room, Message, MessageKind } from '../shared/types.ts';
 import { isPaneDead } from '../tmux/index.ts';
 
-const STATE_DIR = '/tmp/cc-tmux/state';
+const STATE_DIR = process.env.CC_TMUX_STATE_DIR ?? '/tmp/cc-tmux/state';
 
 // In-memory state
 const agents = new Map<string, Agent>();

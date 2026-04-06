@@ -1,4 +1,8 @@
 import { describe, expect, test, beforeEach } from 'bun:test';
+
+// Isolate test state from production
+process.env.CC_TMUX_STATE_DIR = '/tmp/cc-tmux/test-state';
+
 import {
   addAgent, getAgent, removeAgent, getRoom, getAllRooms,
   getRoomMembers, isNameTakenInRoom, addMessage, readMessages,

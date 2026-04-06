@@ -1,4 +1,8 @@
 import { describe, expect, test, beforeEach, afterAll } from 'bun:test';
+
+// Isolate test state from production
+process.env.CC_TMUX_STATE_DIR = '/tmp/cc-tmux/test-state';
+
 import { handleJoinRoom } from '../src/tools/join-room.ts';
 import { handleLeaveRoom } from '../src/tools/leave-room.ts';
 import { handleListRooms } from '../src/tools/list-rooms.ts';
