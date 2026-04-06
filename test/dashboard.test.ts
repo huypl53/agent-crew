@@ -33,7 +33,7 @@ describe('dashboard render', () => {
     expect(frame).toContain('boss');
   });
 
-  test('renders agent details', () => {
+  test('renders agent details with live pane output', () => {
     const agent: Agent = { agent_id: 'l1', name: 'lead-1', role: 'leader', rooms: ['co', 'fe'], tmux_target: '%101', joined_at: '2026-01-01' };
     const rooms: Record<string, Room> = {
       fe: { name: 'fe', members: ['lead-1'], created_at: '', topic: 'Build login flow' },
@@ -44,21 +44,37 @@ describe('dashboard render', () => {
       0,
       [],
       agent,
-      { status: 'busy', lastChange: Date.now(), summary: 'Editing src/Login.tsx' },
+      { status: 'busy', lastChange: Date.now(), rawOutput: 'Working on auth.ts\nCompiling...' },
       true,
       'fe',
       rooms,
     );
     expect(frame).toContain('lead-1');
-    expect(frame).toContain('leader');
-    expect(frame).toContain('co, fe');
     expect(frame).toContain('busy');
+    expect(frame).toContain('co, fe');
     expect(frame).toContain('Build login flow');
-    expect(frame).toContain('Editing src/Login.tsx');
+    expect(frame).toContain('Working on auth.ts');
+    expect(frame).toContain('\u2500 pane \u2500');
+  });
+
+  test('shows Syncing when agent name selected but not in state', () => {
+    const nodes: TreeNode[] = [
+      { type: 'agent', id: 'agent:ghost', label: 'ghost', agentName: 'ghost', role: 'worker', status: 'unknown' },
+    ];
+    const frame = renderFrame(minSize, nodes, 0, [], null, null, true, null, undefined, false, true);
+    expect(frame).toContain('Syncing');
   });
 
   test('renders at minimum 80x24', () => {
     expect(renderFrame({ cols: 80, rows: 24 }, [], 0, [], null, null, true).length).toBeGreaterThan(0);
+  });
+
+  test('shortcut bar is on last row and boxes do not overlap it', () => {
+    const size = { cols: 80, rows: 24 };
+    const frame = renderFrame(size, [], 0, [], null, null, true);
+    // shortcut bar at row 24 (1-indexed ANSI) = moveTo(23, 0) = ESC[24;1H
+    expect(frame).toContain('\x1b[24;1H');
+    expect(frame).toContain('Navigate');
   });
 });
 
@@ -77,35 +93,37 @@ describe('dashboard tree', () => {
     const now = Date.now();
     const statuses = new Map<string, AgentStatusEntry>([
       ['boss', { status: 'idle', lastChange: now - 5000 }],
-      ['lead-1', { status: 'busy', lastChange: now - 1000, summary: 'Working on auth flow' }],
+      ['lead-1', { status: 'busy', lastChange: now - 1000, rawOutput: 'Working on auth flow' }],
       ['w1', { status: 'dead', lastChange: now }],
     ]);
     return { agents, rooms, statuses };
   }
 
-  test('builds tree with rooms and agents', () => {
+  test('builds tree with rooms and agents — multi-room agents appear in each room', () => {
     const tree = new TreeState();
     const { agents, rooms, statuses } = setup();
     tree.build(agents, rooms, statuses);
-    expect(tree.items.length).toBe(5); // 2 rooms + 3 agents (lead-1 primary=company)
+    // company: room + boss + lead-1(primary), frontend: room + lead-1(secondary) + w1 = 6
+    expect(tree.items.length).toBe(6);
     expect(tree.items[0]!.type).toBe('room');
     expect(tree.items[0]!.label).toBe('company');
   });
 
-  test('no duplicate agents across rooms', () => {
+  test('secondary agent appearance is dim in non-primary room', () => {
     const tree = new TreeState();
     const { agents, rooms, statuses } = setup();
     tree.build(agents, rooms, statuses);
-    const agentNames = tree.items.filter(n => n.type === 'agent').map(n => n.agentName);
-    expect(new Set(agentNames).size).toBe(agentNames.length);
+    const secondary = tree.items.find(n => n.agentName === 'lead-1' && n.secondary);
+    expect(secondary).toBeDefined();
+    expect(secondary!.id).toBe('agent:lead-1:frontend');
   });
 
-  test('multi-room badge', () => {
+  test('room member count includes all members (not just primary)', () => {
     const tree = new TreeState();
     const { agents, rooms, statuses } = setup();
     tree.build(agents, rooms, statuses);
-    const lead = tree.items.find(n => n.agentName === 'lead-1');
-    expect(lead?.extraRooms).toEqual(['frontend']);
+    const frontendRoom = tree.items.find(n => n.type === 'room' && n.label === 'frontend');
+    expect(frontendRoom!.memberCount).toBe(2); // lead-1 + w1
   });
 
   test('auto-selects most recently changed agent', () => {
@@ -122,6 +140,39 @@ describe('dashboard tree', () => {
     const initial = tree.selected;
     tree.moveUp();
     expect(tree.selected).toBeLessThanOrEqual(initial);
+  });
+
+  test('selection survives tree rebuild with new agent inserted before selected', () => {
+    const tree = new TreeState();
+    const { agents, rooms, statuses } = setup();
+    tree.build(agents, rooms, statuses);
+
+    // Manually select 'boss'
+    const bossIdx = tree.items.findIndex(n => n.agentName === 'boss');
+    tree.moveToTop();
+    for (let i = 0; i < bossIdx; i++) tree.moveDown();
+    expect(tree.selectedAgentName).toBe('boss');
+
+    // Add a new agent that sorts before 'boss' alphabetically
+    const agents2 = { ...agents, aardvark: { agent_id: 'aardvark', name: 'aardvark', role: 'worker' as const, rooms: ['company'], tmux_target: '%199', joined_at: '' } };
+    const rooms2 = { ...rooms, company: { ...rooms.company, members: ['aardvark', 'boss', 'lead-1'] } };
+    tree.build(agents2, rooms2, statuses);
+
+    // Selection should still be 'boss', not shifted to 'aardvark'
+    expect(tree.selectedAgentName).toBe('boss');
+  });
+
+  test('agents with no rooms appear in Unassigned section', () => {
+    const tree = new TreeState();
+    const agents: Record<string, Agent> = {
+      ghost: { agent_id: 'ghost', name: 'ghost', role: 'worker', rooms: [], tmux_target: '%199', joined_at: '' },
+    };
+    const rooms: Record<string, Room> = {};
+    tree.build(agents, rooms, new Map());
+    const unassigned = tree.items.find(n => n.type === 'room' && n.id === 'room:__unassigned__');
+    expect(unassigned).toBeDefined();
+    const ghostNode = tree.items.find(n => n.agentName === 'ghost');
+    expect(ghostNode).toBeDefined();
   });
 });
 

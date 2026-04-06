@@ -18,8 +18,8 @@ Agent calls MCP tool
   → tool returns MCP JSON response
 
 Dashboard opens SQLite DB in readonly mode
-  → polls SELECT MAX(id) FROM messages every 500ms for change detection
-  → polls tmux capture-pane every 2s for status
+  → polls PRAGMA data_version every 500ms (detects ALL DB changes)
+  → polls tmux capture-pane every 2s for status + raw pane output
   → renders 3-panel ANSI layout to stdout
 ```
 
@@ -168,10 +168,10 @@ Agent read cursors are cleaned up when an agent departs:
 ## Dashboard Panel Layout
 
 ```
-Left (30%): Room/agent tree with collapse, status colors, multi-room badges
+Left (30%): Room/agent tree — agents appear under ALL rooms (dim + ◦ for secondary)
 Right-top (70% x 65%): Chronological message feed, color-coded rooms
-Right-bottom (70% x 35%): Selected agent details (name, role, rooms, topic, status, activity)
-Bottom row: Persistent shortcut bar — ↑↓/jk:Navigate  Enter:Toggle  ?:Help  q:Quit
+Right-bottom (70% x 35%): Agent details + live tmux pane output (raw capture-pane tail)
+Bottom row: Shortcut bar on reserved last row — ↑↓/jk:Navigate  Enter:Toggle  ?:Help  q:Quit  [!]=errors
 ```
 
 ### ANSI-Aware Text Truncation
@@ -187,10 +187,19 @@ This prevents status-dot colors, dim badges, room colors, and kind badges from i
 
 The details panel shows different content depending on selection:
 
-- **Agent selected:** name (bold), role, rooms, room topic (if set), status (colored), tmux pane target, last activity age, activity summary (up to 3 wrapped lines from `status.summary`)
+- **Agent selected:** name (bold), status+role+pane (compressed), rooms, topic, last activity, then live pane output (raw capture-pane tail filling remaining rows)
 - **Room selected:** room name, topic, member count
+- **Syncing state:** shows "Syncing..." when tree node exists but state hasn't loaded
 
-`status.summary` is populated by the status poller (`src/dashboard/status.ts`) which extracts recent pane activity text via `capture-pane` alongside the idle/busy detection.
+`rawOutput` is stored by the status poller (`src/dashboard/status.ts`) — the full capture-pane output, sliced by the renderer to fit available rows.
+
+### Tree Selection Tracking
+
+Selection tracks by node ID (`agent:name` or `agent:name:room` for secondary), not numeric index. This survives tree rebuilds when agents join/leave/reorder. Manual navigation disables auto-select (which otherwise follows the most-recently-active agent).
+
+### Error Logging
+
+Dashboard errors go to `/tmp/cc-tmux/dashboard.log` (not console, which would corrupt the TUI). A `[!]` indicator appears in the shortcut bar when errors exist.
 
 ## Installation Architecture
 
@@ -225,4 +234,4 @@ Each CC session spawns its own MCP server subprocess (via stdio transport). All 
 
 - **Unit tests** (`test/state.test.ts`): Use `:memory:` SQLite DB, test state operations in isolation
 - **Tool tests** (`test/tools.test.ts`): Use `:memory:` DB + real tmux sessions, test MCP tool handlers end-to-end
-- **Dashboard tests**: Visual verification by tmux agent — launch, capture, navigate, quit
+- **Dashboard tests** (`test/dashboard.test.ts`): Unit tests for render, tree (ID-based selection, multi-room, unassigned), and feed modules

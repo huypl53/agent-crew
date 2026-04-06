@@ -1,36 +1,12 @@
 import { capturePane, isPaneDead } from '../tmux/index.ts';
 import { matchStatusLine } from '../shared/status-patterns.ts';
 import type { Agent, AgentStatus } from '../shared/types.ts';
+import { logError } from './logger.ts';
 
 export interface AgentStatusEntry {
   status: AgentStatus;
   lastChange: number;
-  summary?: string;
-}
-
-function truncateLine(line: string, max: number = 100): string {
-  return line.length <= max ? line : `${line.slice(0, max - 1)}…`;
-}
-
-function extractSummary(output: string): string | undefined {
-  const lines = output
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean);
-
-  if (lines.length === 0) return undefined;
-
-  const preferred = lines.filter(line =>
-    /working on|editing/i.test(line) ||
-    /(?:^|[\s./])[A-Za-z0-9_.-]+\.[A-Za-z0-9]+/.test(line) ||
-    /src\/|test\/|docs\/|skills\//.test(line)
-  );
-
-  const picked = (preferred.length > 0 ? preferred : lines.slice(-1))
-    .slice(-3)
-    .map(line => truncateLine(line));
-
-  return picked.join('\n');
+  rawOutput?: string;
 }
 
 export class StatusPoller {
@@ -67,8 +43,9 @@ export class StatusPoller {
       }
       const output = await capturePane(agent.tmux_target);
       if (output === null) return { status: 'unknown', lastChange: Date.now() };
-      return { status: matchStatusLine(output), lastChange: Date.now(), summary: extractSummary(output) };
-    } catch {
+      return { status: matchStatusLine(output), lastChange: Date.now(), rawOutput: output };
+    } catch (e) {
+      logError('status.pollOne', e);
       return { status: 'unknown', lastChange: Date.now() };
     }
   }

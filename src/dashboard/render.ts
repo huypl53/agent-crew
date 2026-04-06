@@ -4,6 +4,7 @@ import type { TreeNode } from './tree.ts';
 import type { FormattedMessage } from './feed.ts';
 import type { Agent, AgentStatus, Room } from '../shared/types.ts';
 import type { AgentStatusEntry } from './status.ts';
+import { hasErrors } from './logger.ts';
 
 const BOX = { tl: '┌', tr: '┐', bl: '└', br: '┘', h: '─', v: '│' } as const;
 
@@ -40,6 +41,11 @@ function truncate(str: string, max: number): string {
     }
   }
   return result;
+}
+
+function stripControlCodes(str: string): string {
+  // Keep only SGR color codes (ESC[...m), strip all other ANSI (cursor, clear, alt screen, erase)
+  return str.replace(/\x1b\[[\d;]*[A-LN-Za-z]/g, '').replace(/\x1b[()][AB0-9]/g, '').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
 }
 
 function wrapLines(text: string, width: number, maxLines: number): string[] {
@@ -95,16 +101,18 @@ export function renderFrame(
   size: TerminalSize, treeNodes: TreeNode[], selectedIndex: number,
   feedMessages: FormattedMessage[], selectedAgent: Agent | null,
   selectedAgentStatus: AgentStatusEntry | null, stateAvailable: boolean,
-  roomFilter: string | null = null, rooms?: Record<string, Room>, showHelp = false,
+  roomFilter: string | null = null, rooms?: Record<string, Room>,
+  showHelp = false, isSyncing = false,
 ): string {
   let buf = '\x1b[2J';
   const leftW = Math.max(20, Math.floor(size.cols * 0.3));
   const rightW = size.cols - leftW;
-  const topH = Math.max(5, Math.floor(size.rows * 0.65));
-  const bottomH = size.rows - topH;
+  const usableRows = size.rows - 1;  // last row reserved for shortcut bar
+  const topH = Math.max(5, Math.floor(usableRows * 0.65));
+  const bottomH = usableRows - topH;
   const msgTitle = roomFilter ? `Messages [${roomFilter}]` : 'Messages';
 
-  buf += drawBox(0, 0, leftW, size.rows, 'Rooms & Agents');
+  buf += drawBox(0, 0, leftW, usableRows, 'Rooms & Agents');
   buf += drawBox(leftW, 0, rightW, topH, msgTitle);
   buf += drawBox(leftW, topH, rightW, bottomH, 'Details');
 
@@ -115,7 +123,7 @@ export function renderFrame(
   }
 
   // Tree panel
-  const treeMaxLines = size.rows - 2;
+  const treeMaxLines = usableRows - 2;
   let startIdx = 0;
   if (selectedIndex >= treeMaxLines) startIdx = selectedIndex - treeMaxLines + 1;
   const visible = treeNodes.slice(startIdx, startIdx + treeMaxLines);
@@ -131,8 +139,9 @@ export function renderFrame(
       line = ` ${node.collapsed ? '▶' : '▼'} ${node.label} (${node.memberCount})`;
     } else {
       const sc = STATUS_COLORS[node.status ?? 'unknown'];
-      const badge = node.extraRooms?.length ? ` ${COLORS.dim}[+${node.extraRooms[0]}]${COLORS.reset}` : '';
-      line = `   ${sc}●${COLORS.reset} ${node.label}${badge}`;
+      const dot = node.secondary ? `${COLORS.dim}◦` : `${sc}●`;
+      const nameStyle = node.secondary ? COLORS.dim : '';
+      line = `   ${dot}${COLORS.reset} ${nameStyle}${node.label}${COLORS.reset}`;
     }
 
     if (isSel) {
@@ -148,7 +157,7 @@ export function renderFrame(
     buf += moveTo(1, leftW - 2) + COLORS.dim + '▲' + COLORS.reset;
   }
   if (startIdx + treeMaxLines < treeNodes.length) {
-    buf += moveTo(size.rows - 2, leftW - 2) + COLORS.dim + '▼' + COLORS.reset;
+    buf += moveTo(usableRows - 2, leftW - 2) + COLORS.dim + '▼' + COLORS.reset;
   }
 
   // Message feed
@@ -190,11 +199,13 @@ export function renderFrame(
     buf += moveTo(1, leftW + 2) + COLORS.dim + 'No messages yet' + COLORS.reset;
   }
 
-  const shortcutBar = '↑↓/jk:Navigate  Enter:Toggle  ?:Help  q:Quit';
+  const errFlag = hasErrors() ? `  ${COLORS.red}[!]${COLORS.reset}` : '';
+  const shortcutBar = `\u2191\u2193/jk:Navigate  Enter:Toggle  ?:Help  q:Quit${errFlag}`;
   buf += moveTo(size.rows - 1, 0) + COLORS.dim + truncate(shortcutBar, size.cols).padEnd(size.cols) + COLORS.reset;
 
   // Details panel
   const detailCol = leftW + 2;
+  const detailBoxEnd = topH + bottomH - 1;
   let detailRow = topH + 1;
 
   if (!selectedAgent) {
@@ -203,10 +214,10 @@ export function renderFrame(
       const roomName = selectedNode.label;
       const room = rooms?.[roomName] as (Room & { topic?: string }) | undefined;
       buf += moveTo(detailRow++, detailCol) + `${COLORS.bold}${roomName}${COLORS.reset}`;
-      if (room?.topic) {
-        buf += moveTo(detailRow++, detailCol) + `Topic: ${room.topic}`;
-      }
+      if (room?.topic) buf += moveTo(detailRow++, detailCol) + `Topic: ${room.topic}`;
       buf += moveTo(detailRow++, detailCol) + `Members: ${selectedNode.memberCount}`;
+    } else if (isSyncing) {
+      buf += moveTo(detailRow, detailCol) + COLORS.dim + 'Syncing\u2026' + COLORS.reset;
     } else {
       buf += moveTo(detailRow, detailCol) + COLORS.dim + 'No agent selected' + COLORS.reset;
     }
@@ -214,23 +225,28 @@ export function renderFrame(
     const status = selectedAgentStatus?.status ?? 'unknown';
     const sc = STATUS_COLORS[status];
     const roomTopic = roomFilter ? rooms?.[roomFilter]?.topic : undefined;
+
+    // Static info block (compressed)
     buf += moveTo(detailRow++, detailCol) + `${COLORS.bold}${selectedAgent.name}${COLORS.reset}`;
-    buf += moveTo(detailRow++, detailCol) + `Role: ${selectedAgent.role}`;
+    buf += moveTo(detailRow++, detailCol) + `${sc}${status}${COLORS.reset}  ${COLORS.dim}${selectedAgent.role} \u00b7 ${selectedAgent.tmux_target}${COLORS.reset}`;
     buf += moveTo(detailRow++, detailCol) + `Rooms: ${selectedAgent.rooms.join(', ')}`;
-    if (roomTopic) {
-      buf += moveTo(detailRow++, detailCol) + `Topic: ${truncate(roomTopic, rightW - 6)}`;
-    }
-    buf += moveTo(detailRow++, detailCol) + `Status: ${sc}${status}${COLORS.reset}`;
-    buf += moveTo(detailRow++, detailCol) + `Pane: ${COLORS.dim}${selectedAgent.tmux_target}${COLORS.reset}`;
+    if (roomTopic) buf += moveTo(detailRow++, detailCol) + `Topic: ${truncate(roomTopic, rightW - 6)}`;
     if (selectedAgent.last_activity) {
       const secs = Math.floor((Date.now() - new Date(selectedAgent.last_activity).getTime()) / 1000);
       const ago = secs < 60 ? `${secs}s` : secs < 3600 ? `${Math.floor(secs / 60)}m` : `${Math.floor(secs / 3600)}h`;
-      buf += moveTo(detailRow++, detailCol) + `Last activity: ${COLORS.dim}${ago} ago${COLORS.reset}`;
+      buf += moveTo(detailRow++, detailCol) + `Last: ${COLORS.dim}${ago} ago${COLORS.reset}`;
     }
-    if (selectedAgentStatus?.summary) {
-      buf += moveTo(detailRow++, detailCol) + 'Activity:';
-      for (const line of wrapLines(selectedAgentStatus.summary, Math.max(10, rightW - 6), 3)) {
-        buf += moveTo(detailRow++, detailCol) + `${COLORS.dim}${truncate(line, rightW - 6)}${COLORS.reset}`;
+
+    // Live pane output fills remaining rows
+    const rawOutput = selectedAgentStatus?.rawOutput;
+    if (rawOutput && detailRow < detailBoxEnd) {
+      buf += moveTo(detailRow++, detailCol) + COLORS.dim + '\u2500 pane \u2500' + COLORS.reset;
+      const maxPaneRows = detailBoxEnd - detailRow;
+      const paneLines = rawOutput.split('\n').filter(l => l.trim()).slice(-maxPaneRows);
+      for (const line of paneLines) {
+        if (detailRow >= detailBoxEnd) break;
+        const cleanLine = stripControlCodes(line);
+        buf += moveTo(detailRow++, detailCol) + COLORS.dim + truncate(cleanLine, rightW - 4) + COLORS.reset;
       }
     }
   }

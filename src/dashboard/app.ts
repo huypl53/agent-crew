@@ -5,6 +5,7 @@ import { StatusPoller } from './status.ts';
 import { TreeState } from './tree.ts';
 import { MessageFeed } from './feed.ts';
 import { renderFrame } from './render.ts';
+import { logError } from './logger.ts';
 
 const POLL_INTERVAL = 2000;
 
@@ -57,13 +58,14 @@ export async function startApp(): Promise<void> {
       tree.build(state.agents, state.rooms, statusPoller.all);
       feed.update(state.messages);
       draw();
-    } catch {}
+    } catch (e) { logError('app.poll', e); }
   }, POLL_INTERVAL);
 
   function draw(): void {
     const state = stateReader.current;
     const agentName = tree.selectedAgentName;
     const agent = agentName ? state.agents[agentName] ?? null : null;
+    const isSyncing = agentName !== null && agent === null;
     const status = agentName ? statusPoller.getStatus(agentName) : null;
     const roomFilter = tree.selectedRoomName;
     writeFrame(renderFrame(
@@ -77,6 +79,7 @@ export async function startApp(): Promise<void> {
       roomFilter,
       state.rooms,
       showHelp,
+      isSyncing,
     ));
   }
 }

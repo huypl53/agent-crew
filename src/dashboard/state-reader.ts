@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite';
 import type { Agent, Room, Message } from '../shared/types.ts';
+import { logError } from './logger.ts';
 
 const STATE_DIR = process.env.CC_TMUX_STATE_DIR ?? '/tmp/cc-tmux/state';
 const DB_PATH = `${STATE_DIR}/cc-tmux.db`;
@@ -49,7 +50,7 @@ export class StateReader {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private onChange: StateChangeHandler | null = null;
   private stateExists = false;
-  private lastMessageId = 0;
+  private lastDataVersion = 0;
 
   get current(): DashboardState { return this.state; }
   get isAvailable(): boolean { return this.stateExists; }
@@ -67,7 +68,7 @@ export class StateReader {
   private async readAll(): Promise<void> {
     if (!await this.dbExists()) {
       this.stateExists = false;
-      this.lastMessageId = 0;
+      this.lastDataVersion = 0;
       this.state = { agents: {}, rooms: {}, messages: [] };
       return;
     }
@@ -137,10 +138,10 @@ export class StateReader {
 
       this.state = { agents, rooms, messages };
       this.stateExists = true;
-      this.lastMessageId = messageRows.at(-1)?.id ?? 0;
-    } catch {
+    } catch (e) {
+      logError('state-reader.readAll', e);
       this.stateExists = false;
-      this.lastMessageId = 0;
+      this.lastDataVersion = 0;
       this.state = { agents: {}, rooms: {}, messages: [] };
     } finally {
       db?.close(false);
@@ -160,7 +161,7 @@ export class StateReader {
       if (!await this.dbExists()) {
         if (this.stateExists) {
           this.stateExists = false;
-          this.lastMessageId = 0;
+          this.lastDataVersion = 0;
           this.state = { agents: {}, rooms: {}, messages: [] };
           this.onChange?.(this.state);
         }
@@ -170,8 +171,8 @@ export class StateReader {
       let db: Database | null = null;
       try {
         db = new Database(DB_PATH, { readonly: true });
-        const row = db.query<{ max_id: number | null }, []>('SELECT MAX(id) AS max_id FROM messages').get();
-        const nextMax = row?.max_id ?? 0;
+        const row = db.query<{ data_version: number }, []>('PRAGMA data_version').get();
+        const version = row?.data_version ?? 0;
 
         if (!this.stateExists) {
           await this.readAll();
@@ -179,14 +180,16 @@ export class StateReader {
           return;
         }
 
-        if (nextMax !== this.lastMessageId) {
+        if (version !== this.lastDataVersion) {
+          this.lastDataVersion = version;
           await this.readAll();
           this.onChange?.(this.state);
         }
-      } catch {
+      } catch (e) {
+        logError('state-reader.poll', e);
         if (this.stateExists) {
           this.stateExists = false;
-          this.lastMessageId = 0;
+          this.lastDataVersion = 0;
           this.state = { agents: {}, rooms: {}, messages: [] };
           this.onChange?.(this.state);
         }
