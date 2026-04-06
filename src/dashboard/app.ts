@@ -65,6 +65,7 @@ export async function startApp(): Promise<void> {
     const agentName = tree.selectedAgentName;
     const agent = agentName ? state.agents[agentName] ?? null : null;
     const status = agentName ? statusPoller.getStatus(agentName) : null;
+    const roomFilter = tree.selectedRoomName;
     writeFrame(renderFrame(
       size,
       tree.items,
@@ -73,6 +74,7 @@ export async function startApp(): Promise<void> {
       agent,
       status,
       stateReader.isAvailable,
+      roomFilter,
       state.rooms,
       showHelp,
     ));

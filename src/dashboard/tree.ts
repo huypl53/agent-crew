@@ -27,6 +27,16 @@ export class TreeState {
     const n = this.selectedNode;
     return n?.type === 'agent' ? (n.agentName ?? null) : null;
   }
+  get selectedRoomName(): string | null {
+    const n = this.selectedNode;
+    if (n?.type === 'room') return n.label;
+    if (n?.type === 'agent') {
+      for (let i = this.selectedIndex - 1; i >= 0; i--) {
+        if (this.nodes[i]?.type === 'room') return this.nodes[i]!.label;
+      }
+    }
+    return null;
+  }
 
   build(agents: Record<string, Agent>, rooms: Record<string, Room>, statuses: Map<string, AgentStatusEntry>): void {
     const nodes: TreeNode[] = [];

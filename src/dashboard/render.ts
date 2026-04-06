@@ -57,16 +57,17 @@ export function renderFrame(
   size: TerminalSize, treeNodes: TreeNode[], selectedIndex: number,
   feedMessages: FormattedMessage[], selectedAgent: Agent | null,
   selectedAgentStatus: AgentStatusEntry | null, stateAvailable: boolean,
-  rooms?: Record<string, Room>, showHelp = false,
+  roomFilter: string | null = null, rooms?: Record<string, Room>, showHelp = false,
 ): string {
   let buf = '\x1b[2J';
   const leftW = Math.max(20, Math.floor(size.cols * 0.3));
   const rightW = size.cols - leftW;
   const topH = Math.max(5, Math.floor(size.rows * 0.65));
   const bottomH = size.rows - topH;
+  const msgTitle = roomFilter ? `Messages [${roomFilter}]` : 'Messages';
 
   buf += drawBox(0, 0, leftW, size.rows, 'Rooms & Agents');
-  buf += drawBox(leftW, 0, rightW, topH, 'Messages');
+  buf += drawBox(leftW, 0, rightW, topH, msgTitle);
   buf += drawBox(leftW, topH, rightW, bottomH, 'Details');
 
   if (!stateAvailable) {
@@ -107,7 +108,11 @@ export function renderFrame(
   // Message feed
   const feedMaxLines = topH - 2;
   const feedW = rightW - 3;
-  const visibleMsgs = feedMessages.slice(-feedMaxLines);
+  let displayMsgs = feedMessages;
+  if (roomFilter) {
+    displayMsgs = feedMessages.filter(m => m.room === roomFilter);
+  }
+  const visibleMsgs = displayMsgs.slice(-feedMaxLines);
 
   for (let i = 0; i < visibleMsgs.length; i++) {
     const msg = visibleMsgs[i]!;
