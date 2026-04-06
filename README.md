@@ -21,26 +21,42 @@ Communication: push messages (tmux send-keys for commands) + pull messages (serv
 
 - tmux 3.0+
 - Bun runtime
-- Claude Code with plugin support
+- Claude Code
 
 ## Installation
 
+**One-line install** (user scope — available in all CC sessions):
+
 ```bash
-bun install
-claude --plugin-dir ./
+curl -fsSL https://raw.githubusercontent.com/OWNER/cc-tmux/main/install.sh | sh
+```
+
+This clones cc-tmux to `~/.cc-tmux/`, installs dependencies, adds skills to `~/.claude/skills/`, and registers the MCP server in `~/.claude.json`.
+
+**Per-project install** (committed to repo so teammates get it):
+
+```bash
+~/.cc-tmux/install.sh --project
+```
+
+Copies skills to `.claude/skills/` and creates `.mcp.json` in the current project.
+
+**Update / Uninstall:**
+
+```bash
+~/.cc-tmux/install.sh --update             # pull latest + re-copy skills
+~/.cc-tmux/install.sh --uninstall          # remove global install
+~/.cc-tmux/install.sh --uninstall-project  # remove from current project
 ```
 
 ## Usage
 
 ```bash
-# Start MCP server (auto-started by Claude Code plugin)
-bun run start
-
-# Launch TUI dashboard (separate terminal/pane)
-bun run dashboard
+# TUI dashboard (separate terminal/pane)
+bun run --cwd ~/.cc-tmux dashboard
 
 # Run tests
-bun test
+bun test --cwd ~/.cc-tmux
 ```
 
 ## MCP Tools

@@ -1,5 +1,5 @@
 ---
-name: join-room
+name: cc-tmux-join-room
 description: Register your Claude Code agent in a cc-tmux room with a role
 arguments: <room> --role <boss|leader|worker> --name <your-name>
 ---

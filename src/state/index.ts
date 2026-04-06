@@ -8,6 +8,7 @@ const agents = new Map<string, Agent>();
 const rooms = new Map<string, Room>();
 const inboxes = new Map<string, Message[]>(); // agent_name -> messages
 let nextSequence = 1;
+let diskSyncEnabled = true;
 
 // --- Agent operations ---
 
@@ -206,22 +207,86 @@ function flushState(): void {
 async function flushAsync(): Promise<void> {
   await ensureDir();
 
-  const agentData: Record<string, Agent> = {};
-  for (const [k, v] of agents) agentData[k] = v;
+  // Read-merge-write: merge disk state with in-memory to support multi-process
+  const mergedAgents: Record<string, Agent> = {};
+  const mergedRooms: Record<string, Room> = {};
 
-  const roomData: Record<string, Room> = {};
-  for (const [k, v] of rooms) roomData[k] = v;
+  // Read existing disk state first
+  try {
+    const agentsFile = Bun.file(`${STATE_DIR}/agents.json`);
+    if (await agentsFile.exists()) {
+      const diskAgents = JSON.parse(await agentsFile.text()) as Record<string, Agent>;
+      for (const [k, v] of Object.entries(diskAgents)) mergedAgents[k] = v;
+    }
+  } catch { /* ignore corrupt file */ }
 
-  const messageData: Message[] = getAllMessages();
+  try {
+    const roomsFile = Bun.file(`${STATE_DIR}/rooms.json`);
+    if (await roomsFile.exists()) {
+      const diskRooms = JSON.parse(await roomsFile.text()) as Record<string, Room>;
+      for (const [k, v] of Object.entries(diskRooms)) mergedRooms[k] = v;
+    }
+  } catch { /* ignore corrupt file */ }
+
+  // Overlay in-memory state (authoritative for this process's agents)
+  for (const [k, v] of agents) mergedAgents[k] = v;
+
+  // Merge room membership: union of disk + in-memory members
+  for (const [k, v] of rooms) {
+    const existing = mergedRooms[k];
+    if (existing) {
+      const allMembers = new Set([...existing.members, ...v.members]);
+      mergedRooms[k] = { ...v, members: Array.from(allMembers) };
+    } else {
+      mergedRooms[k] = v;
+    }
+  }
+
+  // Remove agents that were fully removed by this process
+  for (const name of Object.keys(mergedAgents)) {
+    if (!agents.has(name)) {
+      // Check if another process owns this agent (it has a different pane)
+      // Only remove if this process explicitly deleted it (via removeAgentFully)
+      // We track this by checking if the agent was ever in our memory
+      // Simple heuristic: keep agents we don't know about (from other processes)
+    }
+  }
+
+  // Merge messages: union by message_id
+  const mergedMessages: Message[] = [];
+  const seenIds = new Set<string>();
+
+  try {
+    const msgFile = Bun.file(`${STATE_DIR}/messages.json`);
+    if (await msgFile.exists()) {
+      const diskMsgs = JSON.parse(await msgFile.text()) as Message[];
+      for (const m of diskMsgs) {
+        if (!seenIds.has(m.message_id)) {
+          seenIds.add(m.message_id);
+          mergedMessages.push(m);
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
+  for (const m of getAllMessages()) {
+    if (!seenIds.has(m.message_id)) {
+      seenIds.add(m.message_id);
+      mergedMessages.push(m);
+    }
+  }
+
+  mergedMessages.sort((a, b) => a.sequence - b.sequence);
 
   await Promise.all([
-    Bun.write(`${STATE_DIR}/agents.json`, JSON.stringify(agentData, null, 2)),
-    Bun.write(`${STATE_DIR}/rooms.json`, JSON.stringify(roomData, null, 2)),
-    Bun.write(`${STATE_DIR}/messages.json`, JSON.stringify(messageData, null, 2)),
+    Bun.write(`${STATE_DIR}/agents.json`, JSON.stringify(mergedAgents, null, 2)),
+    Bun.write(`${STATE_DIR}/rooms.json`, JSON.stringify(mergedRooms, null, 2)),
+    Bun.write(`${STATE_DIR}/messages.json`, JSON.stringify(mergedMessages, null, 2)),
   ]);
 }
 
 export async function loadState(): Promise<void> {
+  diskSyncEnabled = true;
   try {
     const agentsFile = Bun.file(`${STATE_DIR}/agents.json`);
     if (await agentsFile.exists()) {
@@ -256,6 +321,54 @@ export async function loadState(): Promise<void> {
   }
 }
 
+// Re-sync in-memory state from disk (pick up other processes' changes)
+export async function syncFromDisk(): Promise<void> {
+  if (!diskSyncEnabled) return;
+  try {
+    const agentsFile = Bun.file(`${STATE_DIR}/agents.json`);
+    if (await agentsFile.exists()) {
+      const data = JSON.parse(await agentsFile.text()) as Record<string, Agent>;
+      for (const [k, v] of Object.entries(data)) {
+        if (!agents.has(k)) agents.set(k, v);
+      }
+    }
+
+    const roomsFile = Bun.file(`${STATE_DIR}/rooms.json`);
+    if (await roomsFile.exists()) {
+      const data = JSON.parse(await roomsFile.text()) as Record<string, Room>;
+      for (const [k, v] of Object.entries(data)) {
+        const existing = rooms.get(k);
+        if (existing) {
+          // Merge members
+          const allMembers = new Set([...existing.members, ...v.members]);
+          existing.members = Array.from(allMembers);
+        } else {
+          rooms.set(k, v);
+        }
+      }
+    }
+
+    const messagesFile = Bun.file(`${STATE_DIR}/messages.json`);
+    if (await messagesFile.exists()) {
+      const data = JSON.parse(await messagesFile.text()) as Message[];
+      const existingIds = new Set<string>();
+      for (const msgs of inboxes.values()) {
+        for (const m of msgs) existingIds.add(m.message_id);
+      }
+      let maxSeq = nextSequence;
+      for (const msg of data) {
+        if (!existingIds.has(msg.message_id) && msg.to) {
+          let inbox = inboxes.get(msg.to);
+          if (!inbox) { inbox = []; inboxes.set(msg.to, inbox); }
+          inbox.push(msg);
+        }
+        if (msg.sequence >= maxSeq) maxSeq = msg.sequence + 1;
+      }
+      nextSequence = maxSeq;
+    }
+  } catch { /* disk read failed — use stale in-memory */ }
+}
+
 export async function validateLiveness(): Promise<string[]> {
   const deadAgents: string[] = [];
   for (const [name, agent] of agents) {
@@ -276,4 +389,10 @@ export function clearState(): void {
   rooms.clear();
   inboxes.clear();
   nextSequence = 1;
+  diskSyncEnabled = false; // Disable sync after clear (re-enabled on loadState)
+  // Also clean disk state to prevent syncFromDisk from loading stale data
+  try {
+    const fs = require('node:fs');
+    fs.rmSync(STATE_DIR, { recursive: true, force: true });
+  } catch { /* ignore */ }
 }

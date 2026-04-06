@@ -1,5 +1,5 @@
 ---
-name: boss
+name: cc-tmux-boss
 description: Guidance for boss agents on managing leaders, strategic direction, and organizational awareness in cc-tmux
 ---
 

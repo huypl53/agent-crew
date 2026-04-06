@@ -1,8 +1,9 @@
 import { ok } from '../shared/types.ts';
 import type { ToolResult } from '../shared/types.ts';
-import { getAllRooms, getRoomMembers } from '../state/index.ts';
+import { getAllRooms, getRoomMembers, syncFromDisk } from '../state/index.ts';
 
 export async function handleListRooms(): Promise<ToolResult> {
+  await syncFromDisk();
   const allRooms = getAllRooms();
 
   const rooms = allRooms.map(room => {

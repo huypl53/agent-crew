@@ -1,5 +1,5 @@
 ---
-name: worker
+name: cc-tmux-worker
 description: Guidance for worker agents on task execution and status reporting in cc-tmux rooms
 ---
 

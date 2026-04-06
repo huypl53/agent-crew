@@ -65,3 +65,49 @@ Left (30%): Room/agent tree with collapse, status colors, multi-room badges
 Right-top (70% x 65%): Chronological message feed, color-coded rooms
 Right-bottom (70% x 35%): Selected agent details
 ```
+
+## Installation Architecture
+
+```
+curl|sh (GitHub raw)
+  → git clone to ~/.cc-tmux/
+  → bun install
+  → copy skills/ → ~/.claude/skills/cc-tmux-*/SKILL.md  (user scope)
+  → merge MCP entry → ~/.claude.json mcpServers           (user scope)
+
+install.sh --project (from any project dir)
+  → copy skills/ → .claude/skills/cc-tmux-*/SKILL.md     (project scope)
+  → merge MCP entry → .mcp.json mcpServers                (project scope)
+```
+
+- User scope: `~/.claude.json` for MCP, `~/.claude/skills/` for skills — available everywhere
+- Project scope: `.mcp.json` + `.claude/skills/` — committed to repo for team sharing
+- MCP server path is always absolute: `~/.cc-tmux/src/index.ts`
+- JSON merging uses python3 (available on macOS + Linux) — preserves existing entries
+- No `.claude-plugin/` or `--plugin-dir` needed — direct config approach
+
+## UAT Insights
+
+### Push message format in tmux panes
+`[sender@room]: text` is delivered via `tmux send-keys -l` + Enter. Zsh shells show `no matches found` because brackets are glob chars — irrelevant in real CC usage since CC reads stdin directly.
+
+### Multi-process state sharing
+Each CC session spawns its own MCP server subprocess (via stdio transport). They share state through `/tmp/cc-tmux/state/*.json` files using a **read-merge-write** pattern:
+
+- `flushAsync()` reads existing disk state, merges with in-memory, then writes. This prevents processes from clobbering each other's data.
+- `syncFromDisk()` is called before every read operation (list_rooms, list_members, send_message, read_messages, get_status) to pick up state changes from other processes.
+- Room membership uses set-union during merge — members from all processes are combined.
+- Messages are deduplicated by `message_id` during merge.
+
+This was discovered and fixed during UAT when 3 simultaneous CC processes were overwriting each other's agent registrations.
+
+### Status detection scope
+CC-specific regexes (idle/busy/complete) only match the CC status line. A plain shell prompt returns "unknown" — correct behavior. Dead detection uses `tmux list-panes #{pane_dead}`, which returns true for non-existent panes.
+
+### Dashboard raw mode navigation
+The TUI dashboard runs in raw stdin mode (alternate screen). Navigation requires raw escape sequences (`\x1b[A`/`\x1b[B`), not tmux named keys like `Down`. The `q` key exits cleanly to the normal terminal.
+
+### Test architecture
+- **Unit tests** (53): Mock tmux via test helpers, test state/tools/patterns/dashboard rendering in isolation
+- **UAT tests** (27): Call real tool handlers against real tmux panes, verify push delivery via `capturePane`, state persistence via file reads
+- **Dashboard UAT**: Visual verification by tmux agent — launch, capture, navigate, quit

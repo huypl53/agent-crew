@@ -1,6 +1,6 @@
 import { ok, err } from '../shared/types.ts';
 import type { ToolResult } from '../shared/types.ts';
-import { getRoom, getRoomMembers } from '../state/index.ts';
+import { getRoom, getRoomMembers, syncFromDisk } from '../state/index.ts';
 
 interface ListMembersParams {
   room: string;
@@ -13,6 +13,7 @@ export async function handleListMembers(params: ListMembersParams): Promise<Tool
     return err('Missing required param: room');
   }
 
+  await syncFromDisk();
   const r = getRoom(room);
   if (!r) {
     return err(`Room "${room}" does not exist`);

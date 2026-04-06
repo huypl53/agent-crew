@@ -1,6 +1,6 @@
 import { ok, err } from '../shared/types.ts';
 import type { ToolResult } from '../shared/types.ts';
-import { getAgent, readMessages } from '../state/index.ts';
+import { getAgent, readMessages, syncFromDisk } from '../state/index.ts';
 
 interface ReadMessagesParams {
   name: string;
@@ -15,6 +15,7 @@ export async function handleReadMessages(params: ReadMessagesParams): Promise<To
     return err('Missing required param: name');
   }
 
+  await syncFromDisk();
   const agent = getAgent(name);
   if (!agent) {
     return err(`Agent "${name}" is not registered`);
