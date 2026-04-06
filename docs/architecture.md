@@ -11,8 +11,10 @@ Agent calls MCP tool
   → src/index.ts routes to tool handler in src/tools/
   → tool calls src/state/ for data operations
   → if send_message: tool calls src/delivery/
-    → delivery calls state.addMessage() (always, NFR6)
+    → delivery calls state.addMessage() (always, writes to roomMessages + inbox)
     → delivery calls tmux.sendKeys() (push mode only)
+    → if kind ∈ {completion, error, question} and sender is worker:
+        delivery calls tmux.sendKeys() for each leader (auto-notify)
   → tool returns MCP JSON response
 
 Dashboard reads /tmp/cc-tmux/state/*.json via fs.watch
@@ -39,13 +41,56 @@ dashboard → {shared, tmux (for polling)}
 state → tmux (for liveness validation)
 ```
 
+## Room Conversation Log
+
+Room is the canonical message store (v2 model):
+
+- `roomMessages: Map<room, Message[]>` — all messages in a room, in order, capped at 1000
+- `inboxes: Map<agent, Message[]>` — kept for backward compat (legacy `read_messages` without room param)
+- `cursors: Map<agent, Map<room, sequence>>` — per-agent read position per room
+
+### Message Kind
+
+Every message has an explicit `kind` field:
+
+| Kind | Sender | Meaning |
+|------|--------|---------|
+| `task` | leader | Work assignment to a worker |
+| `completion` | worker | Task finished successfully |
+| `error` | worker | Task failed or blocked |
+| `question` | worker | Needs clarification |
+| `status` | any | Progress update |
+| `chat` | any | General communication (default) |
+
+### Auto-Notification Routing
+
+When a worker sends `kind ∈ {completion, error, question}`, delivery automatically pushes a brief summary to all leaders in the room:
+
+```
+[system@frontend]: builder-1 completion: "Login component done"
+```
+
+This is a tmux push only (no inbox entry). Leaders receive the notification in their pane without polling.
+
+### Cursor-Based Room Reads
+
+`readRoomMessages(agentName, room, kinds?, limit?)`:
+1. Gets cursor position for agent+room (0 if never read)
+2. Filters room log for messages with `sequence > cursor`
+3. Optionally filters by `kinds` array
+4. Advances cursor to max sequence seen
+5. Returns `{ messages, next_sequence }`
+
+Calling `read_messages` with `room` param uses this path. Calling without `room` falls back to legacy inbox.
+
 ## Key Patterns
 
 - **Naming:** snake_case for MCP (tools, params, JSON), camelCase for TS, kebab-case for files
-- **Messages:** Always queued to inbox before push delivery (NFR6/NFR9)
+- **Messages:** Written to room log first, then inbox (backward compat), then push delivery
 - **Push format:** `[sender@room]: text` via `tmux send-keys -l`
+- **Auto-notify format:** `[system@room]: worker kind: "summary"` via `tmux send-keys -l`
 - **Status detection:** On-demand `capture-pane` + strip-ansi + regex match (idle/busy/dead/unknown)
-- **State persistence:** Write-through JSON flush after every mutation
+- **State persistence:** Write-through JSON flush after every mutation (agents, rooms, messages, room-messages)
 - **Error handling:** Tool handlers never throw — return `{ error: "..." }` with `isError: true`
 - **Terminal safety:** Dashboard registers cleanup on SIGINT/SIGTERM/uncaughtException
 
@@ -108,6 +153,6 @@ CC-specific regexes (idle/busy/complete) only match the CC status line. A plain 
 The TUI dashboard runs in raw stdin mode (alternate screen). Navigation requires raw escape sequences (`\x1b[A`/`\x1b[B`), not tmux named keys like `Down`. The `q` key exits cleanly to the normal terminal.
 
 ### Test architecture
-- **Unit tests** (53): Mock tmux via test helpers, test state/tools/patterns/dashboard rendering in isolation
-- **UAT tests** (27): Call real tool handlers against real tmux panes, verify push delivery via `capturePane`, state persistence via file reads
+- **Unit tests**: Mock tmux via test helpers, test state/tools/patterns/dashboard rendering in isolation
+- **UAT tests**: Call real tool handlers against real tmux panes, verify push delivery via `capturePane`, state persistence via file reads, auto-notify via pane capture
 - **Dashboard UAT**: Visual verification by tmux agent — launch, capture, navigate, quit

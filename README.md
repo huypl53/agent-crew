@@ -66,10 +66,36 @@ bun test --cwd ~/.cc-tmux
 | `join_room` | Register in a room with role + name |
 | `leave_room` | Leave a room |
 | `list_rooms` | List active rooms |
-| `list_members` | List room members |
-| `send_message` | Send push/pull message |
-| `read_messages` | Read inbox messages |
+| `list_members` | List room members (includes topic) |
+| `send_message` | Send push/pull message with optional `kind` |
+| `read_messages` | Read room log or inbox with optional `kinds` filter |
 | `get_status` | Check agent status |
+| `set_room_topic` | Set current objective for a room |
+
+### `send_message` params
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `room` | string | Room to send in |
+| `text` | string | Message text |
+| `name` | string | Your agent name (sender) |
+| `to` | string? | Target agent (omit for broadcast) |
+| `mode` | push\|pull | push = tmux delivery, pull = queue only (default: push) |
+| `kind` | task\|completion\|question\|error\|status\|chat | Message kind (default: chat) |
+
+Workers sending `completion`, `error`, or `question` automatically trigger a push notification to all leaders in the room.
+
+### `read_messages` params
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `name` | string | Your agent name |
+| `room` | string? | Room to read — uses room log + cursor when provided |
+| `kinds` | string[]? | Filter by kind (e.g. `["completion", "error"]`) |
+| `limit` | number? | Max messages (default 50) |
+| `since_sequence` | number? | Legacy inbox cursor (only when `room` omitted) |
+
+When `room` is provided, reads the full room conversation log (all members' messages) from your last-read position. Each call advances your cursor automatically.
 
 ## Skills
 
@@ -93,14 +119,21 @@ Read-only terminal observer. Shows rooms, agents, status, and messages in a 3-pa
 └────────────────────────────┘└─────────────────────────────────────┘
 ```
 
-Controls: `↑`/`↓` navigate, `Enter`/`Space` collapse/expand, `q` quit.
+### Keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| `↑` / `k` | Move up |
+| `↓` / `j` | Move down |
+| `Enter` / `Space` | Collapse/expand room |
+| `q` / `Ctrl-C` | Quit |
 
 ## Project Structure
 
 ```
 src/
 ├── index.ts          # MCP server entrypoint
-├── tools/            # 7 MCP tool handlers
+├── tools/            # 8 MCP tool handlers
 ├── tmux/             # tmux CLI wrapper
 ├── state/            # In-memory state + JSON persistence
 ├── delivery/         # Push (tmux) + pull (queue) delivery
