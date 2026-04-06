@@ -121,6 +121,14 @@ export function getRoomMembers(room: string): Agent[] {
   return r.members.map(name => agents.get(name)).filter((a): a is Agent => a !== undefined);
 }
 
+export function setRoomTopic(roomName: string, topic: string): boolean {
+  const room = rooms.get(roomName);
+  if (!room) return false;
+  room.topic = topic;
+  flushState();
+  return true;
+}
+
 export function isNameTakenInRoom(name: string, room: string): boolean {
   const r = rooms.get(room);
   if (!r) return false;
@@ -333,10 +341,15 @@ async function flushAsync(): Promise<void> {
 
   mergedMessages.sort((a, b) => a.sequence - b.sequence);
 
+  // Serialize room messages
+  const roomMsgData: Record<string, Message[]> = {};
+  for (const [k, v] of roomMessages) roomMsgData[k] = v;
+
   await Promise.all([
     Bun.write(`${STATE_DIR}/agents.json`, JSON.stringify(mergedAgents, null, 2)),
     Bun.write(`${STATE_DIR}/rooms.json`, JSON.stringify(mergedRooms, null, 2)),
     Bun.write(`${STATE_DIR}/messages.json`, JSON.stringify(mergedMessages, null, 2)),
+    Bun.write(`${STATE_DIR}/room-messages.json`, JSON.stringify(roomMsgData, null, 2)),
   ]);
 }
 
@@ -366,10 +379,15 @@ export async function loadState(): Promise<void> {
           if (!inbox) { inbox = []; inboxes.set(msg.to, inbox); }
           inbox.push(msg);
         }
-        // Also store in "all agents in room" for broadcast tracking
         if (msg.sequence > maxSeq) maxSeq = msg.sequence;
       }
       nextSequence = maxSeq + 1;
+    }
+
+    const roomMsgFile = Bun.file(`${STATE_DIR}/room-messages.json`);
+    if (await roomMsgFile.exists()) {
+      const data = JSON.parse(await roomMsgFile.text()) as Record<string, Message[]>;
+      for (const [k, v] of Object.entries(data)) roomMessages.set(k, v);
     }
   } catch {
     // State files corrupted or missing — start fresh
@@ -420,6 +438,24 @@ export async function syncFromDisk(): Promise<void> {
         if (msg.sequence >= maxSeq) maxSeq = msg.sequence + 1;
       }
       nextSequence = maxSeq;
+    }
+
+    const roomMsgFile = Bun.file(`${STATE_DIR}/room-messages.json`);
+    if (await roomMsgFile.exists()) {
+      const data = JSON.parse(await roomMsgFile.text()) as Record<string, Message[]>;
+      for (const [k, v] of Object.entries(data)) {
+        const existing = roomMessages.get(k);
+        if (existing) {
+          const seenIds = new Set(existing.map(m => m.message_id));
+          for (const m of v) {
+            if (!seenIds.has(m.message_id)) existing.push(m);
+          }
+          existing.sort((a, b) => a.sequence - b.sequence);
+          if (existing.length > MAX_ROOM_MESSAGES) existing.splice(0, existing.length - MAX_ROOM_MESSAGES);
+        } else {
+          roomMessages.set(k, v);
+        }
+      }
     }
   } catch { /* disk read failed — use stale in-memory */ }
 }

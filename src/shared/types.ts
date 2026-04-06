@@ -14,6 +14,7 @@ export interface Agent {
 export interface Room {
   name: string;
   members: string[];
+  topic?: string;
   created_at: string;
 }
 

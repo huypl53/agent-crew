@@ -27,5 +27,5 @@ export async function handleListMembers(params: ListMembersParams): Promise<Tool
     joined_at: agent.joined_at,
   }));
 
-  return ok({ room, members });
+  return ok({ room, topic: r.topic ?? null, members });
 }
