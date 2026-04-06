@@ -6,7 +6,8 @@ import { handleListMembers } from '../src/tools/list-members.ts';
 import { handleReadMessages } from '../src/tools/read-messages.ts';
 import { handleSendMessage } from '../src/tools/send-message.ts';
 import { clearState } from '../src/state/index.ts';
-import { createTestSession, destroyTestSession, cleanupAllTestSessions } from './helpers.ts';
+import { handleSetRoomTopic } from '../src/tools/set-room-topic.ts';
+import { createTestSession, destroyTestSession, cleanupAllTestSessions, captureFromPane } from './helpers.ts';
 
 let testPaneA: string;
 let testPaneB: string;
@@ -194,6 +195,71 @@ describe('MCP tools', () => {
       const data = JSON.parse(result.content[0]!.text);
       expect(data.messages.length).toBe(1);
       expect(data.messages[0].room).toBe('r1');
+    });
+
+    test('read_messages with room reads room log (not just inbox)', async () => {
+      await handleJoinRoom({ room: 'frontend', role: 'leader', name: 'lead-1', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'frontend', role: 'worker', name: 'w1', tmux_target: testPaneB });
+
+      // leader sends directed message to w1
+      await handleSendMessage({ room: 'frontend', text: 'build login', to: 'w1', name: 'lead-1' });
+
+      // lead-1 can also read the room log (even though msg was TO w1)
+      const result = await handleReadMessages({ name: 'lead-1', room: 'frontend' });
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.messages.length).toBe(1);
+      expect(data.messages[0].text).toBe('build login');
+    });
+
+    test('read_messages with kinds filter', async () => {
+      await handleJoinRoom({ room: 'r', role: 'leader', name: 'lead', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'r', role: 'worker', name: 'w1', tmux_target: testPaneB });
+
+      await handleSendMessage({ room: 'r', text: 'build it', to: 'w1', name: 'lead', kind: 'task' });
+      await handleSendMessage({ room: 'r', text: 'done!', to: 'lead', name: 'w1', kind: 'completion', mode: 'pull' });
+
+      const result = await handleReadMessages({ name: 'lead', room: 'r', kinds: ['completion'] });
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.messages.length).toBe(1);
+      expect(data.messages[0].kind).toBe('completion');
+    });
+
+    test('worker completion auto-notifies leader via push', async () => {
+      await handleJoinRoom({ room: 'frontend', role: 'leader', name: 'lead-1', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'frontend', role: 'worker', name: 'w1', tmux_target: testPaneB });
+
+      // worker sends pull completion to leader
+      await handleSendMessage({
+        room: 'frontend', text: 'Login component done', to: 'lead-1',
+        name: 'w1', mode: 'pull', kind: 'completion',
+      });
+
+      // Verify push was sent to leader's pane
+      await Bun.sleep(200);
+      const captured = await captureFromPane(testPaneA);
+      expect(captured).toContain('[system@frontend]');
+      expect(captured).toContain('w1');
+      expect(captured).toContain('Login component done');
+    });
+  });
+
+  describe('set_room_topic', () => {
+    test('sets and retrieves room topic', async () => {
+      await handleJoinRoom({ room: 'frontend', role: 'leader', name: 'lead-1', tmux_target: testPaneA });
+      const result = await handleSetRoomTopic({ room: 'frontend', text: 'Build auth system', name: 'lead-1' });
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.topic).toBe('Build auth system');
+
+      // Verify it shows in list_members
+      const members = await handleListMembers({ room: 'frontend' });
+      const membersData = JSON.parse(members.content[0]!.text);
+      expect(membersData.topic).toBe('Build auth system');
+    });
+
+    test('rejects non-member setting topic', async () => {
+      await handleJoinRoom({ room: 'frontend', role: 'leader', name: 'lead-1', tmux_target: testPaneA });
+      const result = await handleSetRoomTopic({ room: 'frontend', text: 'Hack', name: 'outsider' });
+      expect(result.isError).toBe(true);
     });
   });
 });

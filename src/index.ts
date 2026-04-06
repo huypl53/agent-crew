@@ -13,6 +13,7 @@ import { handleListMembers } from './tools/list-members.ts';
 import { handleSendMessage } from './tools/send-message.ts';
 import { handleReadMessages } from './tools/read-messages.ts';
 import { handleGetStatus } from './tools/get-status.ts';
+import { handleSetRoomTopic } from './tools/set-room-topic.ts';
 import { err } from './shared/types.ts';
 
 // Validate tmux
@@ -91,6 +92,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           name: { type: 'string', description: 'Your agent name (sender)' },
           to: { type: 'string', description: 'Target agent name (omit for broadcast)' },
           mode: { type: 'string', enum: ['push', 'pull'], description: 'Delivery mode (default: push)' },
+          kind: { type: 'string', enum: ['task', 'completion', 'question', 'error', 'status', 'chat'], description: 'Message kind (default: chat)' },
         },
         required: ['room', 'text', 'name'],
       },
@@ -102,8 +104,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         type: 'object' as const,
         properties: {
           name: { type: 'string', description: 'Your agent name' },
-          room: { type: 'string', description: 'Filter by room (optional)' },
-          since_sequence: { type: 'number', description: 'Return only messages after this sequence number' },
+          room: { type: 'string', description: 'Filter by room (optional) — uses room log with cursor when provided' },
+          since_sequence: { type: 'number', description: 'Return only messages after this sequence number (legacy inbox mode only)' },
+          kinds: { type: 'array', items: { type: 'string' }, description: 'Filter by message kind (task, completion, question, error, status, chat)' },
+          limit: { type: 'number', description: 'Max messages to return (default 50)' },
         },
         required: ['name'],
       },
@@ -117,6 +121,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           agent_name: { type: 'string', description: 'Agent to check (optional, defaults to self)' },
           name: { type: 'string', description: 'Your agent name (for self-status)' },
         },
+      },
+    },
+    {
+      name: 'set_room_topic',
+      description: 'Set the current objective/topic for a room. Only room members can set the topic.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          room: { type: 'string', description: 'Room name' },
+          text: { type: 'string', description: 'Topic or objective text' },
+          name: { type: 'string', description: 'Your agent name' },
+        },
+        required: ['room', 'text', 'name'],
       },
     },
   ],
@@ -142,6 +159,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleReadMessages(args as any);
       case 'get_status':
         return await handleGetStatus(args as any);
+      case 'set_room_topic':
+        return await handleSetRoomTopic(args as any);
       default:
         return err(`Unknown tool: ${name}`);
     }
