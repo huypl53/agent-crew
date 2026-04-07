@@ -81,29 +81,39 @@ function AgentDetails({ agent, status, rooms, messages, height }: { agent: Agent
   }
 
   const agentStats = useMemo(() => {
-    let sent = 0, received = 0, tasksDone = 0, tasksError = 0, tasksOpen = 0;
+    let sent = 0, received = 0, tasksDone = 0, tasksError = 0;
     const durations: number[] = [];
-    const openTasks: { assignedAt: number }[] = [];
+    const openTasks: { assignedAt: number; matched: boolean }[] = [];
 
+    // First pass: collect tasks assigned to this agent and count messages
     for (const m of messages) {
       if (m.from === agent.name) sent++;
       if (m.to === agent.name) {
         received++;
         if (m.kind === 'task') {
-          openTasks.push({ assignedAt: new Date(m.timestamp).getTime() });
-        }
-      }
-      if (m.from === agent.name && (m.kind === 'completion' || m.kind === 'error')) {
-        const task = openTasks.shift();
-        if (task) {
-          const dur = new Date(m.timestamp).getTime() - task.assignedAt;
-          durations.push(dur);
-          if (m.kind === 'completion') tasksDone++;
-          else tasksError++;
+          openTasks.push({ assignedAt: new Date(m.timestamp).getTime(), matched: false });
         }
       }
     }
-    tasksOpen = openTasks.length;
+
+    // Second pass: match completions/errors to most-recent open task (same strategy as useTaskTracker)
+    for (const m of messages) {
+      if (m.from !== agent.name || (m.kind !== 'completion' && m.kind !== 'error')) continue;
+      const closeTime = new Date(m.timestamp).getTime();
+      let bestIdx = -1;
+      for (let i = 0; i < openTasks.length; i++) {
+        const t = openTasks[i]!;
+        if (t.matched || t.assignedAt > closeTime) continue;
+        if (bestIdx === -1 || t.assignedAt > openTasks[bestIdx]!.assignedAt) bestIdx = i;
+      }
+      if (bestIdx !== -1) {
+        openTasks[bestIdx]!.matched = true;
+        durations.push(closeTime - openTasks[bestIdx]!.assignedAt);
+        if (m.kind === 'completion') tasksDone++;
+        else tasksError++;
+      }
+    }
+    const tasksOpen = openTasks.filter(t => !t.matched).length;
 
     const avgDuration = durations.length > 0
       ? Math.floor(durations.reduce((a, b) => a + b, 0) / durations.length)
