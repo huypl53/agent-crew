@@ -42,7 +42,7 @@ export const DetailsPanel = memo(function DetailsPanel({ agent, agentStatus, sel
 
 function RoomOverview({ rooms, messages }: { rooms: Record<string, Room>; messages: Message[] }) {
   const roomStats = useMemo(() => {
-    const stats: { name: string; members: number; tasks: number; done: number; errors: number; open: number; lastActive: string }[] = [];
+    const stats: { name: string; members: number; tasks: number; done: number; errors: number; open: number; lastActive: string; lastTs: number }[] = [];
 
     for (const room of Object.values(rooms)) {
       let tasks = 0, done = 0, errors = 0, lastTs = 0;
@@ -69,14 +69,11 @@ function RoomOverview({ rooms, messages }: { rooms: Record<string, Room>; messag
         errors,
         open: Math.max(0, tasks - done - errors),
         lastActive: lastActive || '-',
+        lastTs,
       });
     }
 
-    return stats.sort((a, b) => {
-      if (a.lastActive === '-' && b.lastActive !== '-') return 1;
-      if (a.lastActive !== '-' && b.lastActive === '-') return -1;
-      return 0;
-    });
+    return stats.sort((a, b) => b.lastTs - a.lastTs);
   }, [rooms, messages]);
 
   if (roomStats.length === 0) {

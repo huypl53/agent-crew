@@ -24,13 +24,16 @@ interface MessageFeedPanelProps {
 
 export const MessageFeedPanel = memo(function MessageFeedPanel({ messages, roomFilter, height, enabledKinds }: MessageFeedPanelProps) {
   const maxLines = Math.max(1, height - 2);
-  const filtered = (roomFilter ? messages.filter(m => m.room === roomFilter) : messages)
-    .filter(m => enabledKinds.has(m.kind as MessageKind));
-  const visible = filtered.slice(-maxLines);
   const title = roomFilter ? `Messages [${roomFilter}]` : 'Messages';
 
   const allOn = enabledKinds.size === 6;
   const filterStr = allOn ? '' : ` T:${enabledKinds.has('task') ? 'on' : 'off'} D:${enabledKinds.has('completion') ? 'on' : 'off'} E:${enabledKinds.has('error') ? 'on' : 'off'} ?:${enabledKinds.has('question') ? 'on' : 'off'} S:${enabledKinds.has('status') ? 'on' : 'off'} C:${enabledKinds.has('chat') ? 'on' : 'off'}`;
+
+  const filtered = useMemo(() =>
+    (roomFilter ? messages.filter(m => m.room === roomFilter) : messages)
+      .filter(m => enabledKinds.has(m.kind as MessageKind)),
+    [messages, roomFilter, enabledKinds],
+  );
 
   const responseMap = useMemo(() => {
     const map = new Map<string, FormattedMessage | null>();
@@ -67,6 +70,12 @@ export const MessageFeedPanel = memo(function MessageFeedPanel({ messages, roomF
     }
     return ids;
   }, [responseMap]);
+
+  // Filter out threaded responses BEFORE slicing so they don't eat maxLines slots
+  const visible = useMemo(() =>
+    filtered.filter(m => !threadedIds.has(m.id)).slice(-maxLines),
+    [filtered, threadedIds, maxLines],
+  );
 
   return (
     <Box flexDirection="column" borderStyle="single" height={height}>
@@ -110,7 +119,7 @@ export const MessageFeedPanel = memo(function MessageFeedPanel({ messages, roomF
 
         return elements;
       })}
-      {filtered.length > maxLines && <Text dimColor> ↑ {filtered.length - maxLines} more</Text>}
+      {filtered.length - threadedIds.size > maxLines && <Text dimColor> ↑ {filtered.length - threadedIds.size - maxLines} more</Text>}
     </Box>
   );
 });

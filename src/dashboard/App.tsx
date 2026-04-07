@@ -14,6 +14,7 @@ import { hasErrors, logError } from './logger.ts';
 import type { MessageKind } from '../shared/types.ts';
 
 const POLL_INTERVAL = 2000;
+const ALL_KINDS: MessageKind[] = ['task', 'completion', 'error', 'question', 'status', 'chat'];
 
 export function App() {
   const { exit } = useApp();
@@ -42,7 +43,6 @@ export function App() {
   const { messages, update: updateFeed } = useFeed();
   const tree = useTree(state.agents, state.rooms, statuses);
   const [showHelp, setShowHelp] = useState(false);
-  const ALL_KINDS: MessageKind[] = ['task', 'completion', 'error', 'question', 'status', 'chat'];
   const [enabledKinds, setEnabledKinds] = useState<Set<MessageKind>>(new Set(ALL_KINDS));
 
   // Update feed when state changes
