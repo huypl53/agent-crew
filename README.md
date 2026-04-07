@@ -25,60 +25,67 @@ Communication: push messages (tmux send-keys for commands) + pull messages (serv
 
 ## Installation
 
-### Claude Code
+### Quick Install
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/OWNER/crew.git ~/.crew
+git clone https://github.com/huypl53/agent-crew.git ~/.crew
+cd ~/.crew
+
+# Claude Code
+./install.sh
+
+# Codex CLI
+./install.sh --codex
+
+# Both platforms
+./install.sh --all
+```
+
+The installer handles plugin registration, MCP server setup, and (for Codex) tool approval configuration automatically.
+
+### Manual Install — Claude Code
+
+```bash
+git clone https://github.com/huypl53/agent-crew.git ~/.crew
 cd ~/.crew && bun install
 
-# 2. Register the local marketplace and install the plugin
 claude plugins marketplace add ~/.crew
 claude plugins install crew@crew-plugins
 
-# 3. Verify — all 5 skills should appear
+# Verify — all 5 skills should appear
 claude --print "list skills" | grep crew
 ```
 
-Skills appear as `/crew:boss`, `/crew:join-room`, `/crew:leader`, `/crew:worker`, `/crew:refresh`.
+Skills: `/crew:boss`, `/crew:join-room`, `/crew:leader`, `/crew:worker`, `/crew:refresh`.
 
-### OpenAI Codex CLI
-
-**Option 1: Full plugin (skills + MCP tools)**
+### Manual Install — Codex CLI
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/OWNER/crew.git ~/.crew
+git clone https://github.com/huypl53/agent-crew.git ~/.crew
 cd ~/.crew && bun install
 
-# 2. Add MCP server
+# MCP server
 codex mcp add crew -- bun run ~/.crew/src/index.ts
 
-# 3. Symlink into Codex plugin directory
+# Plugin (skills)
 ln -s ~/.crew ~/.codex/.tmp/plugins/plugins/crew
 
-# 4. Register in marketplace — add this entry to the "plugins" array in
-#    ~/.codex/.tmp/plugins/.agents/plugins/marketplace.json:
-{
-  "name": "crew",
-  "source": { "source": "local", "path": "./plugins/crew" },
-  "policy": { "installation": "INSTALLED_BY_DEFAULT", "authentication": "ON_INSTALL" },
-  "category": "Productivity"
-}
-
-# 5. Verify — open codex, type /plugins, crew should show as Installed
-codex
+# Tool approvals for --full-auto mode (required per tool)
+# The installer handles this automatically, or add manually to ~/.codex/config.toml:
+# [mcp_servers.crew.tools.join_room]
+# approval_mode = "approve"
+# ... repeat for all 9 tools
 ```
 
-Skills appear as `crew:boss`, `crew:join-room`, `crew:leader`, `crew:worker`, `crew:refresh`.
+Skills: `crew:boss`, `crew:join-room`, `crew:leader`, `crew:worker`, `crew:refresh`.
 
-**Option 2: MCP server only (no skills)**
+### Uninstall
 
 ```bash
-codex mcp add crew -- bun run ~/.crew/src/index.ts
+./install.sh --uninstall          # Claude Code
+./install.sh --uninstall-codex    # Codex CLI
+./install.sh --uninstall-all      # Both
 ```
-
-This gives you the 9 MCP tools without the role-based skills.
 
 ## Usage
 

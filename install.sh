@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# cc-tmux installer
+# crew installer
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/OWNER/cc-tmux/main/install.sh | sh
-#   install.sh              — install globally (user scope)
-#   install.sh --project    — install into current project
-#   install.sh --uninstall  — remove global install
-#   install.sh --uninstall-project — remove from current project
-#   install.sh --update     — pull latest and re-copy skills
+#   install.sh                — install for Claude Code (plugin system)
+#   install.sh --codex        — install for Codex CLI (MCP + plugin)
+#   install.sh --all          — install for both platforms
+#   install.sh --uninstall    — remove from Claude Code
+#   install.sh --uninstall-codex — remove from Codex CLI
 
-INSTALL_DIR="$HOME/.cc-tmux"
-REPO_URL="https://github.com/OWNER/cc-tmux.git"
-SKILLS=(join-room boss leader worker)
-CLAUDE_JSON="$HOME/.claude.json"
+INSTALL_DIR="$HOME/.crew"
+REPO_URL="https://github.com/huypl53/agent-crew.git"
+CODEX_CONFIG="$HOME/.codex/config.toml"
+CODEX_PLUGINS_DIR="$HOME/.codex/.tmp/plugins/plugins"
+CODEX_MARKETPLACE="$HOME/.codex/.tmp/plugins/.agents/plugins/marketplace.json"
+
+CREW_TOOLS=(get_status join_room leave_room list_members list_rooms read_messages refresh send_message set_room_topic)
 
 # Colors
 RED='\033[0;31m'
@@ -31,219 +33,132 @@ fail()  { echo -e "${RED}✗${NC} $*"; exit 1; }
 
 check_prereqs() {
   local missing=0
-  command -v git  >/dev/null 2>&1 || { warn "git not found — required for installation"; missing=1; }
+  command -v git  >/dev/null 2>&1 || { warn "git not found"; missing=1; }
   command -v bun  >/dev/null 2>&1 || { warn "bun not found — required runtime (https://bun.sh)"; missing=1; }
   command -v tmux >/dev/null 2>&1 || { warn "tmux not found — required for agent coordination"; missing=1; }
-  command -v claude >/dev/null 2>&1 || warn "claude not found — install Claude Code to use cc-tmux"
   if [ "$missing" -eq 1 ]; then fail "Missing required dependencies"; fi
 }
 
-# --- JSON helpers (no jq dependency) ---
+# --- Clone / update repo ---
 
-# Merge an MCP server entry into a JSON file's mcpServers object
-# Usage: merge_mcp_server <file> <server_name> <json_value>
-merge_mcp_server() {
-  local file="$1" name="$2" value="$3"
-
-  if [ ! -f "$file" ]; then
-    # Create new file with just mcpServers
-    cat > "$file" <<JSONEOF
-{
-  "mcpServers": {
-    "$name": $value
-  }
-}
-JSONEOF
-    return
-  fi
-
-  # Use python3 (available on macOS + Linux) for safe JSON merge
-  python3 -c "
-import json, sys
-with open('$file', 'r') as f:
-    data = json.load(f)
-if 'mcpServers' not in data:
-    data['mcpServers'] = {}
-data['mcpServers']['$name'] = json.loads('''$value''')
-with open('$file', 'w') as f:
-    json.dump(data, f, indent=2)
-    f.write('\n')
-"
-}
-
-# Remove an MCP server entry from a JSON file
-# Usage: remove_mcp_server <file> <server_name>
-remove_mcp_server() {
-  local file="$1" name="$2"
-  [ ! -f "$file" ] && return
-
-  python3 -c "
-import json
-with open('$file', 'r') as f:
-    data = json.load(f)
-if 'mcpServers' in data and '$name' in data['mcpServers']:
-    del data['mcpServers']['$name']
-    if not data['mcpServers']:
-        del data['mcpServers']
-with open('$file', 'w') as f:
-    json.dump(data, f, indent=2)
-    f.write('\n')
-"
-}
-
-# --- Skill operations ---
-
-install_skills() {
-  local target_dir="$1"
-  mkdir -p "$target_dir"
-  for skill in "${SKILLS[@]}"; do
-    local src="$INSTALL_DIR/skills/$skill/SKILL.md"
-    local dst="$target_dir/cc-tmux-$skill"
-    mkdir -p "$dst"
-    cp "$src" "$dst/SKILL.md"
-  done
-}
-
-remove_skills() {
-  local target_dir="$1"
-  for skill in "${SKILLS[@]}"; do
-    rm -rf "$target_dir/cc-tmux-$skill"
-  done
-}
-
-# --- MCP server JSON value ---
-
-mcp_server_value() {
-  cat <<JSONEOF
-{
-      "command": "bun",
-      "args": ["run", "$INSTALL_DIR/src/index.ts"]
-    }
-JSONEOF
-}
-
-# --- Commands ---
-
-cmd_install() {
-  check_prereqs
-
-  info "Installing cc-tmux to $INSTALL_DIR..."
-
+ensure_repo() {
   if [ -d "$INSTALL_DIR" ] || [ -L "$INSTALL_DIR" ]; then
-    warn "$INSTALL_DIR already exists — updating instead"
+    info "Updating $INSTALL_DIR..."
     cd "$(readlink -f "$INSTALL_DIR")"
     git pull --ff-only origin main 2>/dev/null || git pull --ff-only 2>/dev/null || true
   else
+    info "Cloning crew to $INSTALL_DIR..."
     git clone "$REPO_URL" "$INSTALL_DIR"
   fi
 
   info "Installing dependencies..."
   cd "$(readlink -f "$INSTALL_DIR")"
   bun install --frozen-lockfile 2>/dev/null || bun install
-
-  info "Installing skills to ~/.claude/skills/..."
-  install_skills "$HOME/.claude/skills"
-
-  info "Adding MCP server to ~/.claude.json..."
-  merge_mcp_server "$CLAUDE_JSON" "cc-tmux" "$(mcp_server_value)"
-
-  echo ""
-  ok "cc-tmux installed globally!"
-  echo ""
-  echo "  Skills available in all CC sessions:"
-  echo "    /cc-tmux-join-room  — Register as boss/leader/worker"
-  echo "    /cc-tmux-boss       — Boss coordination patterns"
-  echo "    /cc-tmux-leader     — Leader management patterns"
-  echo "    /cc-tmux-worker     — Worker task patterns"
-  echo ""
-  echo "  MCP tools: join_room, leave_room, list_rooms, list_members,"
-  echo "             send_message, read_messages, get_status"
-  echo ""
-  echo "  Optional: install into a specific project:"
-  echo "    cd your-project && $INSTALL_DIR/install.sh --project"
-  echo ""
 }
 
-cmd_local() {
+# --- Claude Code ---
+
+cmd_claude() {
   check_prereqs
+  command -v claude >/dev/null 2>&1 || fail "claude not found — install Claude Code first"
 
-  # Resolve the directory containing this script
-  local script_dir
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  ensure_repo
 
-  info "Installing cc-tmux locally from $script_dir..."
+  info "Registering crew marketplace..."
+  claude plugins marketplace add "$INSTALL_DIR" 2>/dev/null && ok "Marketplace registered" || warn "Marketplace may already be registered"
 
-  if [ -d "$INSTALL_DIR" ] && [ ! -L "$INSTALL_DIR" ]; then
-    fail "$INSTALL_DIR exists and is not a symlink. Remove it first or use --uninstall."
-  fi
-
-  # Symlink ~/.cc-tmux → local repo
-  rm -f "$INSTALL_DIR"
-  ln -sfn "$script_dir" "$INSTALL_DIR"
-  ok "Symlinked $INSTALL_DIR → $script_dir"
-
-  info "Installing dependencies..."
-  cd "$script_dir"
-  bun install --frozen-lockfile 2>/dev/null || bun install
-
-  info "Installing skills to ~/.claude/skills/..."
-  install_skills "$HOME/.claude/skills"
-
-  info "Adding MCP server to ~/.claude.json..."
-  merge_mcp_server "$CLAUDE_JSON" "cc-tmux" "$(mcp_server_value)"
+  info "Installing crew plugin..."
+  claude plugins install crew@crew-plugins 2>/dev/null && ok "Plugin installed" || warn "Plugin may already be installed"
 
   echo ""
-  ok "cc-tmux installed locally!"
+  ok "crew installed for Claude Code!"
   echo ""
-  echo "  Linked: $INSTALL_DIR → $script_dir"
+  echo "  Skills: /crew:join-room  /crew:boss  /crew:leader  /crew:worker  /crew:refresh"
+  echo "  MCP tools: join_room, send_message, read_messages, list_rooms, ..."
   echo ""
-  echo "  Skills available in all CC sessions:"
-  echo "    /cc-tmux-join-room  — Register as boss/leader/worker"
-  echo "    /cc-tmux-boss       — Boss coordination patterns"
-  echo "    /cc-tmux-leader     — Leader management patterns"
-  echo "    /cc-tmux-worker     — Worker task patterns"
-  echo ""
-  echo "  MCP tools: join_room, leave_room, list_rooms, list_members,"
-  echo "             send_message, read_messages, get_status"
-  echo ""
-  echo "  Per-project install:  cd your-project && $INSTALL_DIR/install.sh --project"
-  echo "  Uninstall:            $INSTALL_DIR/install.sh --uninstall"
+  echo "  Dashboard: bun run --cwd $INSTALL_DIR dashboard"
   echo ""
 }
 
-cmd_project() {
-  if [ ! -d "$INSTALL_DIR" ]; then
-    fail "cc-tmux not installed globally. Run install.sh first (without --project)"
+# --- Codex CLI ---
+
+cmd_codex() {
+  check_prereqs
+  command -v codex >/dev/null 2>&1 || fail "codex not found — install Codex CLI first"
+
+  ensure_repo
+
+  # 1. Add MCP server
+  info "Adding crew MCP server..."
+  codex mcp remove crew 2>/dev/null || true
+  codex mcp add crew -- bun run "$INSTALL_DIR/src/index.ts" 2>/dev/null
+  ok "MCP server registered"
+
+  # 2. Add tool approval modes (required for --full-auto)
+  info "Configuring tool approvals..."
+  if [ -f "$CODEX_CONFIG" ]; then
+    for tool in "${CREW_TOOLS[@]}"; do
+      if ! grep -q "mcp_servers.crew.tools.${tool}" "$CODEX_CONFIG" 2>/dev/null; then
+        cat >> "$CODEX_CONFIG" <<EOF
+
+[mcp_servers.crew.tools.${tool}]
+approval_mode = "approve"
+EOF
+      fi
+    done
+    ok "Tool approval modes configured"
+  else
+    warn "Could not find $CODEX_CONFIG — tool approvals not set"
   fi
 
-  local project_dir
-  project_dir="$(pwd)"
+  # 3. Symlink into plugin directory
+  if [ -d "$CODEX_PLUGINS_DIR" ]; then
+    info "Installing crew plugin..."
+    rm -f "$CODEX_PLUGINS_DIR/crew"
+    ln -s "$INSTALL_DIR" "$CODEX_PLUGINS_DIR/crew"
 
-  info "Installing cc-tmux into project: $project_dir"
-
-  info "Copying skills to .claude/skills/..."
-  install_skills "$project_dir/.claude/skills"
-
-  info "Adding MCP server to .mcp.json..."
-  merge_mcp_server "$project_dir/.mcp.json" "cc-tmux" "$(mcp_server_value)"
+    # 4. Add to marketplace.json if not already there
+    if [ -f "$CODEX_MARKETPLACE" ] && ! grep -q '"crew"' "$CODEX_MARKETPLACE" 2>/dev/null; then
+      python3 -c "
+import json
+with open('$CODEX_MARKETPLACE', 'r') as f:
+    data = json.load(f)
+data['plugins'].append({
+    'name': 'crew',
+    'source': {'source': 'local', 'path': './plugins/crew'},
+    'policy': {'installation': 'INSTALLED_BY_DEFAULT', 'authentication': 'ON_INSTALL'},
+    'category': 'Productivity'
+})
+with open('$CODEX_MARKETPLACE', 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+" 2>/dev/null && ok "Plugin added to marketplace" || warn "Could not update marketplace.json — add manually"
+    else
+      ok "Plugin already in marketplace"
+    fi
+  else
+    warn "Codex plugins directory not found — plugin not symlinked (MCP tools still work)"
+  fi
 
   echo ""
-  ok "cc-tmux installed in project!"
-  echo "  Skills: .claude/skills/cc-tmux-*/"
-  echo "  MCP:    .mcp.json"
+  ok "crew installed for Codex CLI!"
   echo ""
-  echo "  Commit these files so teammates get cc-tmux too."
+  echo "  Skills: crew:join-room  crew:boss  crew:leader  crew:worker  crew:refresh"
+  echo "  MCP tools: join_room, send_message, read_messages, list_rooms, ..."
+  echo ""
+  echo "  Verify: codex → /plugins → crew should show 'Installed'"
+  echo "  Dashboard: bun run --cwd $INSTALL_DIR dashboard"
   echo ""
 }
 
-cmd_uninstall() {
-  info "Removing cc-tmux global install..."
+# --- Uninstall ---
 
-  remove_skills "$HOME/.claude/skills"
-  ok "Removed skills from ~/.claude/skills/"
+cmd_uninstall_claude() {
+  info "Removing crew from Claude Code..."
 
-  remove_mcp_server "$CLAUDE_JSON" "cc-tmux"
-  ok "Removed MCP server from ~/.claude.json"
+  if command -v claude >/dev/null 2>&1; then
+    claude plugins uninstall crew@crew-plugins 2>/dev/null && ok "Plugin uninstalled" || warn "Plugin may not be installed"
+  fi
 
   if [ -d "$INSTALL_DIR" ]; then
     rm -rf "$INSTALL_DIR"
@@ -251,85 +166,70 @@ cmd_uninstall() {
   fi
 
   echo ""
-  ok "cc-tmux uninstalled."
+  ok "crew removed from Claude Code."
   echo ""
 }
 
-cmd_uninstall_project() {
-  local project_dir
-  project_dir="$(pwd)"
+cmd_uninstall_codex() {
+  info "Removing crew from Codex CLI..."
 
-  info "Removing cc-tmux from project: $project_dir"
+  if command -v codex >/dev/null 2>&1; then
+    codex mcp remove crew 2>/dev/null && ok "MCP server removed" || warn "MCP server may not be registered"
+  fi
 
-  remove_skills "$project_dir/.claude/skills"
-  ok "Removed skills from .claude/skills/"
+  # Remove plugin symlink
+  if [ -L "$CODEX_PLUGINS_DIR/crew" ]; then
+    rm -f "$CODEX_PLUGINS_DIR/crew"
+    ok "Plugin symlink removed"
+  fi
 
-  remove_mcp_server "$project_dir/.mcp.json" "cc-tmux"
-  ok "Removed MCP server from .mcp.json"
-
-  # Clean up empty .mcp.json
-  if [ -f "$project_dir/.mcp.json" ]; then
-    local content
-    content="$(python3 -c "
+  # Remove from marketplace.json
+  if [ -f "$CODEX_MARKETPLACE" ] && grep -q '"crew"' "$CODEX_MARKETPLACE" 2>/dev/null; then
+    python3 -c "
 import json
-with open('$project_dir/.mcp.json') as f:
-    d = json.load(f)
-# Remove if only empty object or only has empty mcpServers
-if not d or d == {} or d == {'mcpServers': {}}:
-    print('empty')
-else:
-    print('keep')
-" 2>/dev/null || echo 'keep')"
-    if [ "$content" = "empty" ]; then
-      rm "$project_dir/.mcp.json"
-      ok "Removed empty .mcp.json"
-    fi
+with open('$CODEX_MARKETPLACE', 'r') as f:
+    data = json.load(f)
+data['plugins'] = [p for p in data['plugins'] if p.get('name') != 'crew']
+with open('$CODEX_MARKETPLACE', 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+" 2>/dev/null && ok "Removed from marketplace" || warn "Could not update marketplace.json"
+  fi
+
+  # Remove tool approval entries from config.toml
+  if [ -f "$CODEX_CONFIG" ]; then
+    for tool in "${CREW_TOOLS[@]}"; do
+      sed -i "/\[mcp_servers\.crew\.tools\.${tool}\]/,/approval_mode/d" "$CODEX_CONFIG" 2>/dev/null
+    done
+    # Remove empty crew plugin entry
+    sed -i '/\[plugins\."crew@openai-curated"\]/,/enabled/d' "$CODEX_CONFIG" 2>/dev/null
+    ok "Cleaned config.toml"
   fi
 
   echo ""
-  ok "cc-tmux removed from project."
-  echo ""
-}
-
-cmd_update() {
-  if [ ! -d "$INSTALL_DIR" ]; then
-    fail "cc-tmux not installed. Run install.sh first"
-  fi
-
-  info "Updating cc-tmux..."
-  cd "$INSTALL_DIR"
-  git pull --ff-only origin main 2>/dev/null || git pull --ff-only 2>/dev/null || fail "Failed to pull updates"
-
-  info "Updating dependencies..."
-  bun install --frozen-lockfile 2>/dev/null || bun install
-
-  info "Updating skills..."
-  install_skills "$HOME/.claude/skills"
-
-  echo ""
-  ok "cc-tmux updated!"
+  ok "crew removed from Codex CLI."
   echo ""
 }
 
 # --- Main ---
 
 case "${1:-}" in
-  --local)             cmd_local ;;
-  --project)           cmd_project ;;
-  --uninstall)         cmd_uninstall ;;
-  --uninstall-project) cmd_uninstall_project ;;
-  --update)            cmd_update ;;
+  --codex)             cmd_codex ;;
+  --all)               cmd_claude; cmd_codex ;;
+  --uninstall)         cmd_uninstall_claude ;;
+  --uninstall-codex)   cmd_uninstall_codex ;;
+  --uninstall-all)     cmd_uninstall_claude; cmd_uninstall_codex ;;
   --help|-h)
-    echo "cc-tmux installer"
+    echo "crew installer"
     echo ""
     echo "Usage:"
-    echo "  install.sh              Install globally (git clone)"
-    echo "  install.sh --local      Install from local repo (symlink)"
-    echo "  install.sh --project    Install into current project"
-    echo "  install.sh --uninstall  Remove global install"
-    echo "  install.sh --uninstall-project  Remove from current project"
-    echo "  install.sh --update     Pull latest and re-copy skills"
+    echo "  install.sh              Install for Claude Code"
+    echo "  install.sh --codex      Install for Codex CLI"
+    echo "  install.sh --all        Install for both platforms"
+    echo "  install.sh --uninstall  Remove from Claude Code"
+    echo "  install.sh --uninstall-codex  Remove from Codex CLI"
+    echo "  install.sh --uninstall-all    Remove from both platforms"
     ;;
-  "")                  cmd_install ;;
+  "")                  cmd_claude ;;
   *)                   fail "Unknown option: $1. Use --help for usage." ;;
 esac
