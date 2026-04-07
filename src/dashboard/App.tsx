@@ -11,6 +11,7 @@ import { StatusBar } from './components/StatusBar.tsx';
 import { HelpOverlay } from './components/HelpOverlay.tsx';
 import { HeaderStats } from './components/HeaderStats.tsx';
 import { hasErrors, logError } from './logger.ts';
+import type { MessageKind } from '../shared/types.ts';
 
 const POLL_INTERVAL = 2000;
 
@@ -41,6 +42,8 @@ export function App() {
   const { messages, update: updateFeed } = useFeed();
   const tree = useTree(state.agents, state.rooms, statuses);
   const [showHelp, setShowHelp] = useState(false);
+  const ALL_KINDS: MessageKind[] = ['task', 'completion', 'error', 'question', 'status', 'chat'];
+  const [enabledKinds, setEnabledKinds] = useState<Set<MessageKind>>(new Set(ALL_KINDS));
 
   // Update feed when state changes
   useEffect(() => { updateFeed(state.messages); }, [state.messages]);
@@ -70,6 +73,16 @@ export function App() {
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) { exit(); return; }
     if (input === '?') { setShowHelp(h => !h); return; }
+    const kindMap: Record<string, MessageKind> = { '1': 'task', '2': 'completion', '3': 'error', '4': 'question', '5': 'status', '6': 'chat' };
+    if (kindMap[input]) {
+      setEnabledKinds(prev => {
+        const next = new Set(prev);
+        if (next.has(kindMap[input]!)) next.delete(kindMap[input]!);
+        else next.add(kindMap[input]!);
+        return next;
+      });
+      return;
+    }
     if (input === 'k' || key.upArrow) { tree.moveUp(); return; }
     if (input === 'j' || key.downArrow) { tree.moveDown(); return; }
     if (input === 'g') { tree.moveToTop(); return; }
@@ -91,7 +104,7 @@ export function App() {
       <Box flexDirection="row" height={layout.panelRows}>
         <TreePanel nodes={tree.nodes} selectedIndex={tree.selectedIndex} height={layout.panelRows} width={layout.treeW} statuses={statuses} messages={state.messages} />
         <Box flexDirection="column" flexGrow={1}>
-          <MessageFeedPanel messages={messages} roomFilter={tree.selectedRoomName} height={layout.topH} />
+          <MessageFeedPanel messages={messages} roomFilter={tree.selectedRoomName} height={layout.topH} enabledKinds={enabledKinds} />
           {showHelp ? (
             <Box flexDirection="column" borderStyle="single" height={layout.bottomH} justifyContent="center" alignItems="center">
               <HelpOverlay />
