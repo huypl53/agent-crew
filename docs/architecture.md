@@ -176,10 +176,10 @@ The dashboard is a React+Ink application using **ink 6.8.0**, **react 19**, and 
 App
 ├── HeaderStats          (top row, full width — agent/task/error/uptime summary)
 ├── Layout (flexDirection="row")
-│   ├── TreePanel          (width=30%, left column — error badges [N!])
+│   ├── TreePanel          (width=30%, left column — error badges [N!], activity sparklines)
 │   ├── Box (width=70%, flexDirection="column")
-│   │   ├── MessageFeedPanel  (flexGrow=2)
-│   │   └── DetailsPanel      (flexGrow=1 — task tracker + agent stats)
+│   │   ├── MessageFeedPanel  (flexGrow=2 — kind filters 1-6, Q&A threading)
+│   │   └── DetailsPanel      (flexGrow=1 — task tracker + agent stats + room overview)
 │   └── StatusBar          (bottom row, full width)
 │       └── HelpOverlay    (rendered when ? pressed)
 ```
@@ -203,11 +203,15 @@ useStateReader (polls every 500ms)
 Top row: HeaderStats — agent counts (busy/idle/dead), task progress (done/total), errors, uptime
          Compact mode (<100 cols): 4↑ 1○ 1✗ │ 12/15✓ 2✗ │ 1h23m
          Wide mode:   Agents: 4 busy  1 idle  1 dead │ Tasks: 12/15 done │ 2 errors │ Up: 1h 23m
-Left (30%): Room/agent tree — agents appear under ALL rooms (dim + ◦ for secondary)
-            Error badges: [N!] in red after agent name when kind=error messages exist
+Left (30%): Room/agent tree — agents under ALL rooms (dim + ◦ for secondary)
+            Error badges: [N!] in red after agent name
+            Activity sparklines: ▁▂▃▅▇▅▃▁▁▂ (10 buckets, 1min each, relative to agent max)
+            Width-adaptive: hides role suffix/sparkline on narrow terminals
 Right-top (70% x 65%): Chronological message feed, color-coded by room
+            Kind filter toggles: 1=task, 2=done, 3=error, 4=question, 5=status, 6=chat
+            Q&A threading: question→response pairs indented with └─, unanswered highlighted
 Right-bottom (70% x 35%): Context-sensitive details (see DetailsPanel below)
-Bottom row: StatusBar — ↑↓/jk:Navigate  Enter:Toggle  ?:Help  q:Quit  [!]=errors
+Bottom row: StatusBar — ↑↓/jk:Navigate  Enter:Toggle  1-6:Filter  ?:Help  q:Quit  [!]=errors
 ```
 
 ### TreePanel — Role Display
@@ -228,7 +232,8 @@ Selection tracks by node ID (`agent:name` or `agent:name:room` for secondary), n
 |-----------|---------|
 | Agent selected | name (bold), status + role + pane, rooms list, last activity, **Agent Stats** (tasks done/error/open, avg completion time, message counts sent/received, active duration), live pane output (rawOutput tail) |
 | Room selected | room name, topic, member count, **Task Tracker** (matched task→completion/error pairs with status icon, agent, duration) |
-| Nothing / syncing | "Syncing…" placeholder |
+| Nothing selected | **Room Overview** — table of all rooms: name, members, tasks done/err/open, last active (sorted by recency) |
+| Syncing | "Syncing…" placeholder |
 
 ### Task Tracker (`useTaskTracker`)
 
@@ -247,6 +252,22 @@ Computed per-agent metrics shown when an agent is selected:
 - Avg completion time from matched task→completion pairs
 - Messages: N sent, N received
 - Active duration since `joined_at`
+
+### Activity Sparklines
+
+Each agent in TreePanel gets a 10-character ASCII sparkline showing message rate over the last 10 minutes (1-minute buckets). Uses block characters `▁▂▃▄▅▆▇█` scaled relative to the agent's own maximum bucket count. Width-adaptive: hides role suffix first, then sparkline entirely on narrow terminals.
+
+### Message Kind Filters
+
+Keys `1-6` toggle visibility of message kinds in the feed: 1=task, 2=completion, 3=error, 4=question, 5=status, 6=chat. Filter state is a `Set<MessageKind>` in App state. When any kind is filtered off, the MessageFeedPanel header shows active filter indicators (e.g., `T:on D:off E:on`). All filters on = clean header.
+
+### Q&A Threading
+
+Questions (`kind=question`) in the message feed are matched to responses:
+- Match: subsequent message in same room where `from` matches question's `to` and `to` matches question's `from`, within 5 minutes
+- Matched responses are rendered indented with `└─` connector and removed from the main feed flow
+- Unanswered questions show `(unanswered — Xm ago)` in yellow
+- Threaded responses are filtered out before the maxLines slice to avoid wasting visible slots
 
 ### AgentStatusEntry
 
