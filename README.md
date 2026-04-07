@@ -27,69 +27,58 @@ Communication: push messages (tmux send-keys for commands) + pull messages (serv
 
 ### Claude Code
 
-**One-line install** (user scope — available in all sessions):
-
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/crew/main/install.sh | sh
+# 1. Clone and install
+git clone https://github.com/OWNER/crew.git ~/.crew
+cd ~/.crew && bun install
+
+# 2. Register the local marketplace and install the plugin
+claude plugins marketplace add ~/.crew
+claude plugins install crew@crew-plugins
+
+# 3. Verify — all 5 skills should appear
+claude --print "list skills" | grep crew
 ```
 
-This clones crew to `~/.crew/`, installs dependencies, adds skills to `~/.claude/skills/`, and registers the MCP server in `~/.claude.json`.
-
-**Per-project install** (committed to repo so teammates get it):
-
-```bash
-~/.crew/install.sh --project
-```
-
-Copies skills to `.claude/skills/` and creates `.mcp.json` in the current project.
-
-**Update / Uninstall:**
-
-```bash
-~/.crew/install.sh --update             # pull latest + re-copy skills
-~/.crew/install.sh --uninstall          # remove global install
-~/.crew/install.sh --uninstall-project  # remove from current project
-```
+Skills appear as `/crew:boss`, `/crew:join-room`, `/crew:leader`, `/crew:worker`, `/crew:refresh`.
 
 ### OpenAI Codex CLI
 
-**Option 1: Local plugin (recommended for development)**
-
-Clone the repo and add it to your personal marketplace:
+**Option 1: Full plugin (skills + MCP tools)**
 
 ```bash
+# 1. Clone and install
 git clone https://github.com/OWNER/crew.git ~/.crew
 cd ~/.crew && bun install
-```
 
-Create `~/.agents/plugins/marketplace.json`:
+# 2. Add MCP server
+codex mcp add crew -- bun run ~/.crew/src/index.ts
 
-```json
+# 3. Symlink into Codex plugin directory
+ln -s ~/.crew ~/.codex/.tmp/plugins/plugins/crew
+
+# 4. Register in marketplace — add this entry to the "plugins" array in
+#    ~/.codex/.tmp/plugins/.agents/plugins/marketplace.json:
 {
-  "name": "local-plugins",
-  "interface": { "displayName": "Local Plugins" },
-  "plugins": [
-    {
-      "name": "crew",
-      "source": { "source": "local", "path": "~/.crew" },
-      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
-      "category": "Productivity"
-    }
-  ]
+  "name": "crew",
+  "source": { "source": "local", "path": "./plugins/crew" },
+  "policy": { "installation": "INSTALLED_BY_DEFAULT", "authentication": "ON_INSTALL" },
+  "category": "Productivity"
 }
+
+# 5. Verify — open codex, type /plugins, crew should show as Installed
+codex
 ```
 
-Then install via `/plugins` in Codex CLI.
+Skills appear as `crew:boss`, `crew:join-room`, `crew:leader`, `crew:worker`, `crew:refresh`.
 
 **Option 2: MCP server only (no skills)**
 
-Add the MCP server directly in `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.crew]
-command = "bun"
-args = ["run", "~/.crew/src/index.ts"]
+```bash
+codex mcp add crew -- bun run ~/.crew/src/index.ts
 ```
+
+This gives you the 9 MCP tools without the role-based skills.
 
 ## Usage
 
@@ -99,6 +88,9 @@ bun run --cwd ~/.crew dashboard
 
 # Run tests
 bun test --cwd ~/.crew
+
+# End-to-end test with live tmux panes
+bun ~/.crew/test/uat-sqlite.ts
 ```
 
 ## MCP Tools

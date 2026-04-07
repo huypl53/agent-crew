@@ -302,45 +302,44 @@ Dashboard errors go to `/tmp/crew/dashboard.log` (not console, which would corru
 
 ### Claude Code
 
-```
-curl|sh (GitHub raw)
-  → git clone to ~/.crew/
-  → bun install
-  → copy skills/ → ~/.claude/skills/crew-*/SKILL.md  (user scope)
-  → merge MCP entry → ~/.claude.json mcpServers           (user scope)
+Uses the Claude Code plugin system (`.claude-plugin/` manifests):
 
-install.sh --project (from any project dir)
-  → copy skills/ → .claude/skills/crew-*/SKILL.md     (project scope)
-  → merge MCP entry → .mcp.json mcpServers                (project scope)
+```
+git clone → ~/.crew/
+bun install
+claude plugins marketplace add ~/.crew     → registers .claude-plugin/marketplace.json
+claude plugins install crew@crew-plugins   → copies to plugin cache, enables in settings
 ```
 
-- User scope: `~/.claude.json` for MCP, `~/.claude/skills/` for skills — available everywhere
-- Project scope: `.mcp.json` + `.claude/skills/` — committed to repo for team sharing
-- MCP server path is always absolute: `~/.crew/src/index.ts`
-- JSON merging uses python3 (available on macOS + Linux) — preserves existing entries
-- No `.claude-plugin/` or `--plugin-dir` needed — direct config approach
+- Plugin cache: `~/.claude/plugins/cache/crew-plugins/crew/0.2.0/`
+- Skills namespaced as `/crew:{boss,join-room,leader,worker,refresh}`
+- MCP server launched via `.mcp.json` (stdio transport, `bun run ./src/index.ts`)
 
 ### OpenAI Codex CLI
 
-Crew is packaged as a Codex plugin using the standard plugin structure:
+Uses the Codex plugin system (`.codex-plugin/` manifests):
 
 ```
-.codex-plugin/
-  plugin.json         # Plugin manifest — name, version, pointers to skills + MCP
-.mcp.json             # MCP server config (relative paths, shared with Claude Code)
-skills/               # 5 bundled skills — invoked as /crew:{join-room,refresh,boss,leader,worker}
+git clone → ~/.crew/
+bun install
+codex mcp add crew -- bun run ~/.crew/src/index.ts     → registers MCP server
+ln -s ~/.crew ~/.codex/.tmp/plugins/plugins/crew        → makes plugin discoverable
++ add entry to marketplace.json                          → Codex reads plugin metadata
 ```
 
-**Plugin installation paths:**
-- Local development: repo root used directly via marketplace.json `source.path`
-- Installed: `~/.codex/plugins/cache/$MARKETPLACE/$PLUGIN/$VERSION/`
-- MCP server registered in `~/.codex/config.toml` as STDIO server (`command = "bun"`)
+- Plugin appears in `/plugins` TUI as "Crew" (Installed)
+- Skills namespaced as `crew:{boss,join-room,leader,worker,refresh}`
+- MCP tools registered in `~/.codex/config.toml` as STDIO server
 
-**Standalone MCP (no plugin):** Users can skip the plugin and add the MCP server directly to `~/.codex/config.toml`:
-```toml
-[mcp_servers.crew]
-command = "bun"
-args = ["run", "~/.crew/src/index.ts"]
+**Standalone MCP (no skills):** `codex mcp add crew -- bun run ~/.crew/src/index.ts`
+
+### Plugin Structure (shared)
+
+```
+.claude-plugin/       # Claude Code plugin manifest + marketplace.json
+.codex-plugin/        # Codex CLI plugin manifest
+.mcp.json             # MCP server config (shared by both platforms)
+skills/               # 5 bundled skills (SKILL.md format, used by both)
 ```
 
 ### Cross-Platform Compatibility
