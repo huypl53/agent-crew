@@ -235,6 +235,21 @@ interface AgentStatusEntry {
 }
 ```
 
+### Performance: string-width Cache Patch
+
+Ink internally uses `string-width` to measure text for Yoga layout. `string-width` calls `Intl.Segmenter` for any non-ASCII character — and Bun's `Intl.Segmenter` is **~500x slower** than the ASCII fast path (1.9ms vs 0.004ms per call). Box-drawing border characters (`─`, `│`, `┌`) alone cost 2.4ms per line. With 40+ text nodes per frame, this caused **440ms render times** — making navigation visibly laggy.
+
+**Fix:** A module-level `Map` cache is patched into `node_modules/string-width/index.js` so each unique string only triggers `Intl.Segmenter` once. A `postinstall` script (`scripts/patch-string-width.sh`) reapplies the patch after `bun install`.
+
+**Result:** Render time dropped from 440ms → 15ms (29x improvement). Rapid j/k navigation batches into 3 renders at 9-20ms each — within the 16.7ms budget at 60fps.
+
+Other render optimizations applied:
+- `incrementalRendering: true` + `maxFps: 60` — Ink diffs output and only writes changed cells
+- Fixed layout dimensions (pre-computed from terminal size) instead of Yoga percentage widths
+- `buildTree` decoupled from `statuses` — tree structure only rebuilds when agents/rooms change, not on every status poll
+- Parallel agent polling via `Promise.all` instead of sequential subprocess spawning
+- `React.memo` on all panel components; `useMemo` for rawOutput processing and derived state
+
 ### Error Logging
 
 Dashboard errors go to `/tmp/cc-tmux/dashboard.log` (not console, which would corrupt the TUI). A `[!]` indicator appears in the StatusBar when errors exist.
