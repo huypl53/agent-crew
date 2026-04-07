@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { buildTree, type TreeNode } from '../src/dashboard/hooks/useTree.ts';
 import type { Agent, Room, Message } from '../src/shared/types.ts';
-import type { AgentStatusEntry } from '../src/dashboard/hooks/useStatus.ts';
 
 // Re-export the existing hook tests as the canonical dashboard tests
 // (the detailed component tests live in test/dashboard-ink.test.tsx)
@@ -17,37 +16,32 @@ describe('dashboard tree (buildTree)', () => {
       company: { name: 'company', members: ['boss', 'lead-1'], created_at: '' },
       frontend: { name: 'frontend', members: ['lead-1', 'w1'], created_at: '' },
     };
-    const statuses = new Map<string, AgentStatusEntry>([
-      ['boss', { status: 'idle', lastChange: Date.now() - 5000 }],
-      ['lead-1', { status: 'busy', lastChange: Date.now() - 1000 }],
-      ['w1', { status: 'dead', lastChange: Date.now() }],
-    ]);
-    return { agents, rooms, statuses };
+    return { agents, rooms };
   }
 
   test('multi-room agents appear in each room', () => {
-    const { agents, rooms, statuses } = setup();
-    const nodes = buildTree(agents, rooms, statuses, new Set());
+    const { agents, rooms } = setup();
+    const nodes = buildTree(agents, rooms, new Set());
     expect(nodes.length).toBe(6);
   });
 
   test('secondary agent has room-scoped id', () => {
-    const { agents, rooms, statuses } = setup();
-    const nodes = buildTree(agents, rooms, statuses, new Set());
+    const { agents, rooms } = setup();
+    const nodes = buildTree(agents, rooms, new Set());
     const secondary = nodes.find(n => n.agentName === 'lead-1' && n.secondary);
     expect(secondary!.id).toBe('agent:lead-1:frontend');
   });
 
   test('room member count', () => {
-    const { agents, rooms, statuses } = setup();
-    const nodes = buildTree(agents, rooms, statuses, new Set());
+    const { agents, rooms } = setup();
+    const nodes = buildTree(agents, rooms, new Set());
     const fe = nodes.find(n => n.type === 'room' && n.label === 'frontend');
     expect(fe!.memberCount).toBe(2);
   });
 
   test('collapsed room hides members', () => {
-    const { agents, rooms, statuses } = setup();
-    const nodes = buildTree(agents, rooms, statuses, new Set(['company']));
+    const { agents, rooms } = setup();
+    const nodes = buildTree(agents, rooms, new Set(['company']));
     expect(nodes.find(n => n.agentName === 'boss')).toBeUndefined();
   });
 
@@ -55,7 +49,7 @@ describe('dashboard tree (buildTree)', () => {
     const agents: Record<string, Agent> = {
       ghost: { agent_id: 'ghost', name: 'ghost', role: 'worker', rooms: [], tmux_target: '%199', joined_at: '' },
     };
-    const nodes = buildTree(agents, {}, new Map(), new Set());
+    const nodes = buildTree(agents, {}, new Set());
     expect(nodes.find(n => n.id === 'room:__unassigned__')).toBeDefined();
   });
 });

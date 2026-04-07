@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { Box, Text } from 'ink';
 import type { TreeNode } from '../hooks/useTree.ts';
 import type { AgentStatusEntry } from '../hooks/useStatus.ts';
@@ -68,11 +68,13 @@ function AgentDetails({ agent, status, rooms, height }: { agent: Agent; status: 
     ago = secs < 60 ? `${secs}s ago` : secs < 3600 ? `${Math.floor(secs / 60)}m ago` : `${Math.floor(secs / 3600)}h ago`;
   }
 
+  // Memoize rawOutput processing — avoid re-running 3 regexes per line on every render
   const rawOutput = status?.rawOutput;
   const maxPaneLines = Math.max(0, height - 8);
-  const paneLines = rawOutput
-    ? rawOutput.split(/\r?\n/).map(l => l.replace(/\r/g, '')).filter(l => l.trim()).slice(-maxPaneLines).map(stripControlCodes)
-    : [];
+  const paneLines = useMemo(() => {
+    if (!rawOutput) return [];
+    return rawOutput.split(/\r?\n/).map(l => l.replace(/\r/g, '')).filter(l => l.trim()).slice(-maxPaneLines).map(stripControlCodes);
+  }, [rawOutput, maxPaneLines]);
 
   return (
     <Box flexDirection="column" paddingLeft={1}>

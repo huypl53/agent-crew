@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import type { Agent, Room, AgentStatus } from '../../shared/types.ts';
+import type { Agent, Room } from '../../shared/types.ts';
 import type { AgentStatusEntry } from './useStatus.ts';
 
 export interface TreeNode {
@@ -10,15 +10,13 @@ export interface TreeNode {
   collapsed?: boolean;
   agentName?: string;
   role?: string;
-  status?: AgentStatus;
   secondary?: boolean;
 }
 
-/** Pure function: builds the flat node list from agents/rooms/statuses. Exported for testing. */
+/** Pure function: builds the flat node list from agents/rooms. Status is NOT baked in — read it at render time. Exported for testing. */
 export function buildTree(
   agents: Record<string, Agent>,
   rooms: Record<string, Room>,
-  statuses: Map<string, AgentStatusEntry>,
   collapsedRooms: Set<string>,
 ): TreeNode[] {
   const nodes: TreeNode[] = [];
@@ -39,7 +37,6 @@ export function buildTree(
         nodes.push({
           type: 'agent', id: nodeId, label: memberName,
           agentName: memberName, role: agent.role,
-          status: statuses.get(memberName)?.status ?? 'unknown',
           secondary: !isPrimary,
         });
       }
@@ -59,7 +56,7 @@ export function buildTree(
         nodes.push({
           type: 'agent', id: `agent:${agent.name}`,
           label: agent.name, agentName: agent.name,
-          role: agent.role, status: statuses.get(agent.name)?.status ?? 'unknown',
+          role: agent.role,
         });
       }
     }
@@ -90,24 +87,29 @@ export function useTree(
   const autoSelectRef = useRef(true);
   const lastMostRecentRef = useRef<string | null>(null);
 
-  const nodes = useMemo(() => buildTree(agents, rooms, statuses, collapsedRooms), [agents, rooms, statuses, collapsedRooms]);
+  // Tree structure only depends on agents/rooms/collapsed — NOT statuses
+  const nodes = useMemo(() => buildTree(agents, rooms, collapsedRooms), [agents, rooms, collapsedRooms]);
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
 
-  // Auto-select most recently active agent (in effect, not during render)
-  useEffect(() => {
-    if (!autoSelectRef.current) return;
+  // Auto-select most recently active agent — only on STATUS changes, not every render
+  const statusChangeKey = useMemo(() => {
     let mostRecent: string | null = null;
     let mostRecentTime = 0;
     for (const [name, entry] of statuses.entries()) {
       if (entry.lastChange > mostRecentTime) { mostRecentTime = entry.lastChange; mostRecent = name; }
     }
-    if (mostRecent && mostRecent !== lastMostRecentRef.current) {
-      lastMostRecentRef.current = mostRecent;
-      const idx = nodes.findIndex(n => n.type === 'agent' && n.agentName === mostRecent);
+    return mostRecent;
+  }, [statuses]);
+
+  useEffect(() => {
+    if (!autoSelectRef.current || !statusChangeKey) return;
+    if (statusChangeKey !== lastMostRecentRef.current) {
+      lastMostRecentRef.current = statusChangeKey;
+      const idx = nodes.findIndex(n => n.type === 'agent' && n.agentName === statusChangeKey);
       if (idx >= 0) setSelectedId(nodes[idx]!.id);
     }
-  }, [statuses, nodes]);
+  }, [statusChangeKey, nodes]);
 
   // Resolve selected index from selectedId — pure derivation, no setState
   let selectedIndex = -1;

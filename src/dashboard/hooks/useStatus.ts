@@ -17,39 +17,39 @@ export function useStatus() {
 
   const pollAll = useCallback(async (agents: Record<string, Agent>) => {
     const prev = statusesRef.current;
-    const next = new Map<string, AgentStatusEntry>();
-    let changed = false;
-    for (const [name, agent] of Object.entries(agents)) {
+    const entries = Object.entries(agents);
+
+    // Poll ALL agents in parallel — avoids 200ms+ sequential subprocess blocking
+    const results = await Promise.all(entries.map(async ([name, agent]): Promise<[string, AgentStatusEntry, boolean]> => {
       const prevEntry = prev.get(name);
       try {
         if (await isPaneDead(agent.tmux_target)) {
           const entry: AgentStatusEntry = { status: 'dead', lastChange: prevEntry?.status !== 'dead' ? Date.now() : (prevEntry?.lastChange ?? Date.now()) };
-          next.set(name, entry);
-          if (prevEntry?.status !== 'dead') changed = true;
-          continue;
+          return [name, entry, prevEntry?.status !== 'dead'];
         }
         const output = await capturePane(agent.tmux_target);
         if (output === null) {
-          next.set(name, prevEntry ?? { status: 'unknown', lastChange: Date.now() });
-          if (!prevEntry) changed = true;
-          continue;
+          return [name, prevEntry ?? { status: 'unknown', lastChange: Date.now() }, !prevEntry];
         }
         const status = matchStatusLine(output);
         const statusChanged = !prevEntry || prevEntry.status !== status;
         const outputChanged = prevEntry?.rawOutput !== output;
         if (statusChanged || outputChanged) {
-          next.set(name, { status, lastChange: statusChanged ? Date.now() : prevEntry!.lastChange, rawOutput: output });
-          changed = true;
-        } else {
-          next.set(name, prevEntry);
+          return [name, { status, lastChange: statusChanged ? Date.now() : prevEntry!.lastChange, rawOutput: output }, true];
         }
+        return [name, prevEntry, false];
       } catch (e) {
         logError('status.pollOne', e);
-        next.set(name, prevEntry ?? { status: 'unknown', lastChange: Date.now() });
-        if (!prevEntry) changed = true;
+        return [name, prevEntry ?? { status: 'unknown', lastChange: Date.now() }, !prevEntry];
       }
+    }));
+
+    const next = new Map<string, AgentStatusEntry>();
+    let changed = false;
+    for (const [name, entry, wasChanged] of results) {
+      next.set(name, entry);
+      if (wasChanged) changed = true;
     }
-    // Only update state if something actually changed
     if (changed || next.size !== prev.size) setStatuses(next);
   }, []);
 

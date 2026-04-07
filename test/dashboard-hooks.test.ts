@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import type { Agent, Room } from '../src/shared/types.ts';
-import type { AgentStatusEntry } from '../src/dashboard/hooks/useStatus.ts';
 import { buildTree } from '../src/dashboard/hooks/useTree.ts';
 
 function setup() {
@@ -13,34 +12,29 @@ function setup() {
     company: { name: 'company', members: ['boss', 'lead-1'], created_at: '' },
     frontend: { name: 'frontend', members: ['lead-1', 'w1'], created_at: '' },
   };
-  const statuses = new Map<string, AgentStatusEntry>([
-    ['boss', { status: 'idle', lastChange: Date.now() - 5000 }],
-    ['lead-1', { status: 'busy', lastChange: Date.now() - 1000 }],
-    ['w1', { status: 'dead', lastChange: Date.now() }],
-  ]);
-  return { agents, rooms, statuses };
+  return { agents, rooms };
 }
 
 describe('buildTree', () => {
   test('builds nodes with rooms and agents — multi-room agents appear in each room', () => {
-    const { agents, rooms, statuses } = setup();
-    const nodes = buildTree(agents, rooms, statuses, new Set());
+    const { agents, rooms } = setup();
+    const nodes = buildTree(agents, rooms, new Set());
     expect(nodes.length).toBe(6);
     expect(nodes[0]!.type).toBe('room');
     expect(nodes[0]!.label).toBe('company');
   });
 
   test('secondary agent has room-scoped id', () => {
-    const { agents, rooms, statuses } = setup();
-    const nodes = buildTree(agents, rooms, statuses, new Set());
+    const { agents, rooms } = setup();
+    const nodes = buildTree(agents, rooms, new Set());
     const secondary = nodes.find(n => n.agentName === 'lead-1' && n.secondary);
     expect(secondary).toBeDefined();
     expect(secondary!.id).toBe('agent:lead-1:frontend');
   });
 
   test('collapsed rooms hide members', () => {
-    const { agents, rooms, statuses } = setup();
-    const nodes = buildTree(agents, rooms, statuses, new Set(['company']));
+    const { agents, rooms } = setup();
+    const nodes = buildTree(agents, rooms, new Set(['company']));
     const companyRoom = nodes.find(n => n.label === 'company');
     expect(companyRoom!.collapsed).toBe(true);
     expect(nodes.find(n => n.agentName === 'boss')).toBeUndefined();
@@ -50,14 +44,14 @@ describe('buildTree', () => {
     const agents: Record<string, Agent> = {
       ghost: { agent_id: 'ghost', name: 'ghost', role: 'worker', rooms: [], tmux_target: '%199', joined_at: '' },
     };
-    const nodes = buildTree(agents, {}, new Map(), new Set());
+    const nodes = buildTree(agents, {}, new Set());
     expect(nodes.find(n => n.id === 'room:__unassigned__')).toBeDefined();
     expect(nodes.find(n => n.agentName === 'ghost')).toBeDefined();
   });
 
   test('agents include role field', () => {
-    const { agents, rooms, statuses } = setup();
-    const nodes = buildTree(agents, rooms, statuses, new Set());
+    const { agents, rooms } = setup();
+    const nodes = buildTree(agents, rooms, new Set());
     const boss = nodes.find(n => n.agentName === 'boss');
     expect(boss!.role).toBe('boss');
     const leader = nodes.find(n => n.agentName === 'lead-1' && !n.secondary);

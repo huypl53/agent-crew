@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Box, Text, useInput, useApp, useStdout } from 'ink';
 import { useStateReader } from './hooks/useStateReader.ts';
 import { useTree } from './hooks/useTree.ts';
@@ -18,6 +18,14 @@ export function App() {
   const { stdout } = useStdout();
   const rows = stdout?.rows ?? 24;
   const cols = stdout?.columns ?? 80;
+
+  // Pre-compute fixed layout dimensions — avoids Yoga percentage recalculation
+  const layout = useMemo(() => {
+    const treeW = Math.floor(cols * 0.3);
+    const topH = Math.max(5, Math.floor((rows - 1) * 0.65));
+    const bottomH = rows - 1 - topH;
+    return { treeW, topH, bottomH };
+  }, [rows, cols]);
 
   const { state, isAvailable } = useStateReader();
   const { statuses, pollAll, getStatus } = useStatus();
@@ -39,6 +47,17 @@ export function App() {
   }, [state.agents, pollAll]);
 
   // Keyboard handling
+  // Memoize derived selection state — must be before early return to keep hook count stable
+  const agent = useMemo(
+    () => tree.selectedAgentName ? state.agents[tree.selectedAgentName] ?? null : null,
+    [tree.selectedAgentName, state.agents],
+  );
+  const agentStatus = useMemo(
+    () => tree.selectedAgentName ? getStatus(tree.selectedAgentName) : null,
+    [tree.selectedAgentName, statuses],
+  );
+  const isSyncing = tree.selectedAgentName !== null && agent === null;
+
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) { exit(); return; }
     if (input === '?') { setShowHelp(h => !h); return; }
@@ -57,21 +76,14 @@ export function App() {
     );
   }
 
-  const agent = tree.selectedAgentName ? state.agents[tree.selectedAgentName] ?? null : null;
-  const agentStatus = tree.selectedAgentName ? getStatus(tree.selectedAgentName) : null;
-  const isSyncing = tree.selectedAgentName !== null && agent === null;
-
-  const topH = Math.max(5, Math.floor((rows - 1) * 0.65));
-  const bottomH = rows - 1 - topH;
-
   return (
     <Box flexDirection="column" height={rows} width={cols}>
-      <Box flexDirection="row" flexGrow={1}>
-        <TreePanel nodes={tree.nodes} selectedIndex={tree.selectedIndex} height={rows - 1} />
+      <Box flexDirection="row" height={rows - 1}>
+        <TreePanel nodes={tree.nodes} selectedIndex={tree.selectedIndex} height={rows - 1} width={layout.treeW} statuses={statuses} />
         <Box flexDirection="column" flexGrow={1}>
-          <MessageFeedPanel messages={messages} roomFilter={tree.selectedRoomName} height={topH} />
+          <MessageFeedPanel messages={messages} roomFilter={tree.selectedRoomName} height={layout.topH} />
           {showHelp ? (
-            <Box flexDirection="column" borderStyle="single" height={bottomH} justifyContent="center" alignItems="center">
+            <Box flexDirection="column" borderStyle="single" height={layout.bottomH} justifyContent="center" alignItems="center">
               <HelpOverlay />
             </Box>
           ) : (
@@ -82,7 +94,7 @@ export function App() {
               rooms={state.rooms}
               messages={state.messages}
               isSyncing={isSyncing}
-              height={bottomH}
+              height={layout.bottomH}
             />
           )}
         </Box>
