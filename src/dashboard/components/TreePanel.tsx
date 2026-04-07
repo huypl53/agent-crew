@@ -1,7 +1,8 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { Box, Text } from 'ink';
 import type { TreeNode } from '../hooks/useTree.ts';
 import type { AgentStatusEntry } from '../hooks/useStatus.ts';
+import type { Message } from '../../shared/types.ts';
 
 const STATUS_COLORS: Record<string, string> = {
   idle: 'green', busy: 'yellow', dead: 'red', unknown: 'gray',
@@ -13,9 +14,19 @@ interface TreePanelProps {
   height: number;
   width: number;
   statuses: Map<string, AgentStatusEntry>;
+  messages: Message[];
 }
 
-export const TreePanel = memo(function TreePanel({ nodes, selectedIndex, height, width, statuses }: TreePanelProps) {
+export const TreePanel = memo(function TreePanel({ nodes, selectedIndex, height, width, statuses, messages }: TreePanelProps) {
+  const errorCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const m of messages) {
+      if (m.kind === 'error') {
+        counts.set(m.from, (counts.get(m.from) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [messages]);
   const maxLines = Math.max(1, height - 2); // border top/bottom
   let startIdx = 0;
   if (selectedIndex >= maxLines) startIdx = selectedIndex - maxLines + 1;
@@ -39,10 +50,12 @@ export const TreePanel = memo(function TreePanel({ nodes, selectedIndex, height,
         const color = STATUS_COLORS[agentStatus] ?? 'gray';
         const dot = node.secondary ? '◦' : '●';
         const roleSuffix = node.role ? ` (${node.role})` : '';
+        const errCount = node.agentName ? errorCounts.get(node.agentName) ?? 0 : 0;
 
         return (
           <Text key={node.id} inverse={isSel} dimColor={node.secondary}>
             {'   '}<Text color={node.secondary ? 'gray' : color}>{dot}</Text> {node.label}<Text dimColor>{roleSuffix}</Text>
+            {errCount > 0 && <Text color="red"> [{errCount}!]</Text>}
           </Text>
         );
       })}
