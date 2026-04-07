@@ -9,6 +9,7 @@ import { MessageFeedPanel } from './components/MessageFeed.tsx';
 import { DetailsPanel } from './components/DetailsPanel.tsx';
 import { StatusBar } from './components/StatusBar.tsx';
 import { HelpOverlay } from './components/HelpOverlay.tsx';
+import { HeaderStats } from './components/HeaderStats.tsx';
 import { hasErrors, logError } from './logger.ts';
 
 const POLL_INTERVAL = 2000;
@@ -22,12 +23,20 @@ export function App() {
   // Pre-compute fixed layout dimensions — avoids Yoga percentage recalculation
   const layout = useMemo(() => {
     const treeW = Math.floor(cols * 0.3);
-    const topH = Math.max(5, Math.floor((rows - 1) * 0.65));
-    const bottomH = rows - 1 - topH;
-    return { treeW, topH, bottomH };
+    const panelRows = rows - 2; // header stats + status bar
+    const topH = Math.max(5, Math.floor(panelRows * 0.65));
+    const bottomH = panelRows - topH;
+    return { treeW, topH, bottomH, panelRows };
   }, [rows, cols]);
 
   const { state, isAvailable } = useStateReader();
+  const earliestJoinedAt = useMemo(() => {
+    let earliest: string | null = null;
+    for (const agent of Object.values(state.agents)) {
+      if (!earliest || agent.joined_at < earliest) earliest = agent.joined_at;
+    }
+    return earliest;
+  }, [state.agents]);
   const { statuses, pollAll, getStatus } = useStatus();
   const { messages, update: updateFeed } = useFeed();
   const tree = useTree(state.agents, state.rooms, statuses);
@@ -78,8 +87,9 @@ export function App() {
 
   return (
     <Box flexDirection="column" height={rows} width={cols}>
-      <Box flexDirection="row" height={rows - 1}>
-        <TreePanel nodes={tree.nodes} selectedIndex={tree.selectedIndex} height={rows - 1} width={layout.treeW} statuses={statuses} />
+      <HeaderStats statuses={statuses} messages={state.messages} earliestJoinedAt={earliestJoinedAt} cols={cols} />
+      <Box flexDirection="row" height={layout.panelRows}>
+        <TreePanel nodes={tree.nodes} selectedIndex={tree.selectedIndex} height={layout.panelRows} width={layout.treeW} statuses={statuses} messages={state.messages} />
         <Box flexDirection="column" flexGrow={1}>
           <MessageFeedPanel messages={messages} roomFilter={tree.selectedRoomName} height={layout.topH} />
           {showHelp ? (
