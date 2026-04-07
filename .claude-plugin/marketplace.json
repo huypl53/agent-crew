@@ -1,0 +1,15 @@
+{
+  "name": "crew-plugins",
+  "description": "Marketplace for crew agent coordination plugin",
+  "owner": {
+    "name": "crew contributors"
+  },
+  "plugins": [
+    {
+      "name": "crew",
+      "description": "Room-based coordination for AI coding agents via tmux",
+      "version": "0.2.0",
+      "source": "./"
+    }
+  ]
+}
