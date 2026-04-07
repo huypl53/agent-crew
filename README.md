@@ -155,15 +155,15 @@ Bundled in `skills/` for both Claude Code and Codex CLI. Invoke with `/crew:<ski
 Read-only terminal observer built with React+Ink. Shows rooms, agents with roles and live status, message feed, and context-sensitive details in a 3-panel layout.
 
 ```
-┌─ Rooms & Agents ──────────┐┌─ Messages ─────────────────────────┐
+┌─ Rooms & Agents ───────────┐┌─ Messages ─────────────────────────┐
 │ ▼ company (2)              ││ 14:32:01 [TASK] boss → lead-1      │
-│   ● boss (boss)    idle    ││   Build the auth system             │
+│   ● boss (boss)    idle    ││   Build the auth system            │
 │   ● lead-1 (leader) busy   ││ 14:33:00 [DONE] builder-1 → lead-1 │
-│ ▼ frontend (3)             │├─ Details ────────────────────────────┤
-│   ◦ lead-1 (leader) busy   ││ lead-1  leader | busy               │
-│   ● builder-1 (worker) idle││ Rooms: company, frontend            │
-└────────────────────────────┘│ Working on auth component...        │
-                               └─────────────────────────────────────┘
+│ ▼ frontend (3)             │├─ Details ──────────────────────────┤
+│   ◦ lead-1 (leader) busy   ││ lead-1  leader | busy              │
+│   ● builder-1 (worker) idle││ Rooms: company, frontend           │
+└────────────────────────────┘│ Working on auth component...       │
+                              └────────────────────────────────────┘
 ```
 
 **Tree panel:** agents show `● name (role)` with status color. Secondary agents (in multiple rooms) show dim `◦`. Rooms collapse with `▶`/`▼`.
@@ -208,7 +208,8 @@ src/
 └── dashboard/        # React+Ink TUI dashboard
     ├── components/   #   Pure Ink components (TreePanel, MessageFeedPanel, DetailsPanel, ...)
     └── hooks/        #   Data hooks (useStateReader, useTree, useFeed, useStatus)
-skills/               # 5 bundled skills — /crew:{join-room,refresh,boss,leader,worker}
+commands/             # 5 slash commands — /crew:{join-room,refresh,boss,leader,worker}
+skills/               # 5 agent skills (model-invoked)
 .codex-plugin/        # Codex CLI plugin manifest
 .mcp.json             # MCP server config (shared by Claude Code + Codex)
 test/                 # Test suite
