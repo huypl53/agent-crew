@@ -174,13 +174,14 @@ The dashboard is a React+Ink application using **ink 6.8.0**, **react 19**, and 
 
 ```
 App
-└── Layout (flexDirection="row")
-    ├── TreePanel          (width=30%, left column)
-    ├── Box (width=70%, flexDirection="column")
-    │   ├── MessageFeedPanel  (flexGrow=2)
-    │   └── DetailsPanel      (flexGrow=1)
-    └── StatusBar          (bottom row, full width)
-        └── HelpOverlay    (rendered when ? pressed)
+├── HeaderStats          (top row, full width — agent/task/error/uptime summary)
+├── Layout (flexDirection="row")
+│   ├── TreePanel          (width=30%, left column — error badges [N!])
+│   ├── Box (width=70%, flexDirection="column")
+│   │   ├── MessageFeedPanel  (flexGrow=2)
+│   │   └── DetailsPanel      (flexGrow=1 — task tracker + agent stats)
+│   └── StatusBar          (bottom row, full width)
+│       └── HelpOverlay    (rendered when ? pressed)
 ```
 
 ### Hook Data Flow
@@ -192,23 +193,29 @@ useStateReader (polls every 500ms)
   └── feeds raw state to:
       ├── useTree(agents, rooms, statuses) → { nodes, selectedIndex, selectedNode, moveUp/Down/... }
       ├── useFeed(messages, rooms) → { formattedMessages }
-      └── useStatus(agents) → { statuses: Map<name, AgentStatusEntry> }
+      ├── useStatus(agents) → { statuses: Map<name, AgentStatusEntry> }
+      └── useTaskTracker(messages, room) → TrackedTask[] (matched task→completion/error pairs with duration)
 ```
 
 ### Panel Layout
 
 ```
+Top row: HeaderStats — agent counts (busy/idle/dead), task progress (done/total), errors, uptime
+         Compact mode (<100 cols): 4↑ 1○ 1✗ │ 12/15✓ 2✗ │ 1h23m
+         Wide mode:   Agents: 4 busy  1 idle  1 dead │ Tasks: 12/15 done │ 2 errors │ Up: 1h 23m
 Left (30%): Room/agent tree — agents appear under ALL rooms (dim + ◦ for secondary)
+            Error badges: [N!] in red after agent name when kind=error messages exist
 Right-top (70% x 65%): Chronological message feed, color-coded by room
-Right-bottom (70% x 35%): Agent details or room task summary
+Right-bottom (70% x 35%): Context-sensitive details (see DetailsPanel below)
 Bottom row: StatusBar — ↑↓/jk:Navigate  Enter:Toggle  ?:Help  q:Quit  [!]=errors
 ```
 
 ### TreePanel — Role Display
 
-Each agent row shows: `{dot} {name} ({role})`  
-- `●` (colored by status) for primary agents, `◦` (dim gray) for secondary (agent appears in multiple rooms)
+Each agent row shows: `{dot} {name} ({role}) [N!]`  
+- `���` (colored by status) for primary agents, `◦` (dim gray) for secondary (agent appears in multiple rooms)
 - Status colors: green=idle, yellow=busy, red=dead, gray=unknown
+- Error badge: `[N!]` in red when agent has sent `kind=error` messages (counts all-time errors per agent)
 - Scroll windowing: `height - 2` visible lines, `▲ more` / `▼ more` hints
 
 ### Tree Selection Tracking
@@ -219,11 +226,27 @@ Selection tracks by node ID (`agent:name` or `agent:name:room` for secondary), n
 
 | Selection | Content |
 |-----------|---------|
-| Agent selected | name (bold), status + role + pane, rooms list, last activity, live pane output (rawOutput tail) |
-| Room selected | room name, topic, member count, **Task Summary** (open/done/error counts from message kinds) |
+| Agent selected | name (bold), status + role + pane, rooms list, last activity, **Agent Stats** (tasks done/error/open, avg completion time, message counts sent/received, active duration), live pane output (rawOutput tail) |
+| Room selected | room name, topic, member count, **Task Tracker** (matched task→completion/error pairs with status icon, agent, duration) |
 | Nothing / syncing | "Syncing…" placeholder |
 
-Task Summary counts are derived from the `messages` table: `task` kind = open assignments, `completion` = done, `error` = failed.
+### Task Tracker (`useTaskTracker`)
+
+Replaces the old aggregate task summary with individual tracked tasks. Matches task messages to completion/error messages using a **most-recent-match** strategy:
+
+1. Collect all `kind=task` messages in the room
+2. For each `kind=completion` or `kind=error`: find the most recent open task matching by agent name (`task.to === completion.from`)
+3. Fallback: if no agent match, match any open task in the room
+4. Display: `✓`/`✗`/`↻` icon + truncated task text + agent + duration (live-updating for open tasks)
+5. Sort: open tasks first (oldest first), then completed (newest first)
+
+### Agent Stats
+
+Computed per-agent metrics shown when an agent is selected:
+- Tasks: N done, N errors, N open (using same most-recent-match strategy as Task Tracker)
+- Avg completion time from matched task→completion pairs
+- Messages: N sent, N received
+- Active duration since `joined_at`
 
 ### AgentStatusEntry
 
