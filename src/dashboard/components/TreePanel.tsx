@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Box, Text } from 'ink';
 import type { TreeNode } from '../hooks/useTree.ts';
 
@@ -12,7 +12,7 @@ interface TreePanelProps {
   height: number;
 }
 
-export function TreePanel({ nodes, selectedIndex, height }: TreePanelProps) {
+export const TreePanel = memo(function TreePanel({ nodes, selectedIndex, height }: TreePanelProps) {
   const maxLines = Math.max(1, height - 2); // border top/bottom
   let startIdx = 0;
   if (selectedIndex >= maxLines) startIdx = selectedIndex - maxLines + 1;
@@ -46,4 +46,4 @@ export function TreePanel({ nodes, selectedIndex, height }: TreePanelProps) {
       {startIdx + maxLines < nodes.length && <Text dimColor>{'  '}▼ more</Text>}
     </Box>
   );
-}
+});

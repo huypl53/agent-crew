@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Box, Text } from 'ink';
 import type { FormattedMessage } from '../hooks/useFeed.ts';
 
@@ -15,7 +15,7 @@ interface MessageFeedPanelProps {
   height: number;
 }
 
-export function MessageFeedPanel({ messages, roomFilter, height }: MessageFeedPanelProps) {
+export const MessageFeedPanel = memo(function MessageFeedPanel({ messages, roomFilter, height }: MessageFeedPanelProps) {
   const maxLines = Math.max(1, height - 2);
   const filtered = roomFilter ? messages.filter(m => m.room === roomFilter) : messages;
   const visible = filtered.slice(-maxLines);
@@ -41,4 +41,4 @@ export function MessageFeedPanel({ messages, roomFilter, height }: MessageFeedPa
       {filtered.length > maxLines && <Text dimColor> ↑ {filtered.length - maxLines} more</Text>}
     </Box>
   );
-}
+});

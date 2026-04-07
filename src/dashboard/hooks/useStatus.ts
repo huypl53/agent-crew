@@ -16,28 +16,41 @@ export function useStatus() {
   statusesRef.current = statuses;
 
   const pollAll = useCallback(async (agents: Record<string, Agent>) => {
+    const prev = statusesRef.current;
     const next = new Map<string, AgentStatusEntry>();
+    let changed = false;
     for (const [name, agent] of Object.entries(agents)) {
-      const prev = statusesRef.current.get(name);
+      const prevEntry = prev.get(name);
       try {
         if (await isPaneDead(agent.tmux_target)) {
-          next.set(name, { status: 'dead', lastChange: prev?.status !== 'dead' ? Date.now() : (prev?.lastChange ?? Date.now()) });
+          const entry: AgentStatusEntry = { status: 'dead', lastChange: prevEntry?.status !== 'dead' ? Date.now() : (prevEntry?.lastChange ?? Date.now()) };
+          next.set(name, entry);
+          if (prevEntry?.status !== 'dead') changed = true;
           continue;
         }
         const output = await capturePane(agent.tmux_target);
         if (output === null) {
-          next.set(name, { status: 'unknown', lastChange: prev?.lastChange ?? Date.now() });
+          next.set(name, prevEntry ?? { status: 'unknown', lastChange: Date.now() });
+          if (!prevEntry) changed = true;
           continue;
         }
         const status = matchStatusLine(output);
-        const changed = !prev || prev.status !== status;
-        next.set(name, { status, lastChange: changed ? Date.now() : prev!.lastChange, rawOutput: output });
+        const statusChanged = !prevEntry || prevEntry.status !== status;
+        const outputChanged = prevEntry?.rawOutput !== output;
+        if (statusChanged || outputChanged) {
+          next.set(name, { status, lastChange: statusChanged ? Date.now() : prevEntry!.lastChange, rawOutput: output });
+          changed = true;
+        } else {
+          next.set(name, prevEntry);
+        }
       } catch (e) {
         logError('status.pollOne', e);
-        next.set(name, { status: 'unknown', lastChange: prev?.lastChange ?? Date.now() });
+        next.set(name, prevEntry ?? { status: 'unknown', lastChange: Date.now() });
+        if (!prevEntry) changed = true;
       }
     }
-    setStatuses(next);
+    // Only update state if something actually changed
+    if (changed || next.size !== prev.size) setStatuses(next);
   }, []);
 
   const getStatus = useCallback((name: string): AgentStatusEntry => {

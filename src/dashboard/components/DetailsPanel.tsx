@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Box, Text } from 'ink';
 import type { TreeNode } from '../hooks/useTree.ts';
 import type { AgentStatusEntry } from '../hooks/useStatus.ts';
@@ -23,7 +23,7 @@ interface DetailsPanelProps {
   height: number;
 }
 
-export function DetailsPanel({ agent, agentStatus, selectedNode, rooms, messages, isSyncing, height }: DetailsPanelProps) {
+export const DetailsPanel = memo(function DetailsPanel({ agent, agentStatus, selectedNode, rooms, messages, isSyncing, height }: DetailsPanelProps) {
   const roomName = selectedNode?.type === 'room' ? selectedNode.label : null;
   const taskSummary = useTaskSummary(messages, roomName);
 
@@ -38,7 +38,7 @@ export function DetailsPanel({ agent, agentStatus, selectedNode, rooms, messages
       {agent && <AgentDetails agent={agent} status={agentStatus} rooms={rooms} height={height} />}
     </Box>
   );
-}
+});
 
 function RoomDetails({ node, room, taskSummary }: { node: TreeNode; room?: Room; taskSummary: ReturnType<typeof useTaskSummary> }) {
   return (

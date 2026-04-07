@@ -74,16 +74,22 @@ export function useStateReader() {
   const [state, setState] = useState<DashboardState>(EMPTY_STATE);
   const [isAvailable, setIsAvailable] = useState(false);
   const lastDataVersion = useRef(0);
+  const lastHash = useRef('');
 
   useEffect(() => {
     const initial = readAll();
-    if (initial) { setState(initial); setIsAvailable(true); }
+    if (initial) {
+      const hash = quickHash(initial);
+      lastHash.current = hash;
+      setState(initial);
+      setIsAvailable(true);
+    }
 
     const timer = setInterval(() => {
       let db: Database | null = null;
       try {
         if (!existsSync(DB_PATH)) {
-          if (isAvailable) { setState(EMPTY_STATE); setIsAvailable(false); lastDataVersion.current = 0; }
+          if (isAvailable) { setState(EMPTY_STATE); setIsAvailable(false); lastDataVersion.current = 0; lastHash.current = ''; }
           return;
         }
         db = new Database(DB_PATH, { readonly: true });
@@ -94,12 +100,19 @@ export function useStateReader() {
           db.close(false);
           db = null;
           const next = readAll();
-          if (next) { setState(next); setIsAvailable(true); }
-          else { setState(EMPTY_STATE); setIsAvailable(false); }
+          if (next) {
+            const hash = quickHash(next);
+            if (hash !== lastHash.current) {
+              lastHash.current = hash;
+              setState(next);
+            }
+            setIsAvailable(true);
+          }
+          else { setState(EMPTY_STATE); setIsAvailable(false); lastHash.current = ''; }
         }
       } catch (e) {
         logError('state-reader.poll', e);
-        setState(EMPTY_STATE); setIsAvailable(false); lastDataVersion.current = 0;
+        setState(EMPTY_STATE); setIsAvailable(false); lastDataVersion.current = 0; lastHash.current = '';
       } finally {
         db?.close(false);
       }
@@ -109,4 +122,13 @@ export function useStateReader() {
   }, []);
 
   return { state, isAvailable };
+}
+
+/** Fast structural hash to avoid unnecessary re-renders when data hasn't changed */
+function quickHash(state: DashboardState): string {
+  const agentKeys = Object.keys(state.agents).sort().join(',');
+  const roomKeys = Object.keys(state.rooms).sort().join(',');
+  const msgCount = state.messages.length;
+  const lastMsgId = state.messages[state.messages.length - 1]?.message_id ?? '';
+  return `${agentKeys}|${roomKeys}|${msgCount}|${lastMsgId}`;
 }
