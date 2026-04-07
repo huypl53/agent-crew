@@ -35,7 +35,9 @@ On error, show the error message from the tool response.
 
 ## After Joining
 
-Based on your role, invoke the corresponding skill:
-- **Boss:** Use the `crew:boss` skill
-- **Leader:** Use the `crew:leader` skill
-- **Worker:** Use the `crew:worker` skill
+You MUST immediately activate the behavior skill matching the role:
+- **Boss:** Invoke the `crew:boss` skill — you manage leaders, never write code
+- **Leader:** Invoke the `crew:leader` skill — you coordinate workers, never write code
+- **Worker:** Invoke the `crew:worker` skill — you execute tasks and report status
+
+Follow that skill's work loop for the remainder of the conversation.

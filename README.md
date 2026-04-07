@@ -138,17 +138,22 @@ Workers sending `completion`, `error`, or `question` automatically trigger a pus
 
 When `room` is provided, reads the full room conversation log (all members' messages) from your last-read position. Each call advances your cursor automatically.
 
-## Skills
+## Commands & Skills
 
-Bundled in `skills/` for both Claude Code and Codex CLI. Invoke with `/crew:<skill>`:
+**Commands** (user-invoked via `/crew:<name>`):
 
-| Skill | Invoke | Description |
-|-------|--------|-------------|
-| `join-room` | `/crew:join-room` | Register your agent in a room with a role |
-| `refresh` | `/crew:refresh` | Re-register after session resume |
-| `boss` | `/crew:boss` | Boss management patterns |
-| `leader` | `/crew:leader` | Leader coordination patterns |
-| `worker` | `/crew:worker` | Worker task handling patterns |
+| Command | Description |
+|---------|-------------|
+| `/crew:join-room` | Register your agent in a room with a role |
+| `/crew:refresh` | Re-register after session resume |
+
+**Skills** (auto-invoked by model after joining a room):
+
+| Skill | Description |
+|-------|-------------|
+| `boss` | Boss behavior — manage leaders, strategic direction |
+| `leader` | Leader behavior — coordinate workers, assign tasks |
+| `worker` | Worker behavior — execute tasks, report status |
 
 ## TUI Dashboard
 
@@ -208,8 +213,8 @@ src/
 └── dashboard/        # React+Ink TUI dashboard
     ├── components/   #   Pure Ink components (TreePanel, MessageFeedPanel, DetailsPanel, ...)
     └── hooks/        #   Data hooks (useStateReader, useTree, useFeed, useStatus)
-commands/             # 5 slash commands — /crew:{join-room,refresh,boss,leader,worker}
-skills/               # 5 agent skills (model-invoked)
+commands/             # 2 slash commands — /crew:{join-room,refresh}
+skills/               # 3 agent skills — boss, leader, worker (model-invoked after join)
 .codex-plugin/        # Codex CLI plugin manifest
 .mcp.json             # MCP server config (shared by Claude Code + Codex)
 test/                 # Test suite
