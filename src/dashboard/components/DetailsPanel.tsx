@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 import type { TreeNode } from '../hooks/useTree.ts';
 import type { AgentStatusEntry } from '../hooks/useStatus.ts';
 import type { Agent, Room, Message } from '../../shared/types.ts';
-import { useTaskSummary } from '../hooks/useTaskSummary.ts';
+import { useTaskTracker, formatDuration, type TrackedTask } from '../hooks/useTaskTracker.ts';
 
 const STATUS_COLORS: Record<string, string> = {
   idle: 'green', busy: 'yellow', dead: 'red', unknown: 'gray',
@@ -25,14 +25,14 @@ interface DetailsPanelProps {
 
 export const DetailsPanel = memo(function DetailsPanel({ agent, agentStatus, selectedNode, rooms, messages, isSyncing, height }: DetailsPanelProps) {
   const roomName = selectedNode?.type === 'room' ? selectedNode.label : null;
-  const taskSummary = useTaskSummary(messages, roomName);
+  const trackedTasks = useTaskTracker(messages, roomName);
 
   return (
     <Box flexDirection="column" borderStyle="single" height={height}>
       <Text bold> Details </Text>
       {isSyncing && !agent && <Text dimColor> Syncing...</Text>}
       {!agent && !isSyncing && selectedNode?.type === 'room' && (
-        <RoomDetails node={selectedNode} room={rooms[selectedNode.label]} taskSummary={taskSummary} />
+        <RoomDetails node={selectedNode} room={rooms[selectedNode.label]} trackedTasks={trackedTasks} />
       )}
       {!agent && !isSyncing && !selectedNode && <Text dimColor> No agent selected</Text>}
       {agent && <AgentDetails agent={agent} status={agentStatus} rooms={rooms} height={height} />}
@@ -40,17 +40,29 @@ export const DetailsPanel = memo(function DetailsPanel({ agent, agentStatus, sel
   );
 });
 
-function RoomDetails({ node, room, taskSummary }: { node: TreeNode; room?: Room; taskSummary: ReturnType<typeof useTaskSummary> }) {
+function RoomDetails({ node, room, trackedTasks }: { node: TreeNode; room?: Room; trackedTasks: TrackedTask[] }) {
   return (
     <Box flexDirection="column" paddingLeft={1}>
       <Text bold>{node.label}</Text>
       {room?.topic && <Text>Topic: {room.topic}</Text>}
       <Text>Members: {node.memberCount}</Text>
-      {taskSummary && (
+      {trackedTasks.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
-          <Text dimColor>─ Task Summary ─</Text>
-          <Text>Tasks: {taskSummary.tasks}  <Text color="green">Done: {taskSummary.completed}</Text>  <Text color="red">Errors: {taskSummary.errors}</Text>  Open: {taskSummary.open}</Text>
-          {taskSummary.questions > 0 && <Text color="yellow">Questions: {taskSummary.questions}</Text>}
+          <Text dimColor>─ Tasks ─</Text>
+          {trackedTasks.map(t => {
+            const statusIcon = t.status === 'done' ? '✓' : t.status === 'error' ? '✗' : '↻';
+            const statusColor = t.status === 'done' ? 'green' : t.status === 'error' ? 'red' : 'yellow';
+            const elapsed = t.duration != null
+              ? formatDuration(t.duration)
+              : formatDuration(Date.now() - t.assignedAt);
+            return (
+              <Text key={t.id} wrap="truncate">
+                <Text color={statusColor}> {statusIcon} </Text>
+                <Text>{t.text}</Text>
+                <Text dimColor>  {t.agent}  {elapsed}</Text>
+              </Text>
+            );
+          })}
         </Box>
       )}
     </Box>

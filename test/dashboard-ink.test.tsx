@@ -39,9 +39,9 @@ describe('DetailsPanel', () => {
       <DetailsPanel agent={null} agentStatus={null} selectedNode={{ type: 'room', id: 'room:fe', label: 'fe', memberCount: 2 }} rooms={rooms} messages={messages} isSyncing={false} height={12} />
     );
     const frame = lastFrame()!;
-    expect(frame).toContain('Task Summary');
-    expect(frame).toContain('2');
-    expect(frame).toContain('1');
+    expect(frame).toContain('─ Tasks ─');
+    expect(frame).toContain('do auth');
+    expect(frame).toContain('do api');
   });
 
   test('shows syncing state', () => {
