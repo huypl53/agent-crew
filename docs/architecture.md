@@ -1,8 +1,8 @@
-# cc-tmux Architecture
+# Crew Architecture
 
 ## Overview
 
-cc-tmux is an MCP server plugin + TUI dashboard for AI coding agents (Claude Code, OpenAI Codex CLI). Agents register into rooms with roles (boss/leader/worker) and communicate via tmux.
+Crew is an MCP server plugin + TUI dashboard for AI coding agents (Claude Code, OpenAI Codex CLI). Agents register into rooms with roles (boss/leader/worker) and communicate via tmux.
 
 ## Data Flow
 
@@ -46,7 +46,7 @@ dashboard → {shared, tmux (for polling), bun:sqlite (readonly), ink, react}
 
 ## State Management — SQLite
 
-State is stored in `${CC_TMUX_STATE_DIR}/cc-tmux.db` (default `/tmp/cc-tmux/state/cc-tmux.db`).
+State is stored in `${CREW_STATE_DIR}/crew.db` (default `/tmp/crew/state/crew.db`).
 
 ### Why SQLite (not JSON files)
 
@@ -86,9 +86,9 @@ idx_messages_recipient ON messages(recipient, id)
 ### Debugging
 
 ```bash
-sqlite3 /tmp/cc-tmux/state/cc-tmux.db '.tables'
-sqlite3 /tmp/cc-tmux/state/cc-tmux.db 'SELECT * FROM agents;'
-sqlite3 /tmp/cc-tmux/state/cc-tmux.db 'SELECT * FROM messages ORDER BY id DESC LIMIT 10;'
+sqlite3 /tmp/crew/state/crew.db '.tables'
+sqlite3 /tmp/crew/state/crew.db 'SELECT * FROM agents;'
+sqlite3 /tmp/crew/state/crew.db 'SELECT * FROM messages ORDER BY id DESC LIMIT 10;'
 ```
 
 ## Room Conversation Log
@@ -296,7 +296,7 @@ Other render optimizations applied:
 
 ### Error Logging
 
-Dashboard errors go to `/tmp/cc-tmux/dashboard.log` (not console, which would corrupt the TUI). A `[!]` indicator appears in the StatusBar when errors exist.
+Dashboard errors go to `/tmp/crew/dashboard.log` (not console, which would corrupt the TUI). A `[!]` indicator appears in the StatusBar when errors exist.
 
 ## Installation Architecture
 
@@ -304,7 +304,7 @@ Dashboard errors go to `/tmp/cc-tmux/dashboard.log` (not console, which would co
 
 ```
 curl|sh (GitHub raw)
-  → git clone to ~/.cc-tmux/
+  → git clone to ~/.crew/
   → bun install
   → copy skills/ → ~/.claude/skills/crew-*/SKILL.md  (user scope)
   → merge MCP entry → ~/.claude.json mcpServers           (user scope)
@@ -316,13 +316,13 @@ install.sh --project (from any project dir)
 
 - User scope: `~/.claude.json` for MCP, `~/.claude/skills/` for skills — available everywhere
 - Project scope: `.mcp.json` + `.claude/skills/` — committed to repo for team sharing
-- MCP server path is always absolute: `~/.cc-tmux/src/index.ts`
+- MCP server path is always absolute: `~/.crew/src/index.ts`
 - JSON merging uses python3 (available on macOS + Linux) — preserves existing entries
 - No `.claude-plugin/` or `--plugin-dir` needed — direct config approach
 
 ### OpenAI Codex CLI
 
-cc-tmux is packaged as a Codex plugin using the standard plugin structure:
+Crew is packaged as a Codex plugin using the standard plugin structure:
 
 ```
 .codex-plugin/
@@ -338,9 +338,9 @@ skills/               # 5 bundled skills — invoked as /crew:{join-room,refresh
 
 **Standalone MCP (no plugin):** Users can skip the plugin and add the MCP server directly to `~/.codex/config.toml`:
 ```toml
-[mcp_servers.cc-tmux]
+[mcp_servers.crew]
 command = "bun"
-args = ["run", "~/.cc-tmux/src/index.ts"]
+args = ["run", "~/.crew/src/index.ts"]
 ```
 
 ### Cross-Platform Compatibility

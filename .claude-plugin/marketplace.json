@@ -1,8 +1,8 @@
 {
   "name": "crew-plugins",
-  "description": "Marketplace for cc-tmux agent coordination plugin",
+  "description": "Marketplace for crew agent coordination plugin",
   "owner": {
-    "name": "cc-tmux contributors"
+    "name": "crew contributors"
   },
   "plugins": [
     {

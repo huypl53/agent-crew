@@ -1,12 +1,12 @@
 ---
 name: join-room
-description: Register your AI coding agent in a cc-tmux room with a role
+description: Register your AI coding agent in a crew room with a role
 arguments: <room> --role <boss|leader|worker> --name <your-name>
 ---
 
 # Join Room
 
-Register yourself in a cc-tmux coordination room.
+Register yourself in a crew coordination room.
 
 ## Usage
 

@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "cc-tmux": {
+    "crew": {
       "command": "bun",
       "args": ["run", "./src/index.ts"]
     }

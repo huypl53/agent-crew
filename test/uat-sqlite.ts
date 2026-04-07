@@ -72,15 +72,15 @@ function parse(result: any): any {
 
 // ─── MAIN ───
 
-console.log('\n═══ cc-tmux SQLite UAT ═══\n');
+console.log('\n═══ crew SQLite UAT ═══\n');
 
 // Clean up any leftover session
 await cleanup();
 
 // Init DB with a temp file (not :memory:) to test real file-based SQLite
-const dbPath = '/tmp/cc-tmux/uat-test/cc-tmux.db';
-await Bun.spawn(['rm', '-rf', '/tmp/cc-tmux/uat-test']).exited;
-await Bun.spawn(['mkdir', '-p', '/tmp/cc-tmux/uat-test']).exited;
+const dbPath = '/tmp/crew/uat-test/crew.db';
+await Bun.spawn(['rm', '-rf', '/tmp/crew/uat-test']).exited;
+await Bun.spawn(['mkdir', '-p', '/tmp/crew/uat-test']).exited;
 initDb(dbPath);
 
 try {
@@ -259,7 +259,7 @@ try {
   console.log('\n11. Testing dashboard state reader...');
 
   // The StateReader from dashboard should be able to read this DB
-  process.env.CC_TMUX_STATE_DIR = '/tmp/cc-tmux/uat-test';
+  process.env.CC_TMUX_STATE_DIR = '/tmp/crew/uat-test';
   const { StateReader } = await import('../src/dashboard/state-reader.ts');
   const reader = new StateReader();
   const state = await reader.init();
@@ -322,7 +322,7 @@ try {
   // ─── Cleanup ───
   console.log('\n─── Cleanup ───');
   await cleanup();
-  await Bun.spawn(['rm', '-rf', '/tmp/cc-tmux/uat-test']).exited;
+  await Bun.spawn(['rm', '-rf', '/tmp/crew/uat-test']).exited;
 }
 
 // ─── Summary ───

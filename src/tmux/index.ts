@@ -25,7 +25,7 @@ export async function validateTmux(): Promise<{ ok: boolean; version?: string; e
   if (result.success) {
     return { ok: true, version: result.stdout };
   }
-  return { ok: false, error: 'cc-tmux requires tmux to be installed and available on PATH' };
+  return { ok: false, error: 'crew requires tmux to be installed and available on PATH' };
 }
 
 export async function sendKeys(target: string, text: string): Promise<{ delivered: boolean; error?: string }> {

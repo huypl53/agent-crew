@@ -1,11 +1,11 @@
 ---
 name: worker
-description: Guidance for worker agents on task execution and status reporting in cc-tmux rooms
+description: Guidance for worker agents on task execution and status reporting in crew rooms
 ---
 
 # Worker Agent Guidance
 
-You are a worker agent in a cc-tmux room. Your job is to execute tasks assigned by your leader and report status.
+You are a worker agent in a crew room. Your job is to execute tasks assigned by your leader and report status.
 
 ## Recognizing Commands
 

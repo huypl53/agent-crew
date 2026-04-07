@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync, existsSync } from 'fs';
 import { dirname } from 'path';
 
-export const LOG_PATH = '/tmp/cc-tmux/dashboard.log';
+export const LOG_PATH = '/tmp/crew/dashboard.log';
 let errorCount = 0;
 
 export function logError(ctx: string, err: unknown): void {

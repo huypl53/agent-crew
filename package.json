@@ -1,5 +1,5 @@
 {
-  "name": "cc-tmux",
+  "name": "crew",
   "version": "0.2.0",
   "module": "src/index.ts",
   "type": "module",

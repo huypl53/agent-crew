@@ -1,4 +1,4 @@
-# cc-tmux
+# crew
 
 A plugin for AI coding agents that turns your terminal into an AI development team. Multiple agents work in parallel, coordinated through tmux rooms. Works with **Claude Code** and **OpenAI Codex CLI**.
 
@@ -30,15 +30,15 @@ Communication: push messages (tmux send-keys for commands) + pull messages (serv
 **One-line install** (user scope — available in all sessions):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/cc-tmux/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/OWNER/crew/main/install.sh | sh
 ```
 
-This clones cc-tmux to `~/.cc-tmux/`, installs dependencies, adds skills to `~/.claude/skills/`, and registers the MCP server in `~/.claude.json`.
+This clones crew to `~/.crew/`, installs dependencies, adds skills to `~/.claude/skills/`, and registers the MCP server in `~/.claude.json`.
 
 **Per-project install** (committed to repo so teammates get it):
 
 ```bash
-~/.cc-tmux/install.sh --project
+~/.crew/install.sh --project
 ```
 
 Copies skills to `.claude/skills/` and creates `.mcp.json` in the current project.
@@ -46,9 +46,9 @@ Copies skills to `.claude/skills/` and creates `.mcp.json` in the current projec
 **Update / Uninstall:**
 
 ```bash
-~/.cc-tmux/install.sh --update             # pull latest + re-copy skills
-~/.cc-tmux/install.sh --uninstall          # remove global install
-~/.cc-tmux/install.sh --uninstall-project  # remove from current project
+~/.crew/install.sh --update             # pull latest + re-copy skills
+~/.crew/install.sh --uninstall          # remove global install
+~/.crew/install.sh --uninstall-project  # remove from current project
 ```
 
 ### OpenAI Codex CLI
@@ -58,8 +58,8 @@ Copies skills to `.claude/skills/` and creates `.mcp.json` in the current projec
 Clone the repo and add it to your personal marketplace:
 
 ```bash
-git clone https://github.com/OWNER/cc-tmux.git ~/.cc-tmux
-cd ~/.cc-tmux && bun install
+git clone https://github.com/OWNER/crew.git ~/.crew
+cd ~/.crew && bun install
 ```
 
 Create `~/.agents/plugins/marketplace.json`:
@@ -71,7 +71,7 @@ Create `~/.agents/plugins/marketplace.json`:
   "plugins": [
     {
       "name": "crew",
-      "source": { "source": "local", "path": "~/.cc-tmux" },
+      "source": { "source": "local", "path": "~/.crew" },
       "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
       "category": "Productivity"
     }
@@ -86,19 +86,19 @@ Then install via `/plugins` in Codex CLI.
 Add the MCP server directly in `~/.codex/config.toml`:
 
 ```toml
-[mcp_servers.cc-tmux]
+[mcp_servers.crew]
 command = "bun"
-args = ["run", "~/.cc-tmux/src/index.ts"]
+args = ["run", "~/.crew/src/index.ts"]
 ```
 
 ## Usage
 
 ```bash
 # TUI dashboard (separate terminal/pane)
-bun run --cwd ~/.cc-tmux dashboard
+bun run --cwd ~/.crew dashboard
 
 # Run tests
-bun test --cwd ~/.cc-tmux
+bun test --cwd ~/.crew
 ```
 
 ## MCP Tools
@@ -187,12 +187,12 @@ Shortcuts are always visible in the bottom status bar.
 
 ## State Management
 
-State is stored in a SQLite database at `${CC_TMUX_STATE_DIR}/cc-tmux.db` (default `/tmp/cc-tmux/state/cc-tmux.db`) using WAL mode for safe multi-process access. All state operations are synchronous — no flush/sync machinery needed.
+State is stored in a SQLite database at `${CREW_STATE_DIR}/crew.db` (default `/tmp/crew/state/crew.db`) using WAL mode for safe multi-process access. All state operations are synchronous — no flush/sync machinery needed.
 
 ```bash
 # Debug: inspect state directly
-sqlite3 /tmp/cc-tmux/state/cc-tmux.db 'SELECT * FROM agents;'
-sqlite3 /tmp/cc-tmux/state/cc-tmux.db 'SELECT * FROM messages ORDER BY id DESC LIMIT 10;'
+sqlite3 /tmp/crew/state/crew.db 'SELECT * FROM agents;'
+sqlite3 /tmp/crew/state/crew.db 'SELECT * FROM messages ORDER BY id DESC LIMIT 10;'
 ```
 
 ## Project Structure

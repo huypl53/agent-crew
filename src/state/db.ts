@@ -53,8 +53,8 @@ const SCHEMA = `
 `;
 
 export function getDbPath(): string {
-  const stateDir = process.env.CC_TMUX_STATE_DIR ?? '/tmp/cc-tmux/state';
-  return `${stateDir}/cc-tmux.db`;
+  const stateDir = process.env.CREW_STATE_DIR ?? '/tmp/crew/state';
+  return `${stateDir}/crew.db`;
 }
 
 export function initDb(path?: string): void {

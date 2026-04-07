@@ -259,7 +259,7 @@ export async function refreshAgent(name: string, newPane: string): Promise<Agent
   }
 
   // Fallback: try agents.json from legacy JSON state
-  const stateDir = process.env.CC_TMUX_STATE_DIR ?? '/tmp/cc-tmux/state';
+  const stateDir = process.env.CREW_STATE_DIR ?? '/tmp/crew/state';
   const agentsFile = Bun.file(`${stateDir}/agents.json`);
   if (!(await agentsFile.exists())) return undefined;
 

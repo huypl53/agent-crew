@@ -6,7 +6,7 @@ arguments: --name <your-name>
 
 # Refresh
 
-Re-register your cc-tmux agent without leaving and rejoining rooms. Use this after resuming a session.
+Re-register your crew agent without leaving and rejoining rooms. Use this after resuming a session.
 
 ## Usage
 

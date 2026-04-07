@@ -36,7 +36,7 @@ if (deadAgents.length > 0) {
 
 // Create MCP server
 const server = new Server(
-  { name: 'cc-tmux', version: '0.1.0' },
+  { name: 'crew', version: '0.2.0' },
   { capabilities: { tools: {} } },
 );
 

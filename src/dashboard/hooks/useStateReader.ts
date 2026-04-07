@@ -4,8 +4,8 @@ import type { Agent, Room, Message } from '../../shared/types.ts';
 import { logError } from '../logger.ts';
 import { existsSync } from 'fs';
 
-const STATE_DIR = process.env.CC_TMUX_STATE_DIR ?? '/tmp/cc-tmux/state';
-const DB_PATH = `${STATE_DIR}/cc-tmux.db`;
+const STATE_DIR = process.env.CREW_STATE_DIR ?? '/tmp/crew/state';
+const DB_PATH = `${STATE_DIR}/crew.db`;
 const POLL_INTERVAL = 500;
 
 export interface DashboardState {

@@ -1,6 +1,6 @@
 ---
 name: boss
-description: Guidance for boss agents on managing leaders, strategic direction, and organizational awareness in cc-tmux
+description: Guidance for boss agents on managing leaders, strategic direction, and organizational awareness in crew
 ---
 
 # Boss Agent Guidance
@@ -17,7 +17,7 @@ You are the boss agent — you represent the human's intent in the agent hierarc
 
 If you catch yourself about to open a file, write code, or investigate a bug — STOP. Tell a leader to handle it instead.
 
-**Your tools are cc-tmux tools ONLY:** `send_message`, `read_messages`, `get_status`, `list_members`, `list_rooms`, `set_room_topic`. You should NOT be using Read, Write, Edit, Bash, or any code tools.
+**Your tools are crew tools ONLY:** `send_message`, `read_messages`, `get_status`, `list_members`, `list_rooms`, `set_room_topic`. You should NOT be using Read, Write, Edit, Bash, or any code tools.
 
 ## Your Work Loop
 
