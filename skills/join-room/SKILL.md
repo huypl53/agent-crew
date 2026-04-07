@@ -1,6 +1,6 @@
 ---
-name: cc-tmux-join-room
-description: Register your Claude Code agent in a cc-tmux room with a role
+name: join-room
+description: Register your AI coding agent in a cc-tmux room with a role
 arguments: <room> --role <boss|leader|worker> --name <your-name>
 ---
 
@@ -11,12 +11,12 @@ Register yourself in a cc-tmux coordination room.
 ## Usage
 
 ```
-/cc-tmux:join-room <room> --role <role> --name <name>
+join-room <room> --role <role> --name <name>
 ```
 
 **Example:**
 ```
-/cc-tmux:join-room frontend --role worker --name builder-1
+join-room frontend --role worker --name builder-1
 ```
 
 ## What This Does

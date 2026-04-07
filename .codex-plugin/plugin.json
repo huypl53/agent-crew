@@ -1,0 +1,25 @@
+{
+  "name": "crew",
+  "version": "0.2.0",
+  "description": "Room-based coordination for AI coding agents via tmux. Agents self-register into rooms, send messages, track tasks, and monitor each other's status.",
+  "author": {
+    "name": "cc-tmux contributors"
+  },
+  "repository": "https://github.com/huypham/cc-tmux",
+  "license": "MIT",
+  "keywords": ["tmux", "agents", "coordination", "mcp", "multi-agent"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "cc-tmux",
+    "shortDescription": "Room-based AI agent coordination via tmux",
+    "longDescription": "Provides MCP tools for AI coding agents to coordinate in tmux sessions. Agents join named rooms with roles (boss/leader/worker), exchange messages, assign tasks, and monitor status via tmux pane inspection. Includes skills for each agent role.",
+    "developerName": "cc-tmux contributors",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Use cc-tmux to join a room and coordinate with other agents.",
+      "Use cc-tmux to monitor agent status and assign tasks."
+    ]
+  }
+}

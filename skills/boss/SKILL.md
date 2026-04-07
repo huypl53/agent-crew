@@ -1,5 +1,5 @@
 ---
-name: cc-tmux-boss
+name: boss
 description: Guidance for boss agents on managing leaders, strategic direction, and organizational awareness in cc-tmux
 ---
 
@@ -106,7 +106,7 @@ set_room_topic({
 
 ## Resource Allocation
 
-You decide which leaders work on what. If a project needs more workers, tell the human to start new CC sessions and have them join rooms.
+You decide which leaders work on what. If a project needs more workers, tell the human to start new agent sessions and have them join rooms.
 
 ## Key Principles
 

@@ -1,5 +1,11 @@
 {
-  "name": "cc-tmux",
-  "version": "0.1.0",
-  "description": "Turn your terminal into an AI development team. Register Claude Code agents into rooms with roles and coordinate via tmux."
+  "name": "crew",
+  "description": "Room-based coordination for AI coding agents via tmux. Agents self-register into rooms, send messages, track tasks, and monitor status.",
+  "version": "0.2.0",
+  "author": {
+    "name": "cc-tmux contributors"
+  },
+  "repository": "https://github.com/huypham/cc-tmux",
+  "license": "MIT",
+  "keywords": ["tmux", "agents", "coordination", "mcp", "multi-agent"]
 }

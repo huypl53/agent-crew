@@ -1,12 +1,12 @@
 # cc-tmux
 
-A Claude Code plugin that turns your terminal into an AI development team. Multiple Claude Code agents work in parallel, coordinated through tmux rooms.
+A plugin for AI coding agents that turns your terminal into an AI development team. Multiple agents work in parallel, coordinated through tmux rooms. Works with **Claude Code** and **OpenAI Codex CLI**.
 
 ## How it works
 
-1. Start Claude Code sessions in tmux panes (as you normally would)
-2. Register each agent into a room: `/cc-tmux:join-room myproject --role worker --name builder-1`
-3. Your own CC session is the boss — give natural language direction
+1. Start AI coding agent sessions in tmux panes
+2. Register each agent into a room: `/crew:join-room myproject --role worker --name builder-1`
+3. Your own session is the boss — give natural language direction
 4. Leaders coordinate workers, workers execute tasks, everyone communicates through rooms
 
 ## Architecture
@@ -21,11 +21,13 @@ Communication: push messages (tmux send-keys for commands) + pull messages (serv
 
 - tmux 3.0+
 - Bun runtime
-- Claude Code
+- Claude Code **or** OpenAI Codex CLI
 
 ## Installation
 
-**One-line install** (user scope — available in all CC sessions):
+### Claude Code
+
+**One-line install** (user scope — available in all sessions):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/OWNER/cc-tmux/main/install.sh | sh
@@ -47,6 +49,46 @@ Copies skills to `.claude/skills/` and creates `.mcp.json` in the current projec
 ~/.cc-tmux/install.sh --update             # pull latest + re-copy skills
 ~/.cc-tmux/install.sh --uninstall          # remove global install
 ~/.cc-tmux/install.sh --uninstall-project  # remove from current project
+```
+
+### OpenAI Codex CLI
+
+**Option 1: Local plugin (recommended for development)**
+
+Clone the repo and add it to your personal marketplace:
+
+```bash
+git clone https://github.com/OWNER/cc-tmux.git ~/.cc-tmux
+cd ~/.cc-tmux && bun install
+```
+
+Create `~/.agents/plugins/marketplace.json`:
+
+```json
+{
+  "name": "local-plugins",
+  "interface": { "displayName": "Local Plugins" },
+  "plugins": [
+    {
+      "name": "crew",
+      "source": { "source": "local", "path": "~/.cc-tmux" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}
+```
+
+Then install via `/plugins` in Codex CLI.
+
+**Option 2: MCP server only (no skills)**
+
+Add the MCP server directly in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.cc-tmux]
+command = "bun"
+args = ["run", "~/.cc-tmux/src/index.ts"]
 ```
 
 ## Usage
@@ -99,10 +141,15 @@ When `room` is provided, reads the full room conversation log (all members' mess
 
 ## Skills
 
-- `/cc-tmux:join-room` — Register your agent
-- `/cc-tmux:leader` — Leader coordination patterns
-- `/cc-tmux:worker` — Worker task handling patterns
-- `/cc-tmux:boss` — Boss management patterns
+Bundled in `skills/` for both Claude Code and Codex CLI. Invoke with `/crew:<skill>`:
+
+| Skill | Invoke | Description |
+|-------|--------|-------------|
+| `join-room` | `/crew:join-room` | Register your agent in a room with a role |
+| `refresh` | `/crew:refresh` | Re-register after session resume |
+| `boss` | `/crew:boss` | Boss management patterns |
+| `leader` | `/crew:leader` | Leader coordination patterns |
+| `worker` | `/crew:worker` | Worker task handling patterns |
 
 ## TUI Dashboard
 
@@ -162,6 +209,8 @@ src/
 └── dashboard/        # React+Ink TUI dashboard
     ├── components/   #   Pure Ink components (TreePanel, MessageFeedPanel, DetailsPanel, ...)
     └── hooks/        #   Data hooks (useStateReader, useTree, useFeed, useStatus)
-skills/               # 4 role-based skills
+skills/               # 5 bundled skills — /crew:{join-room,refresh,boss,leader,worker}
+.codex-plugin/        # Codex CLI plugin manifest
+.mcp.json             # MCP server config (shared by Claude Code + Codex)
 test/                 # Test suite
 ```

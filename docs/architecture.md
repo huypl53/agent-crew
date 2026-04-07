@@ -2,7 +2,7 @@
 
 ## Overview
 
-cc-tmux is a Claude Code MCP server plugin + TUI dashboard. Agents register into rooms with roles (boss/leader/worker) and communicate via tmux.
+cc-tmux is an MCP server plugin + TUI dashboard for AI coding agents (Claude Code, OpenAI Codex CLI). Agents register into rooms with roles (boss/leader/worker) and communicate via tmux.
 
 ## Data Flow
 
@@ -300,15 +300,17 @@ Dashboard errors go to `/tmp/cc-tmux/dashboard.log` (not console, which would co
 
 ## Installation Architecture
 
+### Claude Code
+
 ```
 curl|sh (GitHub raw)
   → git clone to ~/.cc-tmux/
   → bun install
-  → copy skills/ → ~/.claude/skills/cc-tmux-*/SKILL.md  (user scope)
+  → copy skills/ → ~/.claude/skills/crew-*/SKILL.md  (user scope)
   → merge MCP entry → ~/.claude.json mcpServers           (user scope)
 
 install.sh --project (from any project dir)
-  → copy skills/ → .claude/skills/cc-tmux-*/SKILL.md     (project scope)
+  → copy skills/ → .claude/skills/crew-*/SKILL.md     (project scope)
   → merge MCP entry → .mcp.json mcpServers                (project scope)
 ```
 
@@ -317,6 +319,33 @@ install.sh --project (from any project dir)
 - MCP server path is always absolute: `~/.cc-tmux/src/index.ts`
 - JSON merging uses python3 (available on macOS + Linux) — preserves existing entries
 - No `.claude-plugin/` or `--plugin-dir` needed — direct config approach
+
+### OpenAI Codex CLI
+
+cc-tmux is packaged as a Codex plugin using the standard plugin structure:
+
+```
+.codex-plugin/
+  plugin.json         # Plugin manifest — name, version, pointers to skills + MCP
+.mcp.json             # MCP server config (relative paths, shared with Claude Code)
+skills/               # 5 bundled skills — invoked as /crew:{join-room,refresh,boss,leader,worker}
+```
+
+**Plugin installation paths:**
+- Local development: repo root used directly via marketplace.json `source.path`
+- Installed: `~/.codex/plugins/cache/$MARKETPLACE/$PLUGIN/$VERSION/`
+- MCP server registered in `~/.codex/config.toml` as STDIO server (`command = "bun"`)
+
+**Standalone MCP (no plugin):** Users can skip the plugin and add the MCP server directly to `~/.codex/config.toml`:
+```toml
+[mcp_servers.cc-tmux]
+command = "bun"
+args = ["run", "~/.cc-tmux/src/index.ts"]
+```
+
+### Cross-Platform Compatibility
+
+Both Claude Code and Codex CLI use the MCP protocol (stdio transport). The same `src/index.ts` server works for both — no adapter layer needed. Skills use identical `SKILL.md` format with YAML frontmatter. Platform-specific references (slash commands, `@` mentions) are avoided in bundled skills.
 
 ## Multi-process Architecture
 

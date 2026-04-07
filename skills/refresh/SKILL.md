@@ -1,22 +1,22 @@
 ---
-name: cc-tmux-refresh
-description: Re-register your agent with current tmux pane after resuming a CC session
+name: refresh
+description: Re-register your agent with current tmux pane after resuming a session
 arguments: --name <your-name>
 ---
 
 # Refresh
 
-Re-register your cc-tmux agent without leaving and rejoining rooms. Use this after resuming a CC session.
+Re-register your cc-tmux agent without leaving and rejoining rooms. Use this after resuming a session.
 
 ## Usage
 
 ```
-/cc-tmux:refresh --name <name>
+refresh --name <name>
 ```
 
 **Example:**
 ```
-/cc-tmux:refresh --name builder-1
+refresh --name builder-1
 ```
 
 ## What This Does
@@ -28,8 +28,8 @@ Re-register your cc-tmux agent without leaving and rejoining rooms. Use this aft
 
 ## When To Use
 
-- After resuming a suspended CC session
-- After your CC session reconnects
+- After resuming a suspended session
+- After your session reconnects
 - When the dashboard doesn't show you but you know you registered before
 - Any time your tmux pane ID changed but you want to keep your rooms
 
@@ -45,4 +45,4 @@ Call: refresh({ name: "<name>" })
 
 On success, confirm: "Refreshed <name> — rooms: <rooms>, pane: <target>"
 
-On error, show the error message. If agent not found, suggest using `/cc-tmux:join-room` instead.
+On error, show the error message. If agent not found, suggest using `join-room` instead.

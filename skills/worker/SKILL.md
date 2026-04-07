@@ -1,5 +1,5 @@
 ---
-name: cc-tmux-worker
+name: worker
 description: Guidance for worker agents on task execution and status reporting in cc-tmux rooms
 ---
 
@@ -43,33 +43,6 @@ send_message({
   mode: "pull",
   name: "your-name"
 })
-```
-
-## Reporting with Kind
-
-Use explicit `kind` so your leader gets auto-notified:
-
-```
-send_message({
-  room: "your-room",
-  to: "leader-name",
-  text: "Login component done — includes form validation and error states",
-  mode: "pull",
-  name: "your-name",
-  kind: "completion"
-})
-```
-
-Available kinds: `completion`, `error`, `question`, `status`, `chat`
-
-When you use `completion`, `error`, or `question`, your leader gets an automatic push notification.
-
-## Reading Room Context
-
-Read the room log to see what other workers are doing:
-
-```
-read_messages({ name: "your-name", room: "your-room" })
 ```
 
 ## Understanding Your Context

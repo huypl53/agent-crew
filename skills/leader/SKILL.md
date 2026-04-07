@@ -1,5 +1,5 @@
 ---
-name: cc-tmux-leader
+name: leader
 description: Guidance for leader agents on task coordination, worker management, and escalation in cc-tmux rooms
 ---
 
