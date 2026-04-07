@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-import { startApp } from './dashboard/app.ts';
+import React from 'react';
+import { render } from 'ink';
+import { App } from './dashboard/App.tsx';
 
-startApp().catch((err) => {
-  console.error('Dashboard failed to start:', err);
-  process.exit(1);
-});
+const { waitUntilExit } = render(React.createElement(App));
+await waitUntilExit();

@@ -17,10 +17,11 @@ Agent calls MCP tool
         delivery calls tmux.sendKeys() for each leader (auto-notify)
   → tool returns MCP JSON response
 
-Dashboard opens SQLite DB in readonly mode
-  → polls PRAGMA data_version every 500ms (detects ALL DB changes)
-  → polls tmux capture-pane every 2s for status + raw pane output
-  → renders 3-panel ANSI layout to stdout
+Dashboard is a React+Ink app (separate process)
+  → useStateReader polls PRAGMA data_version every 500ms (detects ALL DB changes)
+  → useStateReader polls tmux capture-pane every 2s for status + pane output
+  → useTree/useFeed/useStatus consume state and expose derived data to components
+  → Ink renders component tree: App > Layout > TreePanel + MessageFeedPanel + DetailsPanel + StatusBar + HelpOverlay
 ```
 
 ## Module Boundaries
@@ -31,7 +32,7 @@ Dashboard opens SQLite DB in readonly mode
 - **src/tmux/** — Pure tmux CLI wrapper via Bun.spawn(). No business logic. Strips ANSI from capture-pane output.
 - **src/delivery/** — Push (tmux send-keys) + pull (queue). Always queues first, then delivers.
 - **src/shared/** — Types, status regex patterns. Used by both MCP server and dashboard.
-- **src/dashboard/** — TUI modules. Reads SQLite DB (read-only), polls tmux, renders ANSI.
+- **src/dashboard/** — React+Ink TUI. Hooks (`useStateReader`, `useTree`, `useFeed`, `useStatus`) consume SQLite (read-only) + tmux. Components are pure renderers.
 - **skills/** — Pure markdown. No code execution.
 
 ## Dependency Graph (acyclic)
@@ -40,7 +41,7 @@ Dashboard opens SQLite DB in readonly mode
 tools → {state, delivery, tmux}
 delivery → {state, tmux}
 state/index → {state/db, tmux}
-dashboard → {shared, tmux (for polling), bun:sqlite (readonly)}
+dashboard → {shared, tmux (for polling), bun:sqlite (readonly), ink, react}
 ```
 
 ## State Management — SQLite
@@ -165,41 +166,78 @@ Agent read cursors are cleaned up when an agent departs:
 | Complete | `/^✻\s+\w+\s+for\s+/` | `✻ Baked for 1m 2s` |
 | Dead | `tmux list-panes #{pane_dead}` | Pane doesn't exist |
 
-## Dashboard Panel Layout
+## Dashboard Architecture (Ink)
+
+The dashboard is a React+Ink application using **ink 6.8.0**, **react 19**, and **@inkjs/ui**. Components are pure renderers; all business logic lives in hooks.
+
+### Component Tree
+
+```
+App
+└── Layout (flexDirection="row")
+    ├── TreePanel          (width=30%, left column)
+    ├── Box (width=70%, flexDirection="column")
+    │   ├── MessageFeedPanel  (flexGrow=2)
+    │   └── DetailsPanel      (flexGrow=1)
+    └── StatusBar          (bottom row, full width)
+        └── HelpOverlay    (rendered when ? pressed)
+```
+
+### Hook Data Flow
+
+```
+useStateReader (polls every 500ms)
+  ├── reads DB: agents, rooms, messages tables
+  ├── reads tmux: capture-pane every 2s for status + rawOutput
+  └── feeds raw state to:
+      ├── useTree(agents, rooms, statuses) → { nodes, selectedIndex, selectedNode, moveUp/Down/... }
+      ├── useFeed(messages, rooms) → { formattedMessages }
+      └── useStatus(agents) → { statuses: Map<name, AgentStatusEntry> }
+```
+
+### Panel Layout
 
 ```
 Left (30%): Room/agent tree — agents appear under ALL rooms (dim + ◦ for secondary)
-Right-top (70% x 65%): Chronological message feed, color-coded rooms
-Right-bottom (70% x 35%): Agent details + live tmux pane output (raw capture-pane tail)
-Bottom row: Shortcut bar on reserved last row — ↑↓/jk:Navigate  Enter:Toggle  ?:Help  q:Quit  [!]=errors
+Right-top (70% x 65%): Chronological message feed, color-coded by room
+Right-bottom (70% x 35%): Agent details or room task summary
+Bottom row: StatusBar — ↑↓/jk:Navigate  Enter:Toggle  ?:Help  q:Quit  [!]=errors
 ```
 
-### ANSI-Aware Text Truncation
+### TreePanel — Role Display
 
-`render.ts` contains two helpers used on every rendered line:
-
-- `visibleLength(str)` — strips SGR escape codes (`\x1b\[[0-9;]*m`) before measuring length
-- `truncate(str, max)` — walks the string character by character, passing ANSI codes through without counting them as visible width; appends `…\x1b[0m` at the cut point so no color codes leak past the boundary
-
-This prevents status-dot colors, dim badges, room colors, and kind badges from inflating the measured width and causing text to overflow box borders.
-
-### Details Panel Content
-
-The details panel shows different content depending on selection:
-
-- **Agent selected:** name (bold), status+role+pane (compressed), rooms, topic, last activity, then live pane output (raw capture-pane tail filling remaining rows)
-- **Room selected:** room name, topic, member count
-- **Syncing state:** shows "Syncing..." when tree node exists but state hasn't loaded
-
-`rawOutput` is stored by the status poller (`src/dashboard/status.ts`) — the full capture-pane output, sliced by the renderer to fit available rows.
+Each agent row shows: `{dot} {name} ({role})`  
+- `●` (colored by status) for primary agents, `◦` (dim gray) for secondary (agent appears in multiple rooms)
+- Status colors: green=idle, yellow=busy, red=dead, gray=unknown
+- Scroll windowing: `height - 2` visible lines, `▲ more` / `▼ more` hints
 
 ### Tree Selection Tracking
 
 Selection tracks by node ID (`agent:name` or `agent:name:room` for secondary), not numeric index. This survives tree rebuilds when agents join/leave/reorder. Manual navigation disables auto-select (which otherwise follows the most-recently-active agent).
 
+### DetailsPanel — Context-Sensitive Content
+
+| Selection | Content |
+|-----------|---------|
+| Agent selected | name (bold), status + role + pane, rooms list, last activity, live pane output (rawOutput tail) |
+| Room selected | room name, topic, member count, **Task Summary** (open/done/error counts from message kinds) |
+| Nothing / syncing | "Syncing…" placeholder |
+
+Task Summary counts are derived from the `messages` table: `task` kind = open assignments, `completion` = done, `error` = failed.
+
+### AgentStatusEntry
+
+```ts
+interface AgentStatusEntry {
+  status: 'idle' | 'busy' | 'dead' | 'unknown';
+  lastChange: number;   // timestamp for auto-select sorting
+  rawOutput?: string;   // full capture-pane text
+}
+```
+
 ### Error Logging
 
-Dashboard errors go to `/tmp/cc-tmux/dashboard.log` (not console, which would corrupt the TUI). A `[!]` indicator appears in the shortcut bar when errors exist.
+Dashboard errors go to `/tmp/cc-tmux/dashboard.log` (not console, which would corrupt the TUI). A `[!]` indicator appears in the StatusBar when errors exist.
 
 ## Installation Architecture
 
@@ -234,4 +272,5 @@ Each CC session spawns its own MCP server subprocess (via stdio transport). All 
 
 - **Unit tests** (`test/state.test.ts`): Use `:memory:` SQLite DB, test state operations in isolation
 - **Tool tests** (`test/tools.test.ts`): Use `:memory:` DB + real tmux sessions, test MCP tool handlers end-to-end
-- **Dashboard tests** (`test/dashboard.test.ts`): Unit tests for render, tree (ID-based selection, multi-room, unassigned), and feed modules
+- **Dashboard hook tests** (`test/dashboard-hooks.test.ts`): Unit tests for `buildTree` pure function (ID-based selection, multi-room agents, unassigned section, collapse)
+- **Dashboard component tests** (`test/dashboard-ink.test.tsx`): Ink component tests via `ink-testing-library` — TreePanel, MessageFeedPanel, DetailsPanel, StatusBar, HelpOverlay

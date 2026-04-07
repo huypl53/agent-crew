@@ -10,13 +10,19 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14",
+    "ink-testing-library": "^4.0.0"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
+    "@inkjs/ui": "^2.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "ink": "^6.8.0",
+    "react": "^19.2.4",
+    "react-devtools-core": "^7.0.1",
     "strip-ansi": "^7.2.0"
   }
 }

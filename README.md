@@ -106,18 +106,23 @@ When `room` is provided, reads the full room conversation log (all members' mess
 
 ## TUI Dashboard
 
-Read-only terminal observer. Shows rooms, agents, status, and messages in a 3-panel layout.
+Read-only terminal observer built with React+Ink. Shows rooms, agents with roles and live status, message feed, and context-sensitive details in a 3-panel layout.
 
 ```
 ┌─ Rooms & Agents ──────────┐┌─ Messages ─────────────────────────┐
-│ ▼ company (2)              ││ 14:32:01 [boss@company] → lead-1   │
-│   ● boss        idle       ││   Build the auth system             │
-│   ● lead-1      busy       ││                                     │
+│ ▼ company (2)              ││ 14:32:01 [TASK] boss → lead-1      │
+│   ● boss (boss)    idle    ││   Build the auth system             │
+│   ● lead-1 (leader) busy   ││ 14:33:00 [DONE] builder-1 → lead-1 │
 │ ▼ frontend (3)             │├─ Details ────────────────────────────┤
-│   ● lead-1 [+company] busy ││ Selected: lead-1                     │
-│   ● builder-1   idle       ││ Role: leader | Rooms: company, front │
-└────────────────────────────┘└─────────────────────────────────────┘
+│   ◦ lead-1 (leader) busy   ││ lead-1  leader | busy               │
+│   ● builder-1 (worker) idle││ Rooms: company, frontend            │
+└────────────────────────────┘│ Working on auth component...        │
+                               └─────────────────────────────────────┘
 ```
+
+**Tree panel:** agents show `● name (role)` with status color. Secondary agents (in multiple rooms) show dim `◦`. Rooms collapse with `▶`/`▼`.
+
+**Details panel:** agent view shows live tmux pane output; room view shows task summary (open tasks / completed / errors from message kinds).
 
 ### Keyboard shortcuts
 
@@ -131,7 +136,7 @@ Read-only terminal observer. Shows rooms, agents, status, and messages in a 3-pa
 | `?` | Toggle help overlay |
 | `q` / `Ctrl-C` | Quit |
 
-Shortcuts are always visible in the bottom status bar. The details panel shows the selected agent's role, rooms, topic, status, tmux pane, and recent activity summary.
+Shortcuts are always visible in the bottom status bar.
 
 ## State Management
 
@@ -154,7 +159,9 @@ src/
 ├── delivery/         # Push (tmux) + pull (queue) delivery
 ├── shared/           # Types, status patterns (shared with dashboard)
 ├── dashboard.ts      # Dashboard entrypoint
-└── dashboard/        # TUI dashboard modules
+└── dashboard/        # React+Ink TUI dashboard
+    ├── components/   #   Pure Ink components (TreePanel, MessageFeedPanel, DetailsPanel, ...)
+    └── hooks/        #   Data hooks (useStateReader, useTree, useFeed, useStatus)
 skills/               # 4 role-based skills
 test/                 # Test suite
 ```
