@@ -34,11 +34,73 @@ export const DetailsPanel = memo(function DetailsPanel({ agent, agentStatus, sel
       {!agent && !isSyncing && selectedNode?.type === 'room' && (
         <RoomDetails node={selectedNode} room={rooms[selectedNode.label]} trackedTasks={trackedTasks} />
       )}
-      {!agent && !isSyncing && !selectedNode && <Text dimColor> No agent selected</Text>}
+      {!agent && !isSyncing && !selectedNode && <RoomOverview rooms={rooms} messages={messages} />}
       {agent && <AgentDetails agent={agent} status={agentStatus} rooms={rooms} messages={messages} height={height} />}
     </Box>
   );
 });
+
+function RoomOverview({ rooms, messages }: { rooms: Record<string, Room>; messages: Message[] }) {
+  const roomStats = useMemo(() => {
+    const stats: { name: string; members: number; tasks: number; done: number; errors: number; open: number; lastActive: string }[] = [];
+
+    for (const room of Object.values(rooms)) {
+      let tasks = 0, done = 0, errors = 0, lastTs = 0;
+      for (const m of messages) {
+        if (m.room !== room.name) continue;
+        const ts = new Date(m.timestamp).getTime();
+        if (ts > lastTs) lastTs = ts;
+        if (m.kind === 'task') tasks++;
+        else if (m.kind === 'completion') done++;
+        else if (m.kind === 'error') errors++;
+      }
+
+      let lastActive = '';
+      if (lastTs > 0) {
+        const secs = Math.floor((Date.now() - lastTs) / 1000);
+        lastActive = secs < 60 ? `${secs}s ago` : secs < 3600 ? `${Math.floor(secs / 60)}m ago` : `${Math.floor(secs / 3600)}h ago`;
+      }
+
+      stats.push({
+        name: room.name,
+        members: room.members.length,
+        tasks,
+        done,
+        errors,
+        open: Math.max(0, tasks - done - errors),
+        lastActive: lastActive || '-',
+      });
+    }
+
+    return stats.sort((a, b) => {
+      if (a.lastActive === '-' && b.lastActive !== '-') return 1;
+      if (a.lastActive !== '-' && b.lastActive === '-') return -1;
+      return 0;
+    });
+  }, [rooms, messages]);
+
+  if (roomStats.length === 0) {
+    return <Text dimColor> No rooms yet</Text>;
+  }
+
+  return (
+    <Box flexDirection="column" paddingLeft={1}>
+      <Text bold>Room Overview</Text>
+      <Text dimColor>{'  Room             Members  Tasks  Done  Err  Open  Active'}</Text>
+      {roomStats.map(r => (
+        <Text key={r.name} wrap="truncate">
+          {'  '}{r.name.padEnd(17).slice(0, 17)}
+          {'  '}{String(r.members).padStart(3)}
+          {'   '}{String(r.tasks).padStart(3)}
+          {'  '}{String(r.done).padStart(4)}
+          {'  '}<Text color={r.errors > 0 ? 'red' : undefined}>{String(r.errors).padStart(3)}</Text>
+          {'  '}<Text color={r.open > 0 ? 'yellow' : undefined}>{String(r.open).padStart(4)}</Text>
+          {'  '}<Text dimColor>{r.lastActive}</Text>
+        </Text>
+      ))}
+    </Box>
+  );
+}
 
 function RoomDetails({ node, room, trackedTasks }: { node: TreeNode; room?: Room; trackedTasks: TrackedTask[] }) {
   return (
