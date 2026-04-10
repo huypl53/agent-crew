@@ -15,7 +15,7 @@ A plugin for AI coding agents that turns your terminal into an AI development te
 - **Leaders** → manage workers in project rooms
 - **Workers** → execute tasks, report status
 
-Communication: push messages (tmux send-keys for commands) + pull messages (server-side queue for status updates).
+Communication: push messages (tmux paste-buffer with bracketed paste for commands) + pull messages (server-side queue for status updates).
 
 ## Requirements
 

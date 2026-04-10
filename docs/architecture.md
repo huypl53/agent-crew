@@ -29,8 +29,8 @@ Dashboard is a React+Ink app (separate process)
 - **src/tools/** — One handler per MCP tool. Imports from state/tmux/delivery. Never calls another tool.
 - **src/state/db.ts** — Database singleton: `initDb()`, `getDb()`, `closeDb()`. Owns schema DDL.
 - **src/state/index.ts** — All state operations as synchronous SQLite queries. No in-memory caching.
-- **src/tmux/** — Pure tmux CLI wrapper via Bun.spawn(). No business logic. Strips ANSI from capture-pane output.
-- **src/delivery/** — Push (tmux send-keys) + pull (queue). Always queues first, then delivers.
+- **src/tmux/** — Pure tmux CLI wrapper via Bun.spawn(). No business logic. Strips ANSI from capture-pane output. Uses `load-buffer` + `paste-buffer -dp` for message delivery (see "tmux Delivery" section below).
+- **src/delivery/** — Push (tmux paste-buffer) + pull (queue). Always queues first, then delivers.
 - **src/shared/** — Types, status regex patterns. Used by both MCP server and dashboard.
 - **src/dashboard/** — React+Ink TUI. Hooks (`useStateReader`, `useTree`, `useFeed`, `useStatus`) consume SQLite (read-only) + tmux. Components are pure renderers.
 - **skills/** — Pure markdown. No code execution.
@@ -150,8 +150,8 @@ Agent read cursors are cleaned up when an agent departs:
 - **Naming:** snake_case for MCP (tools, params, JSON), camelCase for TS, kebab-case for files
 - **Messages:** Written to messages table, then push delivery if mode=push
 - **Broadcast:** One message per recipient with `recipient` set to each target's name
-- **Push format:** `[sender@room]: text` via `tmux send-keys -l`
-- **Auto-notify format:** `[system@room]: worker kind: "summary"` via `tmux send-keys -l`
+- **Push format:** `[sender@room]: text` via `tmux paste-buffer -dp` (bracketed paste)
+- **Auto-notify format:** `[system@room]: worker kind: "summary"` via `tmux paste-buffer -dp`
 - **Status detection:** On-demand `capture-pane` + strip-ansi + regex match (idle/busy/dead/unknown)
 - **Error handling:** Tool handlers never throw — return `{ error: "..." }` with `isError: true`
 - **Terminal safety:** Dashboard registers cleanup on SIGINT/SIGTERM/uncaughtException
@@ -345,6 +345,32 @@ skills/               # 5 bundled skills (SKILL.md format, used by both)
 ### Cross-Platform Compatibility
 
 Both Claude Code and Codex CLI use the MCP protocol (stdio transport). The same `src/index.ts` server works for both — no adapter layer needed. Skills use identical `SKILL.md` format with YAML frontmatter. Platform-specific references (slash commands, `@` mentions) are avoided in bundled skills.
+
+## tmux Delivery — Bracketed Paste
+
+Push messages are delivered to agent tmux panes via `tmux load-buffer` + `paste-buffer -dp` (bracketed paste mode), NOT `send-keys -l`.
+
+### Why not send-keys -l
+
+`send-keys -l` injects characters one-at-a-time into the pane. This causes three problems with modern terminal apps like Claude Code:
+
+1. **Paste detection race:** Claude Code detects rapid keystroke injection as a "paste" and collapses it into `[Pasted N lines...]`. The Enter key sent afterward races against paste processing and can get dropped.
+2. **Mid-stream newlines:** Any `\n` in the message text becomes an Enter keypress, submitting partial text before the full message arrives.
+3. **Sentinel polling fails:** An earlier fix attempted polling `capture-pane` for a sentinel string before sending Enter, but when Claude Code shows `[Pasted N lines...]` instead of the actual text, the sentinel never matches → 5s timeout → Enter sent too late or state has changed.
+
+### How paste-buffer -dp works
+
+1. `tmux load-buffer -b _crew -` — loads text into a named buffer via stdin (safe for arbitrary content, no shell escaping issues)
+2. `tmux paste-buffer -dp -b _crew -t target` — pastes with bracketed paste mode (`-p`), deletes buffer after (`-d`)
+3. 80ms settle delay — lets the terminal app finish processing the paste
+4. `tmux send-keys -t target Enter` — submits the pasted text
+
+The `-p` flag wraps the text in `\e[200~...\e[201~` escape sequences. Terminal apps that enable bracketed paste mode (Claude Code does) treat the entire payload as one atomic paste — newlines become part of the pasted text, not Enter keypresses.
+
+### Requirements
+
+- tmux 2.4+ (for `paste-buffer -p` flag)
+- Target pane app must enable bracketed paste mode (`\e[?2004h`) — Claude Code and most modern terminal apps do this automatically
 
 ## Multi-process Architecture
 

@@ -28,17 +28,57 @@ export async function validateTmux(): Promise<{ ok: boolean; version?: string; e
   return { ok: false, error: 'crew requires tmux to be installed and available on PATH' };
 }
 
+// Delay between paste-buffer and Enter to let the terminal app finish processing
+// the bracketed paste before we submit.
+const PASTE_SETTLE_MS = 80;
+
 export async function sendKeys(target: string, text: string): Promise<{ delivered: boolean; error?: string }> {
-  // Send text in literal mode, then Enter separately
-  const textResult = await run('send-keys', '-t', target, '-l', text);
-  if (!textResult.success) {
-    return { delivered: false, error: textResult.stderr || 'send-keys failed' };
+  // Use tmux paste-buffer with bracketed paste mode (-p) instead of send-keys -l.
+  //
+  // Why: send-keys -l injects characters one-at-a-time. Terminal apps like Claude Code
+  // detect the rapid input burst as a "paste" and collapse it into "[Pasted N lines...]".
+  // Any newlines in the text become Enter keypresses mid-stream, submitting partial text.
+  // The subsequent Enter key races against paste processing and gets dropped.
+  //
+  // paste-buffer -p wraps the text in bracketed paste escape sequences (\e[200~...\e[201~)
+  // so the terminal app treats the entire payload as one atomic paste. Enter sent after
+  // the paste completes then submits cleanly.
+  try {
+    // Load text into a named tmux buffer via stdin (safe for arbitrary content)
+    const loadProc = Bun.spawn(['tmux', 'load-buffer', '-b', '_crew', '-'], {
+      stdin: Buffer.from(text),
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const loadTimeout = setTimeout(() => loadProc.kill(), SPAWN_TIMEOUT);
+    const loadExit = await loadProc.exited;
+    clearTimeout(loadTimeout);
+    if (loadExit !== 0) {
+      const stderr = await new Response(loadProc.stderr).text();
+      return { delivered: false, error: stderr.trimEnd() || 'load-buffer failed' };
+    }
+
+    // Paste with bracketed paste mode; -d deletes the buffer after pasting
+    const pasteResult = await run('paste-buffer', '-dp', '-b', '_crew', '-t', target);
+    if (!pasteResult.success) {
+      return { delivered: false, error: pasteResult.stderr || 'paste-buffer failed' };
+    }
+
+    // Let the terminal app finish processing the bracketed paste
+    await Bun.sleep(PASTE_SETTLE_MS);
+
+    // Submit
+    const enterResult = await run('send-keys', '-t', target, 'Enter');
+    if (!enterResult.success) {
+      return { delivered: false, error: enterResult.stderr || 'send-keys Enter failed' };
+    }
+
+    return { delivered: true };
+  } catch {
+    // Clean up buffer on failure
+    await run('delete-buffer', '-b', '_crew').catch(() => {});
+    return { delivered: false, error: 'paste delivery failed' };
   }
-  const enterResult = await run('send-keys', '-t', target, 'Enter');
-  if (!enterResult.success) {
-    return { delivered: false, error: enterResult.stderr || 'send-keys Enter failed' };
-  }
-  return { delivered: true };
 }
 
 export async function capturePane(target: string): Promise<string | null> {
