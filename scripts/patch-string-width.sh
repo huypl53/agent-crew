@@ -17,15 +17,34 @@ if grep -q '_widthCache' "$TARGET"; then
   exit 0  # Already patched
 fi
 
+# Portable in-place sed: BSD (macOS) requires -i '', GNU (Linux) requires -i
+sedi() {
+  if sed --version >/dev/null 2>&1; then
+    sed -i "$@"
+  else
+    sed -i '' "$@"
+  fi
+}
+
 # Add cache declaration after segmenter
-sed -i 's/const segmenter = new Intl.Segmenter();/const segmenter = new Intl.Segmenter();\nconst _widthCache = new Map();/' "$TARGET"
+sedi 's/const segmenter = new Intl.Segmenter();/const segmenter = new Intl.Segmenter();\
+const _widthCache = new Map();/' "$TARGET"
 
 # Add cache lookup after ASCII fast path
-sed -i '/return string.length;/,/^$/{
-  /^$/a\\n\t\/\/ Module-level cache: avoid repeated Intl.Segmenter calls for the same string.\n\tconst cached = _widthCache.get(string);\n\tif (cached !== undefined) {\n\t\treturn cached;\n\t}
+sedi '/return string\.length;/{
+N
+s/return string\.length;\n\t}/return string.length;\
+\t}\
+\
+\t\/\/ Module-level cache: avoid repeated Intl.Segmenter calls for the same string.\
+\tconst cached = _widthCache.get(string);\
+\tif (cached !== undefined) {\
+\t\treturn cached;\
+\t}/
 }' "$TARGET"
 
 # Store result before final return
-sed -i 's/\treturn width;$/\t_widthCache.set(string, width);\n\treturn width;/' "$TARGET"
+sedi 's/	return width;/	_widthCache.set(string, width);\
+	return width;/' "$TARGET"
 
 echo "Patched string-width with module-level cache"
