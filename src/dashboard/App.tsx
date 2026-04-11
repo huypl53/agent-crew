@@ -139,8 +139,8 @@ export function App() {
           <TaskBoard tasks={state.tasks} taskEvents={state.taskEvents} agents={Object.values(state.agents)} height={layout.panelRows} width={cols} />
         </Box>
       ) : (
-        <Box height={layout.panelRows}>
-          <TimelineView />
+        <Box height={layout.panelRows} width={cols}>
+          <TimelineView tasks={state.tasks} taskEvents={state.taskEvents} agents={Object.values(state.agents)} height={layout.panelRows} width={cols} />
         </Box>
       )}
       <StatusBar hasErrors={hasErrors()} showHelp={showHelp} />
