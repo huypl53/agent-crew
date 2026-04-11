@@ -7,9 +7,10 @@ import { handleListRooms } from '../src/tools/list-rooms.ts';
 import { handleListMembers } from '../src/tools/list-members.ts';
 import { handleReadMessages } from '../src/tools/read-messages.ts';
 import { handleSendMessage } from '../src/tools/send-message.ts';
-import { clearState } from '../src/state/index.ts';
+import { clearState, createTask, updateTaskStatus } from '../src/state/index.ts';
 import { handleSetRoomTopic } from '../src/tools/set-room-topic.ts';
 import { handleRefresh } from '../src/tools/refresh.ts';
+import { handleGetStatus } from '../src/tools/get-status.ts';
 import { createTestSession, destroyTestSession, cleanupAllTestSessions, captureFromPane } from './helpers.ts';
 
 let testPaneA: string;
@@ -245,6 +246,35 @@ describe('MCP tools', () => {
       expect(captured).toContain('w1');
       expect(captured).toContain('Login component done');
     });
+
+    test('send_message with kind=task creates task record and returns task_id', async () => {
+      await handleJoinRoom({ room: 'frontend', role: 'leader', name: 'lead-1', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'frontend', role: 'worker', name: 'builder-1', tmux_target: testPaneB });
+
+      const result = await handleSendMessage({
+        room: 'frontend',
+        text: 'Build the login page with validation',
+        to: 'builder-1',
+        name: 'lead-1',
+        kind: 'task',
+      });
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.task_id).toBeDefined();
+      expect(data.task_id).toBeGreaterThan(0);
+    });
+
+    test('send_message with kind=task requires to param', async () => {
+      await handleJoinRoom({ room: 'frontend', role: 'leader', name: 'lead-1', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'frontend', role: 'worker', name: 'builder-1', tmux_target: testPaneB });
+
+      const result = await handleSendMessage({
+        room: 'frontend',
+        text: 'Build something',
+        name: 'lead-1',
+        kind: 'task',
+      });
+      expect(result.isError).toBe(true);
+    });
   });
 
   describe('set_room_topic', () => {
@@ -295,6 +325,28 @@ describe('MCP tools', () => {
       await handleJoinRoom({ room: 'r', role: 'worker', name: 'w1', tmux_target: testPaneA });
       const result = await handleRefresh({ name: 'w1', tmux_target: '%99999' });
       expect(result.isError).toBe(true);
+    });
+  });
+
+  describe('get_status with tasks', () => {
+    test('includes current and queued tasks in response', async () => {
+      await handleJoinRoom({ room: 'frontend', role: 'leader', name: 'lead-1', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'frontend', role: 'worker', name: 'builder-1', tmux_target: testPaneB });
+
+      // Create two tasks using state functions directly
+      const t1 = createTask('frontend', 'builder-1', 'lead-1', null, 'Task A');
+      const t2 = createTask('frontend', 'builder-1', 'lead-1', null, 'Task B');
+      updateTaskStatus(t1.id, 'active');
+      updateTaskStatus(t2.id, 'queued');
+
+      const result = await handleGetStatus({ agent_name: 'builder-1' });
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.current_task).toBeDefined();
+      expect(data.current_task.id).toBe(t1.id);
+      expect(data.current_task.status).toBe('active');
+      expect(data.queued_tasks).toBeDefined();
+      expect(data.queued_tasks.length).toBe(1);
+      expect(data.queued_tasks[0].id).toBe(t2.id);
     });
   });
 });

@@ -1,5 +1,5 @@
-import { sendKeys } from '../tmux/index.ts';
-import { addMessage, getAgent, getRoomMembers } from '../state/index.ts';
+import { addMessage, getAgent, getRoomMembers, createTask } from '../state/index.ts';
+import { getQueue } from './pane-queue.ts';
 import type { Message, MessageKind } from '../shared/types.ts';
 
 const NOTIFY_KINDS: MessageKind[] = ['completion', 'error', 'question'];
@@ -9,6 +9,7 @@ interface DeliveryResult {
   delivered: boolean;
   queued: boolean;
   error?: string;
+  task_id?: number;
 }
 
 export async function deliverMessage(
@@ -39,22 +40,33 @@ export async function deliverMessage(
     // For broadcast (targetName=null), store each recipient's copy with their name
     const msg = addMessage(to, senderName, room, text, mode, targetName ?? to, kind);
 
+    let taskId: number | undefined;
+    if (kind === 'task') {
+      const task = createTask(room, targetName ?? to, senderName, Number(msg.message_id), text);
+      taskId = task.id;
+    }
+
     if (mode === 'push') {
       const agent = getAgent(to);
       if (agent) {
-        const delivery = await sendKeys(agent.tmux_target, fullText);
-        results.push({
-          message_id: msg.message_id,
-          delivered: delivery.delivered,
-          queued: true,
-          error: delivery.error,
-        });
+        try {
+          await getQueue(agent.tmux_target).enqueue({ type: 'paste', text: fullText });
+          results.push({ message_id: msg.message_id, delivered: true, queued: true, task_id: taskId });
+        } catch (e) {
+          results.push({
+            message_id: msg.message_id,
+            delivered: false,
+            queued: true,
+            error: e instanceof Error ? e.message : String(e),
+            task_id: taskId,
+          });
+        }
       } else {
-        results.push({ message_id: msg.message_id, delivered: false, queued: true, error: 'Agent not found' });
+        results.push({ message_id: msg.message_id, delivered: false, queued: true, error: 'Agent not found', task_id: taskId });
       }
     } else {
       // Pull mode: queue only
-      results.push({ message_id: msg.message_id, delivered: false, queued: true });
+      results.push({ message_id: msg.message_id, delivered: false, queued: true, task_id: taskId });
     }
   }
 
@@ -68,7 +80,7 @@ export async function deliverMessage(
       const notifyText = `[system@${room}]: ${senderName} ${kind}: "${summary}"`;
 
       for (const leader of leaders) {
-        await sendKeys(leader.tmux_target, notifyText);
+        getQueue(leader.tmux_target).enqueue({ type: 'paste', text: notifyText }).catch(() => {});
       }
     }
   }

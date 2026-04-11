@@ -33,6 +33,10 @@ export async function handleSendMessage(params: SendMessageParams): Promise<Tool
     return err(`Room "${room}" does not exist`);
   }
 
+  if (kind === 'task' && !to) {
+    return err('Task messages require a "to" param — broadcast tasks are not supported');
+  }
+
   // Validate target if directed message
   if (to) {
     const target = getAgent(to);
@@ -51,6 +55,7 @@ export async function handleSendMessage(params: SendMessageParams): Promise<Tool
       message_id: results[0]!.message_id,
       delivered: results[0]!.delivered,
       queued: results[0]!.queued,
+      ...(results[0]!.task_id !== undefined && { task_id: results[0]!.task_id }),
     });
   }
 
