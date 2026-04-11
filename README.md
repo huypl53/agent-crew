@@ -120,6 +120,7 @@ bun ~/.crew/test/uat-sqlite.ts
 | `update_task` | Worker: update task status (queued/active/completed/error) — now accepts `context` for handoff notes |
 | `interrupt_worker` | Leader/Boss: send Escape to worker pane, mark task interrupted |
 | `reassign_task` | Leader/Boss: replace worker's current/queued task with a new one |
+| `clear_worker_session` | Leader/Boss: send `/clear` to worker (clears Claude Code context), auto-refresh registration |
 | `get_task_details` | Get full details of a task including worker context notes |
 | `search_tasks` | Search completed tasks by room, agent, keyword, or status — find relevant context from previous work |
 
