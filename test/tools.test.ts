@@ -1,4 +1,5 @@
 import { describe, expect, test, beforeEach, afterAll } from 'bun:test';
+import type { TaskStatus, Task } from '../src/shared/types.ts';
 import { initDb, closeDb } from '../src/state/db.ts';
 import { handleJoinRoom } from '../src/tools/join-room.ts';
 import { handleLeaveRoom } from '../src/tools/leave-room.ts';

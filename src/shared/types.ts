@@ -32,6 +32,21 @@ export interface Message {
   mode: 'push' | 'pull';
 }
 
+export type TaskStatus = 'sent' | 'queued' | 'active' | 'completed' | 'error' | 'interrupted' | 'cancelled';
+
+export interface Task {
+  id: number;
+  room: string;
+  assigned_to: string;
+  created_by: string;
+  message_id: number | null;
+  summary: string;
+  status: TaskStatus;
+  note?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ToolResult {
   content: Array<{ type: 'text'; text: string }>;
   isError?: boolean;
