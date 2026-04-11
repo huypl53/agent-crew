@@ -63,24 +63,29 @@ function readAll(): DashboardState | null {
       timestamp: row.timestamp, sequence: row.id, mode: row.mode,
     }));
 
-    const taskRows = db.query<{
-      id: number; room: string; assigned_to: string; created_by: string;
-      message_id: number | null; summary: string; status: string; note: string | null;
-      created_at: string; updated_at: string;
-    }, []>('SELECT * FROM tasks ORDER BY id ASC').all();
+    let tasks: Task[] = [];
+    try {
+      const taskRows = db.query<{
+        id: number; room: string; assigned_to: string; created_by: string;
+        message_id: number | null; summary: string; status: string; note: string | null;
+        created_at: string; updated_at: string;
+      }, []>('SELECT * FROM tasks ORDER BY id ASC').all();
 
-    const tasks: Task[] = taskRows.map(row => ({
-      id: row.id,
-      room: row.room,
-      assigned_to: row.assigned_to,
-      created_by: row.created_by,
-      message_id: row.message_id,
-      summary: row.summary,
-      status: row.status as Task['status'],
-      note: row.note ?? undefined,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    }));
+      tasks = taskRows.map(row => ({
+        id: row.id,
+        room: row.room,
+        assigned_to: row.assigned_to,
+        created_by: row.created_by,
+        message_id: row.message_id,
+        summary: row.summary,
+        status: row.status as Task['status'],
+        note: row.note ?? undefined,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      }));
+    } catch {
+      // tasks table may not exist in older DBs — treat as empty
+    }
     return { agents, rooms, messages, tasks };
   } catch (e) {
     logError('state-reader.readAll', e);
