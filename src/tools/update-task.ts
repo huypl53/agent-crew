@@ -7,13 +7,14 @@ interface UpdateTaskParams {
   task_id: number;
   status: string;
   note?: string;
+  context?: string;
   name: string;
 }
 
 const WORKER_ALLOWED: TaskStatus[] = ['queued', 'active', 'completed', 'error'];
 
 export async function handleUpdateTask(params: UpdateTaskParams): Promise<ToolResult> {
-  const { task_id, status, note, name } = params;
+  const { task_id, status, note, context, name } = params;
 
   if (!task_id || !status || !name) {
     return err('Missing required params: task_id, status, name');
@@ -39,7 +40,7 @@ export async function handleUpdateTask(params: UpdateTaskParams): Promise<ToolRe
     return err(`Task ${task_id} is assigned to "${task.assigned_to}", not "${name}"`);
   }
 
-  const updated = updateTaskStatus(task_id, status as TaskStatus, note);
+  const updated = updateTaskStatus(task_id, status as TaskStatus, note, context);
   if (!updated) {
     return err(`Failed to update task ${task_id}`);
   }

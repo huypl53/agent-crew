@@ -20,6 +20,8 @@ import { handleRefresh } from './tools/refresh.ts';
 import { handleUpdateTask } from './tools/update-task.ts';
 import { handleInterruptWorker } from './tools/interrupt-worker.ts';
 import { handleReassignTask } from './tools/reassign-task.ts';
+import { handleGetTaskDetails } from './tools/get-task-details.ts';
+import { handleSearchTasks } from './tools/search-tasks.ts';
 import { err } from './shared/types.ts';
 
 // Validate tmux
@@ -192,9 +194,35 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           task_id: { type: 'number', description: 'Task ID to update' },
           status: { type: 'string', enum: ['queued', 'active', 'completed', 'error'], description: 'New task status' },
           note: { type: 'string', description: 'Optional note (e.g., error message)' },
+          context: { type: 'string', description: 'Worker context notes for handoff (what you learned, files explored, key findings)' },
           name: { type: 'string', description: 'Your agent name' },
         },
         required: ['task_id', 'status', 'name'],
+      },
+    },
+    {
+      name: 'get_task_details',
+      description: 'Get full details of a task including worker context notes. Use to read what a previous worker learned.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          task_id: { type: 'number', description: 'Task ID to look up' },
+        },
+        required: ['task_id'],
+      },
+    },
+    {
+      name: 'search_tasks',
+      description: 'Search completed tasks by room, agent, keyword, or status. Use to find relevant context from previous work.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          room: { type: 'string', description: 'Filter by room name' },
+          assigned_to: { type: 'string', description: 'Filter by agent name' },
+          keyword: { type: 'string', description: 'Search keyword (matches summary and context)' },
+          status: { type: 'string', description: 'Filter by status (default: completed)' },
+          limit: { type: 'number', description: 'Max results (default: 10)' },
+        },
       },
     },
   ],
@@ -230,6 +258,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleInterruptWorker(args as any);
       case 'reassign_task':
         return await handleReassignTask(args as any);
+      case 'get_task_details':
+        return await handleGetTaskDetails(args as any);
+      case 'search_tasks':
+        return await handleSearchTasks(args as any);
       default:
         return err(`Unknown tool: ${name}`);
     }
