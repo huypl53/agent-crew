@@ -4,6 +4,7 @@ import { useStateReader } from './hooks/useStateReader.ts';
 import { useTree } from './hooks/useTree.ts';
 import { useFeed } from './hooks/useFeed.ts';
 import { useStatus } from './hooks/useStatus.ts';
+import { useViews } from './hooks/useViews.ts';
 import { TreePanel } from './components/TreePanel.tsx';
 import { MessageFeedPanel } from './components/MessageFeed.tsx';
 import { DetailsPanel } from './components/DetailsPanel.tsx';
@@ -42,6 +43,7 @@ export function App() {
   const { statuses, pollAll, getStatus } = useStatus();
   const { messages, update: updateFeed } = useFeed();
   const tree = useTree(state.agents, state.rooms, statuses);
+  const { currentView, cycleView } = useViews();
   const [showHelp, setShowHelp] = useState(false);
   const [enabledKinds, setEnabledKinds] = useState<Set<MessageKind>>(new Set(ALL_KINDS));
 
@@ -73,6 +75,7 @@ export function App() {
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) { exit(); return; }
     if (input === '?') { setShowHelp(h => !h); return; }
+    if (key.tab) { cycleView(); return; }
     const kindMap: Record<string, MessageKind> = { '1': 'task', '2': 'completion', '3': 'error', '4': 'question', '5': 'status', '6': 'chat' };
     if (kindMap[input]) {
       setEnabledKinds(prev => {
@@ -100,7 +103,7 @@ export function App() {
 
   return (
     <Box flexDirection="column" height={rows} width={cols}>
-      <HeaderStats statuses={statuses} messages={state.messages} tasks={state.tasks} earliestJoinedAt={earliestJoinedAt} cols={cols} tokenUsage={state.tokenUsage} />
+      <HeaderStats currentView={currentView} statuses={statuses} messages={state.messages} tasks={state.tasks} earliestJoinedAt={earliestJoinedAt} cols={cols} tokenUsage={state.tokenUsage} />
       <Box flexDirection="row" height={layout.panelRows}>
         <TreePanel nodes={tree.nodes} selectedIndex={tree.selectedIndex} height={layout.panelRows} width={layout.treeW} statuses={statuses} messages={state.messages} tasks={state.tasks} tokenUsage={state.tokenUsage} />
         <Box flexDirection="column" flexGrow={1}>
