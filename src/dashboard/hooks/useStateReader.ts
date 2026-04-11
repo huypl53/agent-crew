@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Database } from 'bun:sqlite';
-import type { Agent, Room, Message, Task } from '../../shared/types.ts';
+import type { Agent, Room, Message, Task, TokenUsage } from '../../shared/types.ts';
 import { logError } from '../logger.ts';
 import { existsSync } from 'fs';
 
@@ -13,9 +13,10 @@ export interface DashboardState {
   rooms: Record<string, Room>;
   messages: Message[];
   tasks: Task[];
+  tokenUsage: TokenUsage[];
 }
 
-const EMPTY_STATE: DashboardState = { agents: {}, rooms: {}, messages: [], tasks: [] };
+const EMPTY_STATE: DashboardState = { agents: {}, rooms: {}, messages: [], tasks: [], tokenUsage: [] };
 
 function readAll(): DashboardState | null {
   let db: Database | null = null;
@@ -23,8 +24,8 @@ function readAll(): DashboardState | null {
     if (!existsSync(DB_PATH)) return null;
     db = new Database(DB_PATH, { readonly: true });
 
-    const agentRows = db.query<{ name: string; role: Agent['role']; pane: string; registered_at: string; last_activity: string | null }, []>(
-      'SELECT name, role, pane, registered_at, last_activity FROM agents'
+    const agentRows = db.query<{ name: string; role: Agent['role']; pane: string; agent_type: string; registered_at: string; last_activity: string | null }, []>(
+      'SELECT name, role, pane, agent_type, registered_at, last_activity FROM agents'
     ).all();
     const roomRows = db.query<{ name: string; topic: string | null; created_at: string }, []>(
       'SELECT name, topic, created_at FROM rooms'
@@ -53,7 +54,7 @@ function readAll(): DashboardState | null {
       agents[row.name] = {
         agent_id: row.name, name: row.name, role: row.role,
         rooms: agentRooms.get(row.name) ?? [],
-        tmux_target: row.pane, joined_at: row.registered_at,
+        tmux_target: row.pane, agent_type: (row.agent_type ?? 'unknown') as any, joined_at: row.registered_at,
         last_activity: row.last_activity ?? undefined,
       };
     }
@@ -86,7 +87,15 @@ function readAll(): DashboardState | null {
     } catch {
       // tasks table may not exist in older DBs — treat as empty
     }
-    return { agents, rooms, messages, tasks };
+
+    let tokenUsage: TokenUsage[] = [];
+    try {
+      tokenUsage = db.prepare('SELECT * FROM token_usage ORDER BY recorded_at DESC').all() as TokenUsage[];
+    } catch {
+      // token_usage table may not exist in older DBs
+    }
+
+    return { agents, rooms, messages, tasks, tokenUsage };
   } catch (e) {
     logError('state-reader.readAll', e);
     return null;
@@ -157,5 +166,7 @@ function quickHash(state: DashboardState): string {
   const lastMsgId = state.messages[state.messages.length - 1]?.message_id ?? '';
   const taskCount = state.tasks.length;
   const lastTaskStatus = state.tasks[state.tasks.length - 1]?.status ?? '';
-  return `${agentKeys}|${roomKeys}|${msgCount}|${lastMsgId}|${taskCount}|${lastTaskStatus}`;
+  const tokenCount = state.tokenUsage.length;
+  const latestTokenCost = state.tokenUsage[0]?.cost_usd ?? 0;
+  return `${agentKeys}|${roomKeys}|${msgCount}|${lastMsgId}|${taskCount}|${lastTaskStatus}|${tokenCount}|${latestTokenCost}`;
 }
