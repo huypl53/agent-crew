@@ -14,6 +14,8 @@ import { handleGetStatus } from '../src/tools/get-status.ts';
 import { handleUpdateTask } from '../src/tools/update-task.ts';
 import { handleInterruptWorker } from '../src/tools/interrupt-worker.ts';
 import { handleReassignTask } from '../src/tools/reassign-task.ts';
+import { handleGetTaskDetails } from '../src/tools/get-task-details.ts';
+import { handleSearchTasks } from '../src/tools/search-tasks.ts';
 import { createTestSession, destroyTestSession, cleanupAllTestSessions, captureFromPane } from './helpers.ts';
 
 let testPaneA: string;
@@ -495,6 +497,47 @@ describe('MCP tools', () => {
       expect(data.queued_tasks).toBeDefined();
       expect(data.queued_tasks.length).toBe(1);
       expect(data.queued_tasks[0].id).toBe(t2.id);
+    });
+  });
+
+  describe('get_task_details', () => {
+    test('returns full task with context', async () => {
+      const task = createTask('test-room', 'wk-01', 'lead-01', null, 'detail test task');
+      updateTaskStatus(task.id, 'active');
+      updateTaskStatus(task.id, 'completed', undefined, 'Found auth issue in middleware');
+
+      const result = await handleGetTaskDetails({ task_id: task.id });
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.context).toContain('auth issue');
+    });
+
+    test('returns error for nonexistent task', async () => {
+      const result = await handleGetTaskDetails({ task_id: 99999 });
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  describe('search_tasks', () => {
+    test('searches by keyword', async () => {
+      const task = createTask('test-room', 'wk-01', 'lead-01', null, 'search test auth fix');
+      updateTaskStatus(task.id, 'active');
+      updateTaskStatus(task.id, 'completed', undefined, 'JWT tokens expire too early');
+
+      const result = await handleSearchTasks({ keyword: 'JWT' });
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.length).toBeGreaterThan(0);
+    });
+
+    test('searches by room', async () => {
+      const result = await handleSearchTasks({ room: 'test-room' });
+      const data = JSON.parse(result.content[0]!.text);
+      expect(Array.isArray(data)).toBe(true);
+    });
+
+    test('returns empty for no matches', async () => {
+      const result = await handleSearchTasks({ keyword: 'zzz_nonexistent_zzz' });
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data).toEqual([]);
     });
   });
 });
