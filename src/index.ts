@@ -7,6 +7,7 @@ import {
 import { validateTmux } from './tmux/index.ts';
 import { validateLiveness } from './state/index.ts';
 import { initDb } from './state/db.ts';
+import { startTokenCollection } from './tokens/collector.ts';
 import { handleJoinRoom } from './tools/join-room.ts';
 import { handleLeaveRoom } from './tools/leave-room.ts';
 import { handleListRooms } from './tools/list-rooms.ts';
@@ -240,3 +241,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 // Start server
 const transport = new StdioServerTransport();
 await server.connect(transport);
+
+// Start token collection
+startTokenCollection();

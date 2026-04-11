@@ -34,8 +34,14 @@ export async function collectAllTokens(): Promise<void> {
 /** Start the periodic token collection loop */
 export function startTokenCollection(): void {
   if (intervalHandle) return; // already running
-  collectAllTokens();
-  intervalHandle = setInterval(collectAllTokens, COLLECT_INTERVAL_MS);
+  collectAllTokens().catch(() => {
+    // Silently fail on first run if DB not ready yet (will retry in next interval)
+  });
+  intervalHandle = setInterval(() => {
+    collectAllTokens().catch(() => {
+      // Silently fail if collection fails (will retry in next interval)
+    });
+  }, COLLECT_INTERVAL_MS);
 }
 
 /** Stop the token collection loop */

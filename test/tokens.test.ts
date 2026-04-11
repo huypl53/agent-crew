@@ -1,8 +1,9 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { getClaudePidFromPane, getSessionForPid, resolveSessionPath } from '../src/tokens/pid-mapper.ts';
 import { parseJsonlUsage, sumUsageEntries } from '../src/tokens/claude-code.ts';
 import { readCodexThreads } from '../src/tokens/codex.ts';
 import { startTokenCollection, stopTokenCollection } from '../src/tokens/collector.ts';
+import { initDb, closeDb } from '../src/state/db.ts';
 
 describe('pid-mapper', () => {
   test('getClaudePidFromPane returns null for nonexistent pane', async () => {
