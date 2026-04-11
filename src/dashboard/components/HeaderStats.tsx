@@ -1,17 +1,24 @@
 import React, { memo, useMemo } from 'react';
 import { Box, Text } from 'ink';
 import type { AgentStatusEntry } from '../hooks/useStatus.ts';
-import type { Message, Task } from '../../shared/types.ts';
+import type { Message, Task, TokenUsage } from '../../shared/types.ts';
+
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
 
 interface HeaderStatsProps {
   statuses: Map<string, AgentStatusEntry>;
   messages: Message[];
   tasks: Task[];
+  tokenUsage: TokenUsage[];
   earliestJoinedAt: string | null;
   cols: number;
 }
 
-export const HeaderStats = memo(function HeaderStats({ statuses, messages, tasks, earliestJoinedAt, cols }: HeaderStatsProps) {
+export const HeaderStats = memo(function HeaderStats({ statuses, messages, tasks, tokenUsage, earliestJoinedAt, cols }: HeaderStatsProps) {
   const stats = useMemo(() => {
     let busy = 0, idle = 0, dead = 0;
     for (const entry of statuses.values()) {
@@ -43,6 +50,16 @@ export const HeaderStats = memo(function HeaderStats({ statuses, messages, tasks
     return { busy, idle, dead, active, queued, done, errors, uptime };
   }, [statuses, tasks, earliestJoinedAt]);
 
+  // Deduplicate: latest snapshot per agent (tokenUsage is sorted DESC by recorded_at)
+  const latestByAgent = new Map<string, TokenUsage>();
+  for (const t of tokenUsage) {
+    if (!latestByAgent.has(t.agent_name)) {
+      latestByAgent.set(t.agent_name, t);
+    }
+  }
+  const totalCost = [...latestByAgent.values()].reduce((sum, t) => sum + (t.cost_usd ?? 0), 0);
+  const totalTokens = [...latestByAgent.values()].reduce((sum, t) => sum + t.input_tokens + t.output_tokens, 0);
+
   const compact = cols < 100;
 
   if (compact) {
@@ -61,6 +78,9 @@ export const HeaderStats = memo(function HeaderStats({ statuses, messages, tasks
           {stats.queued > 0 && <><Text>{stats.queued}</Text><Text dimColor>{'◌ '}</Text></>}
           {stats.errors > 0 && <><Text color="red">{stats.errors}</Text><Text dimColor>{'! '}</Text></>}
           {stats.uptime && <><Text dimColor>{'│ '}</Text><Text dimColor>{stats.uptime}</Text></>}
+          <Text dimColor>{'│ $'}</Text>
+          <Text color="green">{totalCost.toFixed(2)}</Text>
+          <Text dimColor>{` (${formatTokenCount(totalTokens)}tok)`}</Text>
         </Text>
       </Box>
     );
@@ -79,6 +99,9 @@ export const HeaderStats = memo(function HeaderStats({ statuses, messages, tasks
         {stats.queued > 0 && <><Text dimColor>  </Text><Text>{stats.queued}</Text><Text dimColor> queued</Text></>}
         {stats.errors > 0 && <><Text dimColor>  </Text><Text color="red">{stats.errors}</Text><Text dimColor> err</Text></>}
         {stats.uptime && <><Text dimColor> │ Up: </Text><Text dimColor>{stats.uptime}</Text></>}
+        <Text dimColor> │ Cost: </Text>
+        <Text color="green">${totalCost.toFixed(2)}</Text>
+        <Text dimColor> ({formatTokenCount(totalTokens)} tok)</Text>
       </Text>
     </Box>
   );
