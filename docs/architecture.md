@@ -387,3 +387,29 @@ Each CC session spawns its own MCP server subprocess (via stdio transport). All 
 - **Tool tests** (`test/tools.test.ts`): Use `:memory:` DB + real tmux sessions, test MCP tool handlers end-to-end
 - **Dashboard hook tests** (`test/dashboard-hooks.test.ts`): Unit tests for `buildTree` pure function (ID-based selection, multi-room agents, unassigned section, collapse)
 - **Dashboard component tests** (`test/dashboard-ink.test.tsx`): Ink component tests via `ink-testing-library` — TreePanel, MessageFeedPanel, DetailsPanel, StatusBar, HelpOverlay
+
+## Task Tracking & Worker Control
+
+### Task Lifecycle
+Tasks are tracked in a dedicated `tasks` SQLite table with statuses:
+`sent → queued → active → completed/error/interrupted/cancelled`
+
+Tasks are automatically created when `send_message` is called with `kind: "task"`.
+Workers update task status via `update_task`. Dead agent tasks are cleaned up automatically.
+
+### Worker Control Tools
+- `interrupt_worker` — Leader/Boss only. Sends Escape to worker pane, marks task interrupted.
+- `reassign_task` — Leader/Boss only. Replaces queued/active task with new one.
+- `update_task` — Worker only. Reports task lifecycle transitions.
+
+### Role Enforcement
+The `assertRole` guard (`src/shared/role-guard.ts`) enforces role-based access on control tools.
+Existing tools remain role-agnostic.
+
+### Per-Pane Delivery Queue
+All tmux output is routed through `PaneQueue` (`src/delivery/pane-queue.ts`):
+- One queue per pane, serializes deliveries within a process
+- Cross-process serialization via per-pane file locks (`/tmp/crew/locks/`)
+- Escape items get priority (jump to front of queue)
+- Polls for idle prompt before delivering paste items
+- Per-pane buffer names (`_crew_{pane_id}`) prevent cross-pane buffer collisions

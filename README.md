@@ -8,6 +8,7 @@ A plugin for AI coding agents that turns your terminal into an AI development te
 2. Register each agent into a room: `/crew:join-room myproject --role worker --name builder-1`
 3. Your own session is the boss — give natural language direction
 4. Leaders coordinate workers, workers execute tasks, everyone communicates through rooms
+5. Task tracking with lifecycle statuses — leaders can interrupt or reassign worker tasks
 
 ## Architecture
 
@@ -112,6 +113,9 @@ bun ~/.crew/test/uat-sqlite.ts
 | `read_messages` | Read room log or inbox with optional `kinds` filter |
 | `get_status` | Check agent status |
 | `set_room_topic` | Set current objective for a room |
+| `update_task` | Worker: update task status (queued/active/completed/error) |
+| `interrupt_worker` | Leader/Boss: send Escape to worker pane, mark task interrupted |
+| `reassign_task` | Leader/Boss: replace worker's current/queued task with a new one |
 
 ### `send_message` params
 
