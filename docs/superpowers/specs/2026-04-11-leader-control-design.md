@@ -21,7 +21,8 @@ Additionally, when multiple sources send messages to the same worker pane simult
 - Changing the existing push/pull messaging model
 - Modifying existing tools' role-agnostic behavior
 - Task priorities, dependencies, or retry logic
-- Worker heartbeat/auto-detection of hangs
+- Worker heartbeat/auto-detection of hangs (but dead agent tasks are cleaned up — see below)
+- Dashboard changes (existing `useTaskTracker` heuristic remains; may be migrated to `tasks` table later)
 
 ---
 
@@ -32,10 +33,10 @@ Additionally, when multiple sources send messages to the same worker pane simult
 ```sql
 CREATE TABLE tasks (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  room        TEXT NOT NULL REFERENCES rooms(name) ON DELETE CASCADE,
-  assigned_to TEXT NOT NULL REFERENCES agents(name) ON DELETE CASCADE,
-  created_by  TEXT NOT NULL REFERENCES agents(name) ON DELETE CASCADE,
-  message_id  INTEGER REFERENCES messages(id),
+  room        TEXT NOT NULL,
+  assigned_to TEXT NOT NULL,
+  created_by  TEXT NOT NULL,
+  message_id  INTEGER,
   summary     TEXT NOT NULL,
   status      TEXT NOT NULL DEFAULT 'sent',
   created_at  TEXT NOT NULL,
@@ -45,6 +46,8 @@ CREATE TABLE tasks (
 CREATE INDEX idx_tasks_assigned ON tasks(assigned_to, status);
 CREATE INDEX idx_tasks_room     ON tasks(room, status);
 ```
+
+**Note:** No foreign key constraints on `assigned_to`/`created_by` — matches the `messages` table pattern. This preserves task history when agents leave or are removed.
 
 ### Task Status Lifecycle
 
@@ -56,8 +59,13 @@ queued → cancelled    (leader used reassign_task to replace it)
 active → completed    (worker finished successfully)
 active → error        (worker hit an error)
 active → interrupted  (leader used interrupt_worker)
-interrupted → active  (worker resumes or gets new instruction)
+interrupted → active  (same task resumed by worker after interruption)
+*→ error              (agent detected dead — validateLiveness() cleanup)
 ```
+
+**Dead agent cleanup:** When `validateLiveness()` detects a dead agent, all their `sent`/`queued`/`active` tasks transition to `error` with note "agent pane died".
+
+`*` = applies to `sent`, `queued`, `active`, and `interrupted` statuses.
 
 ---
 
@@ -90,7 +98,7 @@ interrupt_worker({
 - Role enforcement: caller must be leader or boss
 - Validates worker is in the same room
 - Checks worker's current task status:
-  - If **active** → enqueues `Escape` to pane queue (priority), marks task `interrupted`
+  - If **active** → enqueues `Escape` to pane queue (priority), marks task `interrupted`, sends system notification to worker: `[system@room]: Your current task was interrupted by {caller}`
   - If **no active task** → returns error
 - Returns: `{ interrupted: true, task_id, previous_status }`
 
@@ -108,9 +116,10 @@ reassign_task({
 - Role enforcement: caller must be leader or boss
 - Validates worker is in the same room
 - Checks worker's current state:
-  - **queued** task → enqueues `clear_and_paste` (Up + Esc Esc + new text). Old task → `cancelled`, new task → `sent`
-  - **active** task → enqueues `escape` then `paste` (Esc + new text). Old task → `interrupted`, new task → `sent`
+  - **queued** task → enqueues `escape` then `paste` (interrupt + new text). Old task → `cancelled`, new task → `sent`
+  - **active** task → enqueues `escape` then `paste` (interrupt + new text). Old task → `interrupted`, new task → `sent`
   - **idle** (no task) → enqueues `paste` (same as send_message). New task → `sent`
+- **Note:** Both queued and active paths use the same interrupt-then-resend approach. The `clearQueuedInput` (Up + Esc Esc) sequence was considered but not validated against Claude Code's input handling. Escape is a safe universal interrupt.
 - Returns: `{ reassigned: true, old_task_id?, new_task_id }`
 
 ---
@@ -120,6 +129,7 @@ reassign_task({
 ### `send_message`
 
 When `kind: "task"`:
+- **Requires `to` param** — broadcast tasks are not supported (returns error if `to` is omitted)
 - Automatically creates a row in the `tasks` table with status `sent`
 - Links to the message via `message_id`
 - Stores first ~200 chars of text as `summary`
@@ -200,8 +210,9 @@ reassign_task       ────┤
 type QueueItem =
   | { type: "paste", text: string, resolve: Function }
   | { type: "escape", resolve: Function }
-  | { type: "clear_and_paste", text: string, resolve: Function }
 ```
+
+**Note:** `clear_and_paste` was removed — reassign always uses `escape` then `paste` (two separate queue items).
 
 ### Delivery Loop
 
@@ -250,14 +261,18 @@ class PaneQueue {
       case "escape":
         await sendEscape(this.target);
         break;
-      case "clear_and_paste":
-        await clearQueuedInput(this.target);
-        await sendKeys(this.target, item.text);
-        break;
     }
   }
 }
 ```
+
+### Cross-Process Serialization
+
+Each Claude Code session spawns its own MCP server subprocess. Multiple MCP processes targeting the same pane would each have independent in-memory queues, defeating serialization. Solution: use a **per-pane file lock** (`/tmp/crew/locks/{pane_id}.lock`) acquired before each delivery and released after. The in-memory queue serializes within a process; the file lock serializes across processes.
+
+### Per-Pane tmux Buffer Names
+
+The existing `sendKeys()` uses a hardcoded buffer name `_crew`. With concurrent pane queues, this causes buffer collisions. Solution: use per-pane buffer names: `_crew_{pane_id}` (e.g., `_crew_%5`).
 
 ### Singleton Management
 
@@ -265,26 +280,30 @@ One `PaneQueue` instance per tmux target, stored in a module-level `Map<string, 
 
 ---
 
-## tmux Keystroke Primitives
+## tmux Changes
 
-New functions in `src/tmux/index.ts`:
+### New Keystroke Primitive
 
 ```typescript
-// Send Escape to interrupt current operation
-async function sendEscape(target: string): Promise<void> {
-  await run('send-keys', '-t', target, 'Escape');
-  await Bun.sleep(PASTE_SETTLE_MS);
-}
+// src/tmux/index.ts
 
-// Clear queued input: Up to recall, double Escape to clear
-async function clearQueuedInput(target: string): Promise<void> {
-  await run('send-keys', '-t', target, 'Up');
-  await Bun.sleep(PASTE_SETTLE_MS);
-  await run('send-keys', '-t', target, 'Escape');
-  await Bun.sleep(100);
+// Send Escape to interrupt current operation
+export async function sendEscape(target: string): Promise<void> {
   await run('send-keys', '-t', target, 'Escape');
   await Bun.sleep(PASTE_SETTLE_MS);
 }
+```
+
+### Per-Pane Buffer Names
+
+Update existing `sendKeys()` to use per-pane buffer names:
+
+```typescript
+// Before: hardcoded '_crew' buffer (collision risk across panes)
+const bufferName = '_crew';
+
+// After: per-pane buffer name
+const bufferName = `_crew_${target.replace('%', '')}`;
 ```
 
 ---
@@ -315,6 +334,31 @@ async function clearQueuedInput(target: string): Promise<void> {
 
 ---
 
+## Test Plan
+
+### Unit Tests (`test/state.test.ts`)
+- Task CRUD: create, read, update status transitions
+- Invalid status transitions rejected
+- Dead agent cleanup transitions tasks to error
+
+### Unit Tests (`test/role-guard.test.ts`)
+- `assertRole` allows correct roles
+- `assertRole` rejects wrong roles with descriptive error
+- `assertRole` rejects unknown agents
+
+### Tool Tests (`test/tools.test.ts`)
+- `update_task`: worker can update own task, cannot update others', non-worker rejected
+- `interrupt_worker`: leader can interrupt, worker cannot, no-active-task error
+- `reassign_task`: leader can reassign queued/active/idle, worker rejected
+- `send_message` with `kind: "task"` creates task record, requires `to` param
+
+### UAT (`test/uat-interrupt.ts`)
+- Interrupt a busy Claude Code worker via Escape
+- Reassign a queued task on a busy worker
+- Verify task status transitions end-to-end
+
+---
+
 ## File Changes Summary
 
 | File | Change |
@@ -329,9 +373,12 @@ async function clearQueuedInput(target: string): Promise<void> {
 | `src/tools/update-task.ts` | New tool handler |
 | `src/tools/interrupt-worker.ts` | New tool handler |
 | `src/tools/reassign-task.ts` | New tool handler |
-| `src/tools/send-message.ts` | Auto-create task record when `kind: "task"` |
+| `src/tools/send-message.ts` | Auto-create task record when `kind: "task"`, require `to` |
 | `src/tools/get-status.ts` | Include task info in response |
 | `src/index.ts` | Register 3 new tools |
 | `skills/worker/SKILL.md` | Add `update_task` protocol |
 | `skills/leader/SKILL.md` | Add interrupt/reassign guidance |
 | `skills/boss/SKILL.md` | Add interrupt/reassign guidance |
+| `test/role-guard.test.ts` | New — role guard unit tests |
+| `test/tools.test.ts` | Add tests for new tools |
+| `test/uat-interrupt.ts` | New — UAT for interrupt/reassign |
