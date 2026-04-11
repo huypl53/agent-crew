@@ -1,86 +1,57 @@
 import { useMemo } from 'react';
-import type { Message } from '../../shared/types.ts';
+import type { Task, TaskStatus } from '../../shared/types.ts';
 
 export interface TrackedTask {
-  id: string;          // message_id of the task message
-  text: string;        // truncated task text
-  agent: string;       // assigned agent (message.to) or sender
+  id: number;
+  text: string;
+  agent: string;
   room: string;
-  assignedAt: number;  // timestamp ms
-  status: 'open' | 'done' | 'error';
-  duration: number | null; // ms between task and completion/error, null if open
-  closedBy?: string;   // message_id of completion/error
+  assignedAt: number;
+  status: TaskStatus;
+  duration: number | null;
+  updatedAt: number;
 }
 
-export function useTaskTracker(messages: Message[], room: string | null): TrackedTask[] {
+export function useTaskTracker(tasks: Task[], room: string | null): TrackedTask[] {
   return useMemo(() => {
     if (!room) return [];
 
-    const roomMsgs = messages.filter(m => m.room === room);
-    const tasks: TrackedTask[] = [];
+    const roomTasks = tasks.filter(t => t.room === room);
 
-    // Collect all task messages
-    for (const m of roomMsgs) {
-      if (m.kind !== 'task') continue;
-      tasks.push({
-        id: m.message_id,
-        text: m.text.length > 60 ? m.text.slice(0, 57) + '...' : m.text,
-        agent: m.to ?? m.from,
-        room: m.room,
-        assignedAt: new Date(m.timestamp).getTime(),
-        status: 'open',
-        duration: null,
-      });
-    }
+    const tracked: TrackedTask[] = roomTasks.map(t => {
+      const assignedAt = new Date(t.created_at).getTime();
+      const updatedAt = new Date(t.updated_at).getTime();
+      const isTerminal = ['completed', 'error', 'cancelled'].includes(t.status);
+      const duration = isTerminal ? updatedAt - assignedAt : null;
 
-    // Match completions/errors to tasks
-    // Strategy: for each completion/error, find the most recent open task
-    // in the same room from/to the same agent
-    for (const m of roomMsgs) {
-      if (m.kind !== 'completion' && m.kind !== 'error') continue;
-      const closeTime = new Date(m.timestamp).getTime();
-
-      // Find best matching open task: same agent, most recent
-      let bestMatch: TrackedTask | null = null;
-      for (const t of tasks) {
-        if (t.status !== 'open') continue;
-        if (t.assignedAt > closeTime) continue;
-        // Match by agent: task.agent matches completion sender
-        if (t.agent === m.from || t.agent === m.to) {
-          if (!bestMatch || t.assignedAt > bestMatch.assignedAt) {
-            bestMatch = t;
-          }
-        }
-      }
-
-      // Fallback: match any open task in the room if no agent match
-      if (!bestMatch) {
-        for (const t of tasks) {
-          if (t.status !== 'open') continue;
-          if (t.assignedAt > closeTime) continue;
-          if (!bestMatch || t.assignedAt > bestMatch.assignedAt) {
-            bestMatch = t;
-          }
-        }
-      }
-
-      if (bestMatch) {
-        bestMatch.status = m.kind === 'completion' ? 'done' : 'error';
-        bestMatch.duration = closeTime - bestMatch.assignedAt;
-        bestMatch.closedBy = m.message_id;
-      }
-    }
-
-    // Sort: open first (oldest first), then completed (newest first)
-    tasks.sort((a, b) => {
-      if (a.status === 'open' && b.status !== 'open') return -1;
-      if (a.status !== 'open' && b.status === 'open') return 1;
-      if (a.status === 'open') return a.assignedAt - b.assignedAt; // oldest open first
-      return b.assignedAt - a.assignedAt; // newest completed first
+      return {
+        id: t.id,
+        text: t.summary,
+        agent: t.assigned_to,
+        room: t.room,
+        assignedAt,
+        status: t.status,
+        duration,
+        updatedAt,
+      };
     });
 
-    return tasks;
-  }, [messages, room]);
+    // Sort: active first, then queued/sent, then terminal (newest first)
+    const ORDER: Record<string, number> = {
+      active: 0, queued: 1, sent: 2, interrupted: 3,
+      completed: 4, error: 5, cancelled: 6,
+    };
+
+    tracked.sort((a, b) => {
+      const oa = ORDER[a.status] ?? 9;
+      const ob = ORDER[b.status] ?? 9;
+      if (oa !== ob) return oa - ob;
+      if (oa <= 3) return a.assignedAt - b.assignedAt; // active/queued: oldest first
+      return b.updatedAt - a.updatedAt; // terminal: newest first
+    });
+
+    return tracked;
+  }, [tasks, room]);
 }
 
 export function formatDuration(ms: number): string {

@@ -2,11 +2,21 @@ import React, { memo, useMemo } from 'react';
 import { Box, Text } from 'ink';
 import type { TreeNode } from '../hooks/useTree.ts';
 import type { AgentStatusEntry } from '../hooks/useStatus.ts';
-import type { Agent, Room, Message } from '../../shared/types.ts';
+import type { Agent, Room, Message, Task } from '../../shared/types.ts';
 import { useTaskTracker, formatDuration, type TrackedTask } from '../hooks/useTaskTracker.ts';
 
 const STATUS_COLORS: Record<string, string> = {
   idle: 'green', busy: 'yellow', dead: 'red', unknown: 'gray',
+};
+
+const TASK_ICONS: Record<string, { icon: string; color: string }> = {
+  active: { icon: '●', color: 'yellow' },
+  queued: { icon: '◌', color: 'gray' },
+  sent: { icon: '→', color: 'cyan' },
+  completed: { icon: '✓', color: 'green' },
+  error: { icon: '✗', color: 'red' },
+  cancelled: { icon: '⊘', color: 'gray' },
+  interrupted: { icon: '⚡', color: 'magenta' },
 };
 
 function stripControlCodes(str: string): string {
@@ -19,13 +29,14 @@ interface DetailsPanelProps {
   selectedNode: TreeNode | null;
   rooms: Record<string, Room>;
   messages: Message[];
+  tasks: Task[];
   isSyncing: boolean;
   height: number;
 }
 
-export const DetailsPanel = memo(function DetailsPanel({ agent, agentStatus, selectedNode, rooms, messages, isSyncing, height }: DetailsPanelProps) {
+export const DetailsPanel = memo(function DetailsPanel({ agent, agentStatus, selectedNode, rooms, messages, tasks, isSyncing, height }: DetailsPanelProps) {
   const roomName = selectedNode?.type === 'room' ? selectedNode.label : null;
-  const trackedTasks = useTaskTracker(messages, roomName);
+  const trackedTasks = useTaskTracker(tasks, roomName);
 
   return (
     <Box flexDirection="column" borderStyle="single" height={height}>
@@ -109,8 +120,8 @@ function RoomDetails({ node, room, trackedTasks }: { node: TreeNode; room?: Room
         <Box flexDirection="column" marginTop={1}>
           <Text dimColor>─ Tasks ─</Text>
           {trackedTasks.map(t => {
-            const statusIcon = t.status === 'done' ? '✓' : t.status === 'error' ? '✗' : '↻';
-            const statusColor = t.status === 'done' ? 'green' : t.status === 'error' ? 'red' : 'yellow';
+            const statusIcon = t.status === 'completed' ? '✓' : t.status === 'error' ? '✗' : t.status === 'interrupted' ? '⊘' : t.status === 'cancelled' ? '—' : '↻';
+            const statusColor = t.status === 'completed' ? 'green' : t.status === 'error' ? 'red' : t.status === 'interrupted' ? 'magenta' : t.status === 'cancelled' ? 'gray' : 'yellow';
             const elapsed = t.duration != null
               ? formatDuration(t.duration)
               : formatDuration(Date.now() - t.assignedAt);

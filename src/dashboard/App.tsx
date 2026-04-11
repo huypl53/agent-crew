@@ -116,6 +116,7 @@ export function App() {
               selectedNode={tree.selectedNode}
               rooms={state.rooms}
               messages={state.messages}
+              tasks={state.tasks}
               isSyncing={isSyncing}
               height={layout.bottomH}
             />

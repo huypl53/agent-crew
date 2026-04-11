@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Database } from 'bun:sqlite';
-import type { Agent, Room, Message } from '../../shared/types.ts';
+import type { Agent, Room, Message, Task } from '../../shared/types.ts';
 import { logError } from '../logger.ts';
 import { existsSync } from 'fs';
 
@@ -12,9 +12,10 @@ export interface DashboardState {
   agents: Record<string, Agent>;
   rooms: Record<string, Room>;
   messages: Message[];
+  tasks: Task[];
 }
 
-const EMPTY_STATE: DashboardState = { agents: {}, rooms: {}, messages: [] };
+const EMPTY_STATE: DashboardState = { agents: {}, rooms: {}, messages: [], tasks: [] };
 
 function readAll(): DashboardState | null {
   let db: Database | null = null;
@@ -61,7 +62,26 @@ function readAll(): DashboardState | null {
       to: row.recipient, text: row.text, kind: row.kind,
       timestamp: row.timestamp, sequence: row.id, mode: row.mode,
     }));
-    return { agents, rooms, messages };
+
+    const taskRows = db.query<{
+      id: number; room: string; assigned_to: string; created_by: string;
+      message_id: number | null; summary: string; status: string; note: string | null;
+      created_at: string; updated_at: string;
+    }, []>('SELECT * FROM tasks ORDER BY id ASC').all();
+
+    const tasks: Task[] = taskRows.map(row => ({
+      id: row.id,
+      room: row.room,
+      assigned_to: row.assigned_to,
+      created_by: row.created_by,
+      message_id: row.message_id,
+      summary: row.summary,
+      status: row.status as Task['status'],
+      note: row.note ?? undefined,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    }));
+    return { agents, rooms, messages, tasks };
   } catch (e) {
     logError('state-reader.readAll', e);
     return null;
@@ -130,5 +150,7 @@ function quickHash(state: DashboardState): string {
   const roomKeys = Object.keys(state.rooms).sort().join(',');
   const msgCount = state.messages.length;
   const lastMsgId = state.messages[state.messages.length - 1]?.message_id ?? '';
-  return `${agentKeys}|${roomKeys}|${msgCount}|${lastMsgId}`;
+  const taskCount = state.tasks.length;
+  const lastTaskStatus = state.tasks[state.tasks.length - 1]?.status ?? '';
+  return `${agentKeys}|${roomKeys}|${msgCount}|${lastMsgId}|${taskCount}|${lastTaskStatus}`;
 }
