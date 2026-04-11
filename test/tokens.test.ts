@@ -2,6 +2,7 @@ import { describe, test, expect } from 'bun:test';
 import { getClaudePidFromPane, getSessionForPid, resolveSessionPath } from '../src/tokens/pid-mapper.ts';
 import { parseJsonlUsage, sumUsageEntries } from '../src/tokens/claude-code.ts';
 import { readCodexThreads } from '../src/tokens/codex.ts';
+import { startTokenCollection, stopTokenCollection } from '../src/tokens/collector.ts';
 
 describe('pid-mapper', () => {
   test('getClaudePidFromPane returns null for nonexistent pane', async () => {
@@ -88,5 +89,34 @@ describe('codex token collection', () => {
     expect(first).toHaveProperty('tokens_used');
     expect(first).toHaveProperty('model');
     expect(typeof first.tokens_used).toBe('number');
+  });
+});
+
+describe('agent type detection', () => {
+  test('detectAgentType returns a valid type', async () => {
+    const { detectAgentType } = await import('../src/tools/join-room.ts');
+    const pane = process.env.TMUX_PANE;
+    if (!pane) return; // skip outside tmux
+    const result = await detectAgentType(pane);
+    expect(['claude-code', 'codex', 'unknown']).toContain(result);
+  });
+
+  test('detectAgentType returns unknown for bogus pane', async () => {
+    const { detectAgentType } = await import('../src/tools/join-room.ts');
+    const result = await detectAgentType('%99999');
+    expect(result).toBe('unknown');
+  });
+});
+
+describe('token collection lifecycle', () => {
+  test('startTokenCollection and stopTokenCollection do not throw', () => {
+    startTokenCollection();
+    stopTokenCollection();
+  });
+
+  test('double start is safe', () => {
+    startTokenCollection();
+    startTokenCollection(); // should not throw or double-start
+    stopTokenCollection();
   });
 });
