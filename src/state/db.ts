@@ -48,8 +48,23 @@ const SCHEMA = `
     PRIMARY KEY (agent, room)
   );
 
+  CREATE TABLE IF NOT EXISTS tasks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    room        TEXT NOT NULL,
+    assigned_to TEXT NOT NULL,
+    created_by  TEXT NOT NULL,
+    message_id  INTEGER,
+    summary     TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'sent',
+    note        TEXT,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_messages_room      ON messages(room, id);
   CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient, id);
+  CREATE INDEX IF NOT EXISTS idx_tasks_assigned     ON tasks(assigned_to, status);
+  CREATE INDEX IF NOT EXISTS idx_tasks_room         ON tasks(room, status);
 `;
 
 export function getDbPath(): string {
