@@ -18,6 +18,7 @@ import { handleSetRoomTopic } from './tools/set-room-topic.ts';
 import { handleRefresh } from './tools/refresh.ts';
 import { handleUpdateTask } from './tools/update-task.ts';
 import { handleInterruptWorker } from './tools/interrupt-worker.ts';
+import { handleReassignTask } from './tools/reassign-task.ts';
 import { err } from './shared/types.ts';
 
 // Validate tmux
@@ -168,6 +169,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: 'reassign_task',
+      description: 'Replace a worker\'s current or queued task with a new one. Leader/Boss only. Handles interrupt/clear automatically based on task state.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          worker_name: { type: 'string', description: 'Worker agent name' },
+          room: { type: 'string', description: 'Room the worker is in' },
+          text: { type: 'string', description: 'New task text' },
+          name: { type: 'string', description: 'Your agent name (caller)' },
+        },
+        required: ['worker_name', 'room', 'text', 'name'],
+      },
+    },
+    {
       name: 'update_task',
       description: 'Update a task\'s status. Worker-only: you can only update tasks assigned to you.',
       inputSchema: {
@@ -212,6 +227,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleUpdateTask(args as any);
       case 'interrupt_worker':
         return await handleInterruptWorker(args as any);
+      case 'reassign_task':
+        return await handleReassignTask(args as any);
       default:
         return err(`Unknown tool: ${name}`);
     }
