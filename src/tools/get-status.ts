@@ -1,6 +1,6 @@
 import { ok, err } from '../shared/types.ts';
 import type { ToolResult, AgentStatus } from '../shared/types.ts';
-import { getAgent } from '../state/index.ts';
+import { getAgent, getTasksForAgent } from '../state/index.ts';
 import { capturePane, isPaneDead } from '../tmux/index.ts';
 import { matchStatusLine } from '../shared/status-patterns.ts';
 
@@ -21,6 +21,14 @@ export async function handleGetStatus(params: GetStatusParams): Promise<ToolResu
     return err(`Agent "${targetName}" is not registered`);
   }
 
+  // Get task info (before dead check — dead agents may still have tasks)
+  const activeTasks = getTasksForAgent(targetName, ['active']);
+  const queuedTasks = getTasksForAgent(targetName, ['queued', 'sent']);
+  const currentTask = activeTasks.length > 0 ? {
+    id: activeTasks[0]!.id, status: activeTasks[0]!.status, summary: activeTasks[0]!.summary,
+  } : null;
+  const queuedTasksList = queuedTasks.map(t => ({ id: t.id, status: t.status, summary: t.summary }));
+
   // Check liveness first
   const dead = await isPaneDead(agent.tmux_target);
   if (dead) {
@@ -32,6 +40,8 @@ export async function handleGetStatus(params: GetStatusParams): Promise<ToolResu
       status: 'dead' as AgentStatus,
       tmux_target: agent.tmux_target,
       last_activity_ts: agent.last_activity ?? agent.joined_at,
+      current_task: currentTask,
+      queued_tasks: queuedTasksList,
     });
   }
 
@@ -50,5 +60,7 @@ export async function handleGetStatus(params: GetStatusParams): Promise<ToolResu
     status,
     tmux_target: agent.tmux_target,
     last_activity_ts: agent.last_activity ?? agent.joined_at,
+    current_task: currentTask,
+    queued_tasks: queuedTasksList,
   });
 }
