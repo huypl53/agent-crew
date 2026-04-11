@@ -120,14 +120,13 @@ function RoomDetails({ node, room, trackedTasks }: { node: TreeNode; room?: Room
         <Box flexDirection="column" marginTop={1}>
           <Text dimColor>─ Tasks ─</Text>
           {trackedTasks.map(t => {
-            const statusIcon = t.status === 'completed' ? '✓' : t.status === 'error' ? '✗' : t.status === 'interrupted' ? '⊘' : t.status === 'cancelled' ? '—' : '↻';
-            const statusColor = t.status === 'completed' ? 'green' : t.status === 'error' ? 'red' : t.status === 'interrupted' ? 'magenta' : t.status === 'cancelled' ? 'gray' : 'yellow';
+            const { icon, color } = TASK_ICONS[t.status] ?? { icon: '?', color: 'gray' };
             const elapsed = t.duration != null
               ? formatDuration(t.duration)
               : formatDuration(Date.now() - t.assignedAt);
             return (
               <Text key={t.id} wrap="truncate">
-                <Text color={statusColor}> {statusIcon} </Text>
+                <Text color={color}> {icon} </Text>
                 <Text>{t.text}</Text>
                 <Text dimColor>  {t.agent}  {elapsed}</Text>
               </Text>

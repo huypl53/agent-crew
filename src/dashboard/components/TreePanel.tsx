@@ -2,7 +2,7 @@ import React, { memo, useMemo } from 'react';
 import { Box, Text } from 'ink';
 import type { TreeNode } from '../hooks/useTree.ts';
 import type { AgentStatusEntry } from '../hooks/useStatus.ts';
-import type { Message } from '../../shared/types.ts';
+import type { Message, Task } from '../../shared/types.ts';
 
 const STATUS_COLORS: Record<string, string> = {
   idle: 'green', busy: 'yellow', dead: 'red', unknown: 'gray',
@@ -15,13 +15,26 @@ interface TreePanelProps {
   width: number;
   statuses: Map<string, AgentStatusEntry>;
   messages: Message[];
+  tasks: Task[];
 }
 
 const SPARK_CHARS = '▁▂▃▄▅▆▇█';
 const SPARK_BUCKETS = 10;
 const BUCKET_MS = 60_000; // 1 minute per bucket
 
-export const TreePanel = memo(function TreePanel({ nodes, selectedIndex, height, width, statuses, messages }: TreePanelProps) {
+export const TreePanel = memo(function TreePanel({ nodes, selectedIndex, height, width, statuses, messages, tasks }: TreePanelProps) {
+  const taskCounts = useMemo(() => {
+    const counts = new Map<string, { active: number; queued: number }>();
+    for (const t of tasks) {
+      if (t.status !== 'active' && t.status !== 'queued' && t.status !== 'sent') continue;
+      const c = counts.get(t.assigned_to) ?? { active: 0, queued: 0 };
+      if (t.status === 'active') c.active++;
+      else c.queued++;
+      counts.set(t.assigned_to, c);
+    }
+    return counts;
+  }, [tasks]);
+
   const errorCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const m of messages) {
@@ -99,6 +112,16 @@ export const TreePanel = memo(function TreePanel({ nodes, selectedIndex, height,
             {showRole && <Text dimColor>{roleSuffix}</Text>}
             {showSpark && <Text dimColor> {spark}</Text>}
             {errCount > 0 && <Text color="red"> [{errCount}!]</Text>}
+            {(() => {
+              const tc = node.agentName ? taskCounts.get(node.agentName) : undefined;
+              if (!tc) return null;
+              return (
+                <>
+                  {tc.active > 0 && <Text color="yellow"> ●{tc.active}</Text>}
+                  {tc.queued > 0 && <Text dimColor> ◌{tc.queued}</Text>}
+                </>
+              );
+            })()}
           </Text>
         );
       })}

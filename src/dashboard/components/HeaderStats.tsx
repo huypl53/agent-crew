@@ -1,16 +1,17 @@
 import React, { memo, useMemo } from 'react';
 import { Box, Text } from 'ink';
 import type { AgentStatusEntry } from '../hooks/useStatus.ts';
-import type { Message } from '../../shared/types.ts';
+import type { Message, Task } from '../../shared/types.ts';
 
 interface HeaderStatsProps {
   statuses: Map<string, AgentStatusEntry>;
   messages: Message[];
+  tasks: Task[];
   earliestJoinedAt: string | null;
   cols: number;
 }
 
-export const HeaderStats = memo(function HeaderStats({ statuses, messages, earliestJoinedAt, cols }: HeaderStatsProps) {
+export const HeaderStats = memo(function HeaderStats({ statuses, messages, tasks, earliestJoinedAt, cols }: HeaderStatsProps) {
   const stats = useMemo(() => {
     let busy = 0, idle = 0, dead = 0;
     for (const entry of statuses.values()) {
@@ -19,11 +20,12 @@ export const HeaderStats = memo(function HeaderStats({ statuses, messages, earli
       else if (entry.status === 'dead') dead++;
     }
 
-    let tasks = 0, done = 0, errors = 0;
-    for (const m of messages) {
-      if (m.kind === 'task') tasks++;
-      else if (m.kind === 'completion') done++;
-      else if (m.kind === 'error') errors++;
+    let active = 0, queued = 0, done = 0, errors = 0;
+    for (const t of tasks) {
+      if (t.status === 'active') active++;
+      else if (t.status === 'queued' || t.status === 'sent') queued++;
+      else if (t.status === 'completed') done++;
+      else if (t.status === 'error') errors++;
     }
 
     let uptime = '';
@@ -38,8 +40,8 @@ export const HeaderStats = memo(function HeaderStats({ statuses, messages, earli
       }
     }
 
-    return { busy, idle, dead, tasks, done, errors, uptime };
-  }, [statuses, messages, earliestJoinedAt]);
+    return { busy, idle, dead, active, queued, done, errors, uptime };
+  }, [statuses, tasks, earliestJoinedAt]);
 
   const compact = cols < 100;
 
@@ -54,9 +56,9 @@ export const HeaderStats = memo(function HeaderStats({ statuses, messages, earli
           {stats.dead > 0 && <><Text color="red">{stats.dead}</Text><Text dimColor>{'✗ '}</Text></>}
           <Text dimColor>{'│ '}</Text>
           <Text color="green">{stats.done}</Text>
-          <Text dimColor>{'/'}</Text>
-          <Text>{stats.tasks}</Text>
           <Text dimColor>{'✓ '}</Text>
+          {stats.active > 0 && <><Text color="yellow">{stats.active}</Text><Text dimColor>{'● '}</Text></>}
+          {stats.queued > 0 && <><Text>{stats.queued}</Text><Text dimColor>{'◌ '}</Text></>}
           {stats.errors > 0 && <><Text color="red">{stats.errors}</Text><Text dimColor>{'! '}</Text></>}
           {stats.uptime && <><Text dimColor>{'│ '}</Text><Text dimColor>{stats.uptime}</Text></>}
         </Text>
@@ -72,8 +74,10 @@ export const HeaderStats = memo(function HeaderStats({ statuses, messages, earli
         <Text color="green">{stats.idle}</Text><Text dimColor> idle</Text>
         {stats.dead > 0 && <><Text dimColor>  </Text><Text color="red">{stats.dead}</Text><Text dimColor> dead</Text></>}
         <Text dimColor> │ Tasks: </Text>
-        <Text color="green">{stats.done}</Text><Text dimColor>/</Text><Text>{stats.tasks}</Text><Text dimColor> done</Text>
-        {stats.errors > 0 && <><Text dimColor> │ </Text><Text color="red">{stats.errors}</Text><Text dimColor> errors</Text></>}
+        <Text color="green">{stats.done}</Text><Text dimColor> done</Text>
+        {stats.active > 0 && <><Text dimColor>  </Text><Text color="yellow">{stats.active}</Text><Text dimColor> active</Text></>}
+        {stats.queued > 0 && <><Text dimColor>  </Text><Text>{stats.queued}</Text><Text dimColor> queued</Text></>}
+        {stats.errors > 0 && <><Text dimColor>  </Text><Text color="red">{stats.errors}</Text><Text dimColor> err</Text></>}
         {stats.uptime && <><Text dimColor> │ Up: </Text><Text dimColor>{stats.uptime}</Text></>}
       </Text>
     </Box>

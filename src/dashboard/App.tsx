@@ -100,9 +100,9 @@ export function App() {
 
   return (
     <Box flexDirection="column" height={rows} width={cols}>
-      <HeaderStats statuses={statuses} messages={state.messages} earliestJoinedAt={earliestJoinedAt} cols={cols} />
+      <HeaderStats statuses={statuses} messages={state.messages} tasks={state.tasks} earliestJoinedAt={earliestJoinedAt} cols={cols} />
       <Box flexDirection="row" height={layout.panelRows}>
-        <TreePanel nodes={tree.nodes} selectedIndex={tree.selectedIndex} height={layout.panelRows} width={layout.treeW} statuses={statuses} messages={state.messages} />
+        <TreePanel nodes={tree.nodes} selectedIndex={tree.selectedIndex} height={layout.panelRows} width={layout.treeW} statuses={statuses} messages={state.messages} tasks={state.tasks} />
         <Box flexDirection="column" flexGrow={1}>
           <MessageFeedPanel messages={messages} roomFilter={tree.selectedRoomName} height={layout.topH} enabledKinds={enabledKinds} />
           {showHelp ? (
