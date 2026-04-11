@@ -7,6 +7,7 @@ export interface Agent {
   role: AgentRole;
   rooms: string[];
   tmux_target: string;
+  agent_type: 'claude-code' | 'codex' | 'unknown';
   joined_at: string;
   last_activity?: string;
 }

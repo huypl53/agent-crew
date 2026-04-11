@@ -13,6 +13,7 @@ const SCHEMA = `
     name          TEXT PRIMARY KEY,
     role          TEXT NOT NULL,
     pane          TEXT NOT NULL,
+    agent_type    TEXT NOT NULL DEFAULT 'unknown',
     registered_at TEXT NOT NULL,
     last_activity TEXT
   );

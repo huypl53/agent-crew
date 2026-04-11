@@ -16,6 +16,7 @@ function dbAgentToAgent(row: Record<string, unknown>, agentRooms: string[]): Age
     role: row.role as AgentRole,
     rooms: agentRooms,
     tmux_target: row.pane as string,
+    agent_type: (row.agent_type as string ?? 'unknown') as 'claude-code' | 'codex' | 'unknown',
     joined_at: row.registered_at as string,
     last_activity: row.last_activity as string | undefined,
   };
@@ -63,14 +64,14 @@ export function getAllAgents(): Agent[] {
   });
 }
 
-export function addAgent(name: string, role: AgentRole, room: string, tmuxTarget: string): Agent {
+export function addAgent(name: string, role: AgentRole, room: string, tmuxTarget: string, agentType: 'claude-code' | 'codex' | 'unknown' = 'unknown'): Agent {
   const db = getDb();
   const ts = now();
 
   db.run(
-    `INSERT INTO agents (name, role, pane, registered_at) VALUES (?, ?, ?, ?)
-     ON CONFLICT(name) DO UPDATE SET pane = excluded.pane`,
-    [name, role, tmuxTarget, ts],
+    `INSERT INTO agents (name, role, pane, agent_type, registered_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(name) DO UPDATE SET pane = excluded.pane, agent_type = excluded.agent_type`,
+    [name, role, tmuxTarget, agentType, ts],
   );
 
   db.run(
