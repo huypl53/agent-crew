@@ -45,6 +45,44 @@ send_message({
 })
 ```
 
+## Task Status Tracking
+
+When you receive a task, update its status using `update_task`:
+
+1. **If you're busy** when a task arrives, report it as queued:
+   ```
+   update_task({ task_id: <id>, status: "queued", name: "your-name" })
+   ```
+
+2. **When you start working** on a task:
+   ```
+   update_task({ task_id: <id>, status: "active", name: "your-name" })
+   ```
+
+3. **When you finish** a task:
+   ```
+   update_task({ task_id: <id>, status: "completed", name: "your-name" })
+   ```
+
+4. **If you hit an error:**
+   ```
+   update_task({ task_id: <id>, status: "error", note: "Description of what went wrong", name: "your-name" })
+   ```
+
+The `task_id` is returned in the original task message from your leader.
+
+## Handling Interruptions
+
+If your leader sends an Escape to interrupt your current task, you'll see a system notification:
+```
+[system@room]: Your current task was interrupted by leader-name
+```
+
+When this happens:
+1. Stop what you're doing
+2. Check `read_messages` for new instructions from your leader
+3. Follow the new instructions
+
 ## Understanding Your Context
 
 Use `list_members` to see who else is in your room and their roles.

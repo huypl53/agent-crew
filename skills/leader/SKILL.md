@@ -57,6 +57,37 @@ send_message({
 - Check status after assigning to confirm the worker started (busy)
 - NEVER implement the task yourself — always delegate
 
+## Worker Control
+
+### Checking Worker Tasks
+
+Use `get_status` to see what a worker is currently doing:
+```
+get_status({ agent_name: "builder-1" })
+```
+Response includes `current_task` (active task) and `queued_tasks`.
+
+### Interrupting a Hanging Worker
+
+If a worker is stuck on a long-running task:
+```
+interrupt_worker({ worker_name: "builder-1", room: "frontend", name: "your-name" })
+```
+This sends Escape to the worker's pane and marks their active task as interrupted. The worker receives a system notification and should check for new instructions.
+
+### Replacing a Task
+
+To replace a worker's current or queued task with a new one:
+```
+reassign_task({ worker_name: "builder-1", room: "frontend", text: "New task description", name: "your-name" })
+```
+This automatically handles the interrupt/clear sequence based on whether the task is active or queued.
+
+### Decision Guide
+- Worker hanging too long → `interrupt_worker`, then send new instructions
+- Wrong task queued/active → `reassign_task` with corrected text
+- Worker idle → normal `send_message` with `kind: "task"`
+
 ## Writing Good Task Descriptions
 
 Since you cannot look at the code yourself, your task descriptions must be self-contained:

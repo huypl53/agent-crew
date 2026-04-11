@@ -66,6 +66,15 @@ send_message({
 **Bad:** "Write a React component with useState for the login form that calls POST /api/auth"
 **Good:** "Build user login. Must support email/password. Should redirect to dashboard on success. High priority — blocks other features."
 
+## Direct Worker Control
+
+In escalation scenarios, you can directly control workers:
+
+- **Interrupt:** `interrupt_worker({ worker_name: "name", room: "room", name: "your-name" })`
+- **Reassign:** `reassign_task({ worker_name: "name", room: "room", text: "new task", name: "your-name" })`
+
+Use these sparingly — normally delegate control to the room's leader. Direct intervention is for urgent situations only.
+
 ## Handling Escalations
 
 Leaders escalate to you when they need decisions. Check messages and respond:
