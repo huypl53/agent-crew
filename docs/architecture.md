@@ -413,3 +413,140 @@ All tmux output is routed through `PaneQueue` (`src/delivery/pane-queue.ts`):
 - Escape items get priority (jump to front of queue)
 - Polls for idle prompt before delivering paste items
 - Per-pane buffer names (`_crew_{pane_id}`) prevent cross-pane buffer collisions
+
+## Token Usage Tracking
+
+Crew automatically collects token consumption and cost data from Claude Code and Codex CLI sessions.
+
+### Data Sources
+
+- **Claude Code**: Parses JSONL conversation logs from `~/.claude/projects/` (primary source)
+  - Path pattern: `~/.claude/projects/<project-hash>/<sessionId>.jsonl`
+  - Each assistant turn includes `usage` block with `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`
+- **Codex CLI**: Queries `~/.codex/state_5.sqlite` threads table
+  - Stores `tokens_used` (total only — split 70/30 input/output for cost calculation)
+
+### Agent Type Detection
+
+On `join_room`, agent type is auto-detected and stored in `agent_type` column:
+
+```ts
+agent_type: 'claude-code' | 'codex' | 'unknown'
+```
+
+Detection process (`src/tools/join-room.ts::detectAgentType`):
+1. Get shell PID from tmux pane: `tmux display-message -p '#{pane_pid}'`
+2. Get child process name: `ps -o comm --ppid <shellPid>` or `pgrep -P <shellPid>`
+3. Match process name: "claude" → `'claude-code'`, "codex" → `'codex'`, default → `'unknown'`
+
+### PID Mapping Chain
+
+Token collection resolves Claude Code session paths via PID inspection:
+
+```
+tmux pane (%141)
+  → tmux display-message '#{pane_pid}' = shell PID (62240)
+  → pgrep -P 62240 = claude PID (10846)
+  → ~/.claude/sessions/10846.json
+    {
+      "pid": 10846,
+      "sessionId": "41ceb61a-...",
+      "cwd": "/Users/lee/code/utils/agent-crew",
+      "startedAt": 1775903669908,
+      "kind": "interactive",
+      "name": "leader"
+    }
+  → ~/.claude/projects/-Users-lee-code-utils-agent-crew/41ceb61a....jsonl
+```
+
+Implementation in `src/tokens/pid-mapper.ts`:
+- `getClaudePidFromPane(paneTarget)` — spawns tmux + pgrep, returns claude PID
+- `getSessionForPid(pid)` — reads `~/.claude/sessions/<pid>.json`
+- `resolveSessionPath(sessionId, cwd)` — builds `~/.claude/projects/` path
+- `resolveAgentSession(paneTarget)` — full chain: pane → PID → session → path
+
+### Collection Loop
+
+`startTokenCollection()` in `src/tokens/collector.ts` runs every 30 seconds:
+
+1. Gets all registered agents: `getAllAgents()`
+2. Routes each agent by `agent_type`:
+   - `'claude-code'` → `collectClaudeCodeTokens(agentName, paneTarget)`
+   - `'codex'` → `collectCodexTokens(agentName)`
+   - `'unknown'` → tries Claude Code first, then Codex (fallback)
+3. Collection functions compare latest snapshot with previous and insert only if changed (dedup)
+4. Failures are caught and logged — loop continues for other agents
+
+### Storage
+
+Two SQLite tables (in same `crew.db`):
+
+**`token_usage`** — Snapshot rows:
+```sql
+CREATE TABLE token_usage (
+  id INTEGER PRIMARY KEY,
+  agent_name TEXT NOT NULL,
+  session_id TEXT,
+  model TEXT,
+  input_tokens INTEGER,
+  output_tokens INTEGER,
+  cost_usd REAL,
+  source TEXT,         -- 'jsonl' | 'codex_db'
+  recorded_at TEXT
+);
+```
+
+**`pricing`** — Configurable per-model costs:
+```sql
+CREATE TABLE pricing (
+  model_name TEXT PRIMARY KEY,
+  input_cost_per_million REAL,
+  output_cost_per_million REAL
+);
+```
+
+Default pricing includes Claude Opus/Sonnet/Haiku variants, GPT-4, and Gemini models. Use `upsertPricing(modelName, inputCost, outputCost)` to update.
+
+### Cost Calculation
+
+**Claude Code** (`src/tokens/claude-code.ts`):
+```ts
+const pricing = getPricingForModel(model);
+const cost = pricing
+  ? (input_tokens / 1_000_000) * pricing.input_cost_per_million +
+    (output_tokens / 1_000_000) * pricing.output_cost_per_million
+  : null;
+```
+
+**Codex** (`src/tokens/codex.ts`):
+```ts
+const estInput = Math.round(tokens_used * 0.7);
+const estOutput = Math.round(tokens_used * 0.3);
+const cost = pricing
+  ? (estInput / 1_000_000) * pricing.input_cost_per_million +
+    (estOutput / 1_000_000) * pricing.output_cost_per_million
+  : null;
+```
+
+### Dashboard Integration
+
+**HeaderStats** (top row):
+- Shows total crew cost: `Cost: $X.XX (Ntok)`
+- Deduplicates latest snapshot per agent (tokenUsage sorted DESC by recorded_at)
+
+**DetailsPanel** (agent selection):
+- Shows per-agent model, input/output tokens, and calculated cost
+
+**TreePanel** (agent tree):
+- Inline cost display next to each agent: `● builder-1 (worker) $1.25`
+
+### Key Files
+
+- `src/tokens/pid-mapper.ts` — PID → session resolution
+- `src/tokens/claude-code.ts` — JSONL parsing + Claude Code token collection
+- `src/tokens/codex.ts` — Codex DB querying + Codex token collection
+- `src/tokens/collector.ts` — 30s collection loop, agent_type routing
+- `src/state/index.ts` — CRUD ops: `recordTokenUsage()`, `getTokenUsageForAgent()`, `getTotalCost()`, `getPricing()`, `upsertPricing()`
+- `src/dashboard/components/HeaderStats.tsx` — Cost summary in header
+- `src/dashboard/components/TreePanel.tsx` — Inline per-agent cost
+- `src/dashboard/hooks/useStateReader.ts` — Reads `token_usage` table into dashboard state

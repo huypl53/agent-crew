@@ -9,6 +9,7 @@ A plugin for AI coding agents that turns your terminal into an AI development te
 3. Your own session is the boss — give natural language direction
 4. Leaders coordinate workers, workers execute tasks, everyone communicates through rooms
 5. Task tracking with lifecycle statuses — leaders can interrupt or reassign worker tasks
+6. Automatic token/cost tracking — collects usage from Claude Code and Codex CLI, displays in dashboard
 
 ## Architecture
 
@@ -161,7 +162,7 @@ When `room` is provided, reads the full room conversation log (all members' mess
 
 ## TUI Dashboard
 
-Read-only terminal observer built with React+Ink. Shows rooms, agents with roles and live status, message feed, and context-sensitive details in a 3-panel layout.
+Read-only terminal observer built with React+Ink. Shows rooms, agents with roles and live status, message feed, task tracking, and cost analytics in a 3-panel layout.
 
 ```
 ┌─ Rooms & Agents ───────────┐┌─ Messages ─────────────────────────┐
@@ -171,13 +172,15 @@ Read-only terminal observer built with React+Ink. Shows rooms, agents with roles
 │ ▼ frontend (3)             │├─ Details ──────────────────────────┤
 │   ◦ lead-1 (leader) busy   ││ lead-1  leader | busy              │
 │   ● builder-1 (worker) idle││ Rooms: company, frontend           │
-└────────────────────────────┘│ Working on auth component...       │
-                              └────────────────────────────────────┘
+└────────────────────────────┘│ Cost: $12.50 | Tokens: 245k       │
+  Cost: $12.50 (245k tok)    └────────────────────────────────────┘
 ```
 
-**Tree panel:** agents show `● name (role)` with status color. Secondary agents (in multiple rooms) show dim `◦`. Rooms collapse with `▶`/`▼`.
+**Header:** Summary of agent status (busy/idle/dead), task progress, errors, uptime, and **total crew cost + token count**.
 
-**Details panel:** agent view shows live tmux pane output; room view shows task summary (open tasks / completed / errors from message kinds).
+**Tree panel:** agents show `● name (role) $cost` with status color. Secondary agents (in multiple rooms) show dim `◦`. Rooms collapse with `▶`/`▼`. Per-agent cost updated every 30s from collected token usage.
+
+**Details panel:** agent view shows live tmux pane output and cost/token stats; room view shows task summary (open tasks / completed / errors from message kinds).
 
 ### Keyboard shortcuts
 
@@ -193,6 +196,22 @@ Read-only terminal observer built with React+Ink. Shows rooms, agents with roles
 
 Shortcuts are always visible in the bottom status bar.
 
+## Token & Cost Tracking
+
+Crew automatically collects token usage from Claude Code and Codex CLI agents:
+
+- **Collection**: 30-second interval, per agent
+- **Sources**: Claude Code JSONL logs (`~/.claude/projects/`) + Codex SQLite DB (`~/.codex/state_5.sqlite`)
+- **Agent detection**: Auto-detected on `join_room` (claude-code, codex, or unknown)
+- **Display**: Total crew cost in header, per-agent cost in tree panel, detailed cost/token stats in details panel
+- **Pricing**: Configurable per-model — uses published Claude/OpenAI rates by default
+
+The `pricing` table stores input/output cost per million tokens. Update costs anytime:
+
+```bash
+sqlite3 /tmp/crew/state/crew.db "INSERT INTO pricing (model_name, input_cost_per_million, output_cost_per_million) VALUES ('claude-opus-4-6', 15.0, 75.0) ON CONFLICT DO UPDATE SET input_cost_per_million=15.0, output_cost_per_million=75.0;"
+```
+
 ## State Management
 
 State is stored in a SQLite database at `${CREW_STATE_DIR}/crew.db` (default `/tmp/crew/state/crew.db`) using WAL mode for safe multi-process access. All state operations are synchronous — no flush/sync machinery needed.
@@ -201,6 +220,7 @@ State is stored in a SQLite database at `${CREW_STATE_DIR}/crew.db` (default `/t
 # Debug: inspect state directly
 sqlite3 /tmp/crew/state/crew.db 'SELECT * FROM agents;'
 sqlite3 /tmp/crew/state/crew.db 'SELECT * FROM messages ORDER BY id DESC LIMIT 10;'
+sqlite3 /tmp/crew/state/crew.db 'SELECT agent_name, cost_usd, model FROM token_usage ORDER BY recorded_at DESC LIMIT 5;'
 ```
 
 ## Project Structure
