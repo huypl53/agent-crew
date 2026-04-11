@@ -339,4 +339,21 @@ describe('state module', () => {
       expect(updated!.note).toBe('agent pane died');
     });
   });
+
+  describe('token_usage table', () => {
+    test('token_usage table exists', () => {
+      const db = require('../src/state/db.ts').getDb();
+      const row = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'").get();
+      expect(row).toBeTruthy();
+    });
+
+    test('pricing table exists with defaults', () => {
+      const db = require('../src/state/db.ts').getDb();
+      const rows = db.prepare('SELECT * FROM pricing').all();
+      expect(rows.length).toBeGreaterThan(0);
+      const models = rows.map((r: any) => r.model_name);
+      expect(models).toContain('claude-opus-4-6');
+      expect(models).toContain('gpt-4.1');
+    });
+  });
 });

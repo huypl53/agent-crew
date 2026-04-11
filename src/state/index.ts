@@ -405,5 +405,5 @@ function rowToTask(row: Record<string, unknown>): Task {
 
 export function clearState(): void {
   const db = getDb();
-  db.exec('DELETE FROM tasks; DELETE FROM messages; DELETE FROM cursors; DELETE FROM members; DELETE FROM rooms; DELETE FROM agents;');
+  db.exec('DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM tasks; DELETE FROM messages; DELETE FROM cursors; DELETE FROM members; DELETE FROM rooms; DELETE FROM agents;');
 }

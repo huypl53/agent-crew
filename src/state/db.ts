@@ -61,10 +61,29 @@ const SCHEMA = `
     updated_at  TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS token_usage (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_name  TEXT NOT NULL,
+    session_id  TEXT,
+    model       TEXT,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_usd    REAL,
+    source      TEXT NOT NULL DEFAULT 'statusline',
+    recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS pricing (
+    model_name            TEXT PRIMARY KEY,
+    input_cost_per_million  REAL NOT NULL,
+    output_cost_per_million REAL NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_messages_room      ON messages(room, id);
   CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient, id);
   CREATE INDEX IF NOT EXISTS idx_tasks_assigned     ON tasks(assigned_to, status);
   CREATE INDEX IF NOT EXISTS idx_tasks_room         ON tasks(room, status);
+  CREATE INDEX IF NOT EXISTS idx_token_usage_agent ON token_usage(agent_name, recorded_at);
 `;
 
 export function getDbPath(): string {
@@ -81,6 +100,23 @@ export function initDb(path?: string): void {
   }
   _db = new Database(dbPath, { create: true });
   _db.exec(SCHEMA);
+
+  // Insert default pricing
+  const DEFAULT_PRICING = [
+    ['claude-opus-4-6', 15.0, 75.0],
+    ['claude-sonnet-4-6', 3.0, 15.0],
+    ['claude-haiku-4-5-20251001', 0.80, 4.0],
+    ['gpt-4.1', 2.0, 8.0],
+    ['o3', 2.0, 8.0],
+    ['o4-mini', 1.10, 4.40],
+  ];
+
+  const insertPricing = _db.prepare(
+    'INSERT OR IGNORE INTO pricing (model_name, input_cost_per_million, output_cost_per_million) VALUES (?, ?, ?)'
+  );
+  for (const [model, inp, out] of DEFAULT_PRICING) {
+    insertPricing.run(model, inp, out);
+  }
 }
 
 export function getDb(): Database {
