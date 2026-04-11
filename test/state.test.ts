@@ -6,6 +6,7 @@ import {
   getRoomMessages, getCursor, advanceCursor, readRoomMessages,
   clearState, removeAgentFully, validateLiveness,
   createTask, getTask, getTasksForAgent, updateTaskStatus, cleanupDeadAgentTasks,
+  recordTokenUsage, getTokenUsageForAgent, getTotalCost, getPricing, upsertPricing,
 } from '../src/state/index.ts';
 
 describe('state module', () => {
@@ -354,6 +355,42 @@ describe('state module', () => {
       const models = rows.map((r: any) => r.model_name);
       expect(models).toContain('claude-opus-4-6');
       expect(models).toContain('gpt-4.1');
+    });
+  });
+
+  describe('token usage CRUD', () => {
+    test('recordTokenUsage inserts a row', () => {
+      recordTokenUsage({
+        agent_name: 'wk-01', session_id: 'sess-123', model: 'claude-opus-4-6',
+        input_tokens: 1000, output_tokens: 500, cost_usd: 0.05, source: 'statusline',
+      });
+      const rows = getTokenUsageForAgent('wk-01');
+      expect(rows.length).toBe(1);
+      expect(rows[0]!.cost_usd).toBe(0.05);
+    });
+
+    test('getTokenUsageForAgent returns only that agent', () => {
+      recordTokenUsage({ agent_name: 'wk-01', session_id: 's1', model: 'o3', input_tokens: 100, output_tokens: 50, cost_usd: 0.01, source: 'codex_db' });
+      recordTokenUsage({ agent_name: 'wk-02', session_id: 's2', model: 'o3', input_tokens: 200, output_tokens: 100, cost_usd: 0.02, source: 'codex_db' });
+      const rows = getTokenUsageForAgent('wk-01');
+      expect(rows.every(r => r.agent_name === 'wk-01')).toBe(true);
+    });
+
+    test('getTotalCost sums all agents', () => {
+      recordTokenUsage({ agent_name: 'a1', session_id: 's1', model: 'm', input_tokens: 0, output_tokens: 0, cost_usd: 1.00, source: 'statusline' });
+      recordTokenUsage({ agent_name: 'a2', session_id: 's2', model: 'm', input_tokens: 0, output_tokens: 0, cost_usd: 2.50, source: 'statusline' });
+      expect(getTotalCost()).toBeCloseTo(3.50);
+    });
+
+    test('getPricing returns default entries', () => {
+      const pricing = getPricing();
+      expect(pricing.length).toBeGreaterThan(0);
+    });
+
+    test('upsertPricing updates existing model', () => {
+      upsertPricing('claude-opus-4-6', 20.0, 100.0);
+      const p = getPricing().find(e => e.model_name === 'claude-opus-4-6');
+      expect(p?.input_cost_per_million).toBe(20.0);
     });
   });
 });

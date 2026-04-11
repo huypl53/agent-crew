@@ -1,4 +1,4 @@
-import type { Agent, AgentRole, Room, Message, MessageKind, Task, TaskStatus } from '../shared/types.ts';
+import type { Agent, AgentRole, Room, Message, MessageKind, Task, TaskStatus, TokenUsage, PricingEntry } from '../shared/types.ts';
 import { isPaneDead } from '../tmux/index.ts';
 import { getDb, initDb, closeDb, getDbPath } from './db.ts';
 
@@ -399,6 +399,57 @@ function rowToTask(row: Record<string, unknown>): Task {
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };
+}
+
+// --- Token usage operations ---
+
+export function recordTokenUsage(entry: Omit<TokenUsage, 'id' | 'recorded_at'>): void {
+  const db = getDb();
+  const ts = now();
+  db.run(
+    'INSERT INTO token_usage (agent_name, session_id, model, input_tokens, output_tokens, cost_usd, source, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [entry.agent_name, entry.session_id, entry.model, entry.input_tokens, entry.output_tokens, entry.cost_usd, entry.source, ts],
+  );
+}
+
+export function getTokenUsageForAgent(agentName: string): TokenUsage[] {
+  const db = getDb();
+  return (db.query('SELECT * FROM token_usage WHERE agent_name = ? ORDER BY recorded_at DESC').all(agentName) as TokenUsage[]);
+}
+
+export function getLatestTokenUsage(agentName: string): TokenUsage | null {
+  const db = getDb();
+  return (db.query('SELECT * FROM token_usage WHERE agent_name = ? ORDER BY recorded_at DESC LIMIT 1').get(agentName) as TokenUsage) ?? null;
+}
+
+export function getTotalCost(): number {
+  const db = getDb();
+  const row = db.query('SELECT SUM(cost_usd) as total FROM token_usage').get() as any;
+  return row?.total ?? 0;
+}
+
+export function getAgentCost(agentName: string): number {
+  const db = getDb();
+  const row = db.query('SELECT SUM(cost_usd) as total FROM token_usage WHERE agent_name = ?').get(agentName) as any;
+  return row?.total ?? 0;
+}
+
+export function getPricing(): PricingEntry[] {
+  const db = getDb();
+  return (db.query('SELECT * FROM pricing ORDER BY model_name').all() as PricingEntry[]);
+}
+
+export function upsertPricing(modelName: string, inputCostPerMillion: number, outputCostPerMillion: number): void {
+  const db = getDb();
+  db.run(
+    'INSERT INTO pricing (model_name, input_cost_per_million, output_cost_per_million) VALUES (?, ?, ?) ON CONFLICT(model_name) DO UPDATE SET input_cost_per_million = excluded.input_cost_per_million, output_cost_per_million = excluded.output_cost_per_million',
+    [modelName, inputCostPerMillion, outputCostPerMillion],
+  );
+}
+
+export function getPricingForModel(modelName: string): PricingEntry | null {
+  const db = getDb();
+  return (db.query('SELECT * FROM pricing WHERE model_name = ?').get(modelName) as PricingEntry) ?? null;
 }
 
 // --- Test helpers ---
