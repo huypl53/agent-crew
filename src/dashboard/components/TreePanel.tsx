@@ -2,7 +2,7 @@ import React, { memo, useMemo } from 'react';
 import { Box, Text } from 'ink';
 import type { TreeNode } from '../hooks/useTree.ts';
 import type { AgentStatusEntry } from '../hooks/useStatus.ts';
-import type { Message, Task } from '../../shared/types.ts';
+import type { Message, Task, TokenUsage } from '../../shared/types.ts';
 
 const STATUS_COLORS: Record<string, string> = {
   idle: 'green', busy: 'yellow', dead: 'red', unknown: 'gray',
@@ -16,13 +16,14 @@ interface TreePanelProps {
   statuses: Map<string, AgentStatusEntry>;
   messages: Message[];
   tasks: Task[];
+  tokenUsage: TokenUsage[];
 }
 
 const SPARK_CHARS = '▁▂▃▄▅▆▇█';
 const SPARK_BUCKETS = 10;
 const BUCKET_MS = 60_000; // 1 minute per bucket
 
-export const TreePanel = memo(function TreePanel({ nodes, selectedIndex, height, width, statuses, messages, tasks }: TreePanelProps) {
+export const TreePanel = memo(function TreePanel({ nodes, selectedIndex, height, width, statuses, messages, tasks, tokenUsage }: TreePanelProps) {
   const taskCounts = useMemo(() => {
     const counts = new Map<string, { active: number; queued: number }>();
     for (const t of tasks) {
@@ -70,6 +71,16 @@ export const TreePanel = memo(function TreePanel({ nodes, selectedIndex, height,
 
     return lines;
   }, [messages]);
+
+  const costByAgent = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of tokenUsage) {
+      if (!map.has(t.agent_name)) {
+        map.set(t.agent_name, t.cost_usd ?? 0);
+      }
+    }
+    return map;
+  }, [tokenUsage]);
   const maxLines = Math.max(1, height - 2); // border top/bottom
   let startIdx = 0;
   if (selectedIndex >= maxLines) startIdx = selectedIndex - maxLines + 1;
@@ -122,6 +133,9 @@ export const TreePanel = memo(function TreePanel({ nodes, selectedIndex, height,
                 </>
               );
             })()}
+            {node.agentName && costByAgent.has(node.agentName) && (
+              <Text dimColor> ${costByAgent.get(node.agentName)!.toFixed(2)}</Text>
+            )}}
           </Text>
         );
       })}
