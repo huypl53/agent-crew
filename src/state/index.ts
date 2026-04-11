@@ -356,7 +356,7 @@ const VALID_TRANSITIONS: Record<string, TaskStatus[]> = {
   interrupted: ['active', 'error'],
 };
 
-export function updateTaskStatus(id: number, status: TaskStatus, note?: string, context?: string): Task | undefined {
+export function updateTaskStatus(id: number, status: TaskStatus, note?: string, context?: string, triggeredBy?: string): Task | undefined {
   const db = getDb();
   const existing = getTask(id);
   if (!existing) return undefined;
@@ -381,6 +381,10 @@ export function updateTaskStatus(id: number, status: TaskStatus, note?: string, 
   sql += ' WHERE id = ?';
   params.push(id);
   db.run(sql, params);
+
+  // Record the event
+  recordTaskEvent(id, existing.status, status, triggeredBy ?? null);
+
   return getTask(id);
 }
 
