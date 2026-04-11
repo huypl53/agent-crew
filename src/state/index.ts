@@ -1,4 +1,4 @@
-import type { Agent, AgentRole, Room, Message, MessageKind } from '../shared/types.ts';
+import type { Agent, AgentRole, Room, Message, MessageKind, Task, TaskStatus } from '../shared/types.ts';
 import { isPaneDead } from '../tmux/index.ts';
 import { getDb, initDb, closeDb, getDbPath } from './db.ts';
 
@@ -306,9 +306,103 @@ export async function validateLiveness(): Promise<string[]> {
   return dead;
 }
 
+// --- Task operations ---
+
+export function createTask(
+  room: string,
+  assignedTo: string,
+  createdBy: string,
+  messageId: number | null,
+  summary: string,
+): Task {
+  const db = getDb();
+  const ts = now();
+  const truncated = summary.length > 200 ? summary.slice(0, 197) + '...' : summary;
+  const stmt = db.run(
+    'INSERT INTO tasks (room, assigned_to, created_by, message_id, summary, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [room, assignedTo, createdBy, messageId, truncated, 'sent', ts, ts],
+  );
+  return getTask(stmt.lastInsertRowid as number)!;
+}
+
+export function getTask(id: number): Task | undefined {
+  const row = getDb().query('SELECT * FROM tasks WHERE id = ?').get(id) as Record<string, unknown> | null;
+  if (!row) return undefined;
+  return rowToTask(row);
+}
+
+export function getTasksForAgent(agentName: string, statuses?: TaskStatus[]): Task[] {
+  const db = getDb();
+  let sql = 'SELECT * FROM tasks WHERE assigned_to = ?';
+  const params: unknown[] = [agentName];
+  if (statuses && statuses.length > 0) {
+    sql += ` AND status IN (${statuses.map(() => '?').join(',')})`;
+    params.push(...statuses);
+  }
+  sql += ' ORDER BY id';
+  return (db.query(sql).all(...params) as Record<string, unknown>[]).map(rowToTask);
+}
+
+const VALID_TRANSITIONS: Record<string, TaskStatus[]> = {
+  sent:        ['queued', 'active', 'error'],
+  queued:      ['active', 'cancelled', 'error'],
+  active:      ['completed', 'error', 'interrupted'],
+  interrupted: ['active', 'error'],
+};
+
+export function updateTaskStatus(id: number, status: TaskStatus, note?: string): Task | undefined {
+  const db = getDb();
+  const existing = getTask(id);
+  if (!existing) return undefined;
+
+  // Validate transition
+  const allowed = VALID_TRANSITIONS[existing.status];
+  if (!allowed || !allowed.includes(status)) {
+    throw new Error(`Invalid transition: ${existing.status} → ${status}`);
+  }
+
+  const ts = now();
+  let sql = 'UPDATE tasks SET status = ?, updated_at = ?';
+  const params: unknown[] = [status, ts];
+  if (note !== undefined) {
+    sql += ', note = ?';
+    params.push(note);
+  }
+  sql += ' WHERE id = ?';
+  params.push(id);
+  db.run(sql, params);
+  return getTask(id);
+}
+
+/** Bypass transition validation — force-transition all non-terminal tasks to error */
+export function cleanupDeadAgentTasks(agentName: string): void {
+  const db = getDb();
+  const ts = now();
+  db.run(
+    `UPDATE tasks SET status = 'error', note = 'agent pane died', updated_at = ?
+     WHERE assigned_to = ? AND status IN ('sent', 'queued', 'active', 'interrupted')`,
+    [ts, agentName],
+  );
+}
+
+function rowToTask(row: Record<string, unknown>): Task {
+  return {
+    id: row.id as number,
+    room: row.room as string,
+    assigned_to: row.assigned_to as string,
+    created_by: row.created_by as string,
+    message_id: row.message_id as number | null,
+    summary: row.summary as string,
+    status: row.status as TaskStatus,
+    note: row.note as string | undefined,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+  };
+}
+
 // --- Test helpers ---
 
 export function clearState(): void {
   const db = getDb();
-  db.exec('DELETE FROM messages; DELETE FROM cursors; DELETE FROM members; DELETE FROM rooms; DELETE FROM agents;');
+  db.exec('DELETE FROM tasks; DELETE FROM messages; DELETE FROM cursors; DELETE FROM members; DELETE FROM rooms; DELETE FROM agents;');
 }

@@ -5,6 +5,7 @@ import {
   getRoomMembers, isNameTakenInRoom, addMessage, readMessages,
   getRoomMessages, getCursor, advanceCursor, readRoomMessages,
   clearState, removeAgentFully,
+  createTask, getTask, getTasksForAgent, updateTaskStatus, cleanupDeadAgentTasks,
 } from '../src/state/index.ts';
 
 describe('state module', () => {
@@ -227,6 +228,102 @@ describe('state module', () => {
 
       removeAgentFully('a');
       expect(getCursor('a', 'r')).toBe(0);
+    });
+  });
+
+  describe('Task CRUD', () => {
+    beforeEach(() => {
+      clearState();
+      addAgent('lead-1', 'leader', 'frontend', '%1');
+      addAgent('worker-1', 'worker', 'frontend', '%2');
+    });
+
+    test('createTask creates a task with status sent', () => {
+      const task = createTask('frontend', 'worker-1', 'lead-1', 1, 'Build login form');
+      expect(task.id).toBeGreaterThan(0);
+      expect(task.status).toBe('sent');
+      expect(task.assigned_to).toBe('worker-1');
+      expect(task.created_by).toBe('lead-1');
+      expect(task.summary).toBe('Build login form');
+      expect(task.room).toBe('frontend');
+      expect(task.message_id).toBe(1);
+    });
+
+    test('getTask retrieves task by id', () => {
+      const created = createTask('frontend', 'worker-1', 'lead-1', null, 'Test task');
+      const fetched = getTask(created.id);
+      expect(fetched).toBeDefined();
+      expect(fetched!.id).toBe(created.id);
+      expect(fetched!.summary).toBe('Test task');
+    });
+
+    test('getTask returns undefined for non-existent id', () => {
+      expect(getTask(999)).toBeUndefined();
+    });
+
+    test('getTasksForAgent returns tasks by status', () => {
+      createTask('frontend', 'worker-1', 'lead-1', null, 'Task A');
+      createTask('frontend', 'worker-1', 'lead-1', null, 'Task B');
+      const tasks = getTasksForAgent('worker-1');
+      expect(tasks.length).toBe(2);
+    });
+
+    test('getTasksForAgent filters by status', () => {
+      const t1 = createTask('frontend', 'worker-1', 'lead-1', null, 'Task A');
+      createTask('frontend', 'worker-1', 'lead-1', null, 'Task B');
+      updateTaskStatus(t1.id, 'active');
+      const active = getTasksForAgent('worker-1', ['active']);
+      expect(active.length).toBe(1);
+      expect(active[0]!.status).toBe('active');
+    });
+
+    test('updateTaskStatus transitions valid states', () => {
+      const task = createTask('frontend', 'worker-1', 'lead-1', null, 'Task');
+      // sent → active
+      const updated = updateTaskStatus(task.id, 'active');
+      expect(updated).toBeDefined();
+      expect(updated!.status).toBe('active');
+      // active → completed
+      const done = updateTaskStatus(task.id, 'completed');
+      expect(done!.status).toBe('completed');
+    });
+
+    test('updateTaskStatus stores note', () => {
+      const task = createTask('frontend', 'worker-1', 'lead-1', null, 'Task');
+      updateTaskStatus(task.id, 'error', 'Something broke');
+      const fetched = getTask(task.id);
+      expect(fetched!.note).toBe('Something broke');
+    });
+
+    test('updateTaskStatus rejects invalid transitions', () => {
+      const task = createTask('frontend', 'worker-1', 'lead-1', null, 'Task');
+      updateTaskStatus(task.id, 'active');
+      updateTaskStatus(task.id, 'completed');
+      // completed → active is not valid
+      expect(() => updateTaskStatus(task.id, 'active')).toThrow('Invalid transition');
+    });
+
+    test('updateTaskStatus returns undefined for non-existent task', () => {
+      expect(updateTaskStatus(999, 'active')).toBeUndefined();
+    });
+
+    test('cleanupDeadAgentTasks transitions non-terminal tasks to error', () => {
+      const t1 = createTask('frontend', 'worker-1', 'lead-1', null, 'Active task');
+      updateTaskStatus(t1.id, 'active');
+      const t2 = createTask('frontend', 'worker-1', 'lead-1', null, 'Queued task');
+      updateTaskStatus(t2.id, 'queued');
+      const t3 = createTask('frontend', 'worker-1', 'lead-1', null, 'Completed task');
+      updateTaskStatus(t3.id, 'active');
+      updateTaskStatus(t3.id, 'completed');
+
+      cleanupDeadAgentTasks('worker-1');
+
+      // Active and queued should be error
+      expect(getTask(t1.id)!.status).toBe('error');
+      expect(getTask(t1.id)!.note).toBe('agent pane died');
+      expect(getTask(t2.id)!.status).toBe('error');
+      // Completed should be unchanged
+      expect(getTask(t3.id)!.status).toBe('completed');
     });
   });
 });
