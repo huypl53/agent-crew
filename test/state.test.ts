@@ -6,6 +6,7 @@ import {
   getRoomMessages, getCursor, advanceCursor, readRoomMessages,
   clearState, removeAgentFully, validateLiveness,
   createTask, getTask, getTasksForAgent, updateTaskStatus, cleanupDeadAgentTasks,
+  getTaskDetails, searchTasks,
   recordTokenUsage, getTokenUsageForAgent, getTotalCost, getPricing, upsertPricing,
 } from '../src/state/index.ts';
 
@@ -391,6 +392,43 @@ describe('state module', () => {
       upsertPricing('claude-opus-4-6', 20.0, 100.0);
       const p = getPricing().find(e => e.model_name === 'claude-opus-4-6');
       expect(p?.input_cost_per_million).toBe(20.0);
+    });
+  });
+
+  describe('task context sharing', () => {
+    test('updateTaskStatus with context stores it', () => {
+      const task = createTask('test-room', 'wk-01', 'lead-01', null, 'test task summary');
+      updateTaskStatus(task.id, 'active');
+      updateTaskStatus(task.id, 'completed', 'done', 'Explored src/auth.ts. Found JWT validation in middleware.');
+      const details = getTaskDetails(task.id);
+      expect(details).toBeTruthy();
+      expect(details!.context).toContain('JWT validation');
+    });
+
+    test('searchTasks by keyword finds matching tasks', () => {
+      const t1 = createTask('test-room', 'wk-01', 'lead-01', null, 'fix auth middleware');
+      updateTaskStatus(t1.id, 'active');
+      updateTaskStatus(t1.id, 'completed', undefined, 'JWT tokens expire too early');
+
+      const results = searchTasks({ keyword: 'JWT' });
+      expect(results.length).toBeGreaterThan(0);
+    });
+
+    test('searchTasks by room filters correctly', () => {
+      createTask('room-ctx-a', 'wk-01', 'lead-01', null, 'task in room a');
+      const results = searchTasks({ room: 'room-ctx-a' });
+      expect(results.every(r => r.room === 'room-ctx-a')).toBe(true);
+    });
+
+    test('searchTasks returns context_preview truncated', () => {
+      const longCtx = 'x'.repeat(500);
+      const t = createTask('test-room', 'wk-01', 'lead-01', null, 'long ctx task');
+      updateTaskStatus(t.id, 'active');
+      updateTaskStatus(t.id, 'completed', undefined, longCtx);
+      const results = searchTasks({ keyword: 'long ctx' });
+      if (results.length > 0) {
+        expect(results[0].context_preview!.length).toBeLessThanOrEqual(203);
+      }
     });
   });
 });

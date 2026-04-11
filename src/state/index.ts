@@ -333,6 +333,10 @@ export function getTask(id: number): Task | undefined {
   return rowToTask(row);
 }
 
+export function getTaskDetails(id: number): Task | undefined {
+  return getTask(id);
+}
+
 export function getTasksForAgent(agentName: string, statuses?: TaskStatus[]): Task[] {
   const db = getDb();
   let sql = 'SELECT * FROM tasks WHERE assigned_to = ?';
@@ -352,7 +356,7 @@ const VALID_TRANSITIONS: Record<string, TaskStatus[]> = {
   interrupted: ['active', 'error'],
 };
 
-export function updateTaskStatus(id: number, status: TaskStatus, note?: string): Task | undefined {
+export function updateTaskStatus(id: number, status: TaskStatus, note?: string, context?: string): Task | undefined {
   const db = getDb();
   const existing = getTask(id);
   if (!existing) return undefined;
@@ -369,6 +373,10 @@ export function updateTaskStatus(id: number, status: TaskStatus, note?: string):
   if (note !== undefined) {
     sql += ', note = ?';
     params.push(note);
+  }
+  if (context !== undefined) {
+    sql += ', context = ?';
+    params.push(context);
   }
   sql += ' WHERE id = ?';
   params.push(id);
@@ -387,6 +395,54 @@ export function cleanupDeadAgentTasks(agentName: string): void {
   );
 }
 
+export interface SearchTasksParams {
+  keyword?: string;
+  room?: string;
+}
+
+export interface SearchTaskResult {
+  id: number;
+  room: string;
+  summary: string;
+  status: TaskStatus;
+  context_preview?: string;
+}
+
+export function searchTasks(params: SearchTasksParams): SearchTaskResult[] {
+  const db = getDb();
+  let sql = 'SELECT id, room, summary, status, context FROM tasks WHERE 1=1';
+  const queryParams: unknown[] = [];
+
+  if (params.room) {
+    sql += ' AND room = ?';
+    queryParams.push(params.room);
+  }
+
+  if (params.keyword) {
+    sql += ' AND (summary LIKE ? OR context LIKE ?)';
+    const searchTerm = `%${params.keyword}%`;
+    queryParams.push(searchTerm, searchTerm);
+  }
+
+  sql += ' ORDER BY id';
+  const rows = db.query(sql).all(...queryParams) as Array<Record<string, unknown>>;
+
+  return rows.map(row => {
+    const context = row.context as string | null;
+    let preview: string | undefined;
+    if (context) {
+      preview = context.length > 200 ? context.slice(0, 200) + '...' : context;
+    }
+    return {
+      id: row.id as number,
+      room: row.room as string,
+      summary: row.summary as string,
+      status: row.status as TaskStatus,
+      context_preview: preview,
+    };
+  });
+}
+
 function rowToTask(row: Record<string, unknown>): Task {
   return {
     id: row.id as number,
@@ -397,6 +453,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     summary: row.summary as string,
     status: row.status as TaskStatus,
     note: row.note as string | undefined,
+    context: row.context as string | undefined,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };
