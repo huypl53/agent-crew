@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Database } from 'bun:sqlite';
-import type { Agent, Room, Message, Task, TokenUsage } from '../../shared/types.ts';
+import type { Agent, Room, Message, Task, TaskEvent, TokenUsage } from '../../shared/types.ts';
 import { logError } from '../logger.ts';
 import { existsSync } from 'fs';
 
@@ -13,10 +13,11 @@ export interface DashboardState {
   rooms: Record<string, Room>;
   messages: Message[];
   tasks: Task[];
+  taskEvents: TaskEvent[];
   tokenUsage: TokenUsage[];
 }
 
-const EMPTY_STATE: DashboardState = { agents: {}, rooms: {}, messages: [], tasks: [], tokenUsage: [] };
+const EMPTY_STATE: DashboardState = { agents: {}, rooms: {}, messages: [], tasks: [], taskEvents: [], tokenUsage: [] };
 
 function readAll(): DashboardState | null {
   let db: Database | null = null;
@@ -95,7 +96,14 @@ function readAll(): DashboardState | null {
       // token_usage table may not exist in older DBs
     }
 
-    return { agents, rooms, messages, tasks, tokenUsage };
+    let taskEvents: TaskEvent[] = [];
+    try {
+      taskEvents = db.prepare('SELECT * FROM task_events ORDER BY timestamp ASC').all() as TaskEvent[];
+    } catch {
+      // task_events table may not exist in older DBs
+    }
+
+    return { agents, rooms, messages, tasks, taskEvents, tokenUsage };
   } catch (e) {
     logError('state-reader.readAll', e);
     return null;
@@ -166,7 +174,8 @@ function quickHash(state: DashboardState): string {
   const lastMsgId = state.messages[state.messages.length - 1]?.message_id ?? '';
   const taskCount = state.tasks.length;
   const lastTaskStatus = state.tasks[state.tasks.length - 1]?.status ?? '';
+  const taskEventCount = state.taskEvents.length;
   const tokenCount = state.tokenUsage.length;
   const latestTokenCost = state.tokenUsage[0]?.cost_usd ?? 0;
-  return `${agentKeys}|${roomKeys}|${msgCount}|${lastMsgId}|${taskCount}|${lastTaskStatus}|${tokenCount}|${latestTokenCost}`;
+  return `${agentKeys}|${roomKeys}|${msgCount}|${lastMsgId}|${taskCount}|${lastTaskStatus}|${taskEventCount}|${tokenCount}|${latestTokenCost}`;
 }

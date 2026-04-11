@@ -11,6 +11,8 @@ import { DetailsPanel } from './components/DetailsPanel.tsx';
 import { StatusBar } from './components/StatusBar.tsx';
 import { HelpOverlay } from './components/HelpOverlay.tsx';
 import { HeaderStats } from './components/HeaderStats.tsx';
+import { TaskBoard } from './components/TaskBoard.tsx';
+import { TimelineView } from './components/TimelineView.tsx';
 import { hasErrors, logError } from './logger.ts';
 import type { MessageKind, TokenUsage } from '../shared/types.ts';
 
@@ -26,7 +28,8 @@ export function App() {
   // Pre-compute fixed layout dimensions — avoids Yoga percentage recalculation
   const layout = useMemo(() => {
     const treeW = Math.floor(cols * 0.3);
-    const panelRows = rows - 2; // header stats + status bar
+    const headerHeight = cols < 100 ? 1 : 2; // compact vs normal header
+    const panelRows = rows - headerHeight - 1; // header + status bar
     const topH = Math.max(5, Math.floor(panelRows * 0.65));
     const bottomH = panelRows - topH;
     return { treeW, topH, bottomH, panelRows };
@@ -104,29 +107,39 @@ export function App() {
   return (
     <Box flexDirection="column" height={rows} width={cols}>
       <HeaderStats currentView={currentView} statuses={statuses} messages={state.messages} tasks={state.tasks} earliestJoinedAt={earliestJoinedAt} cols={cols} tokenUsage={state.tokenUsage} />
-      <Box flexDirection="row" height={layout.panelRows}>
-        <TreePanel nodes={tree.nodes} selectedIndex={tree.selectedIndex} height={layout.panelRows} width={layout.treeW} statuses={statuses} messages={state.messages} tasks={state.tasks} tokenUsage={state.tokenUsage} />
-        <Box flexDirection="column" flexGrow={1}>
-          <MessageFeedPanel messages={messages} roomFilter={tree.selectedRoomName} height={layout.topH} enabledKinds={enabledKinds} />
-          {showHelp ? (
-            <Box flexDirection="column" borderStyle="single" height={layout.bottomH} justifyContent="center" alignItems="center">
-              <HelpOverlay />
-            </Box>
-          ) : (
-            <DetailsPanel
-              agent={agent}
-              agentStatus={agentStatus}
-              selectedNode={tree.selectedNode}
-              rooms={state.rooms}
-              messages={state.messages}
-              tasks={state.tasks}
-              isSyncing={isSyncing}
-              height={layout.bottomH}
-              tokenUsage={state.tokenUsage}
-            />
-          )}
+      {currentView === 'dashboard' ? (
+        <Box flexDirection="row" height={layout.panelRows}>
+          <TreePanel nodes={tree.nodes} selectedIndex={tree.selectedIndex} height={layout.panelRows} width={layout.treeW} statuses={statuses} messages={state.messages} tasks={state.tasks} tokenUsage={state.tokenUsage} />
+          <Box flexDirection="column" flexGrow={1}>
+            <MessageFeedPanel messages={messages} roomFilter={tree.selectedRoomName} height={layout.topH} enabledKinds={enabledKinds} />
+            {showHelp ? (
+              <Box flexDirection="column" borderStyle="single" height={layout.bottomH} justifyContent="center" alignItems="center">
+                <HelpOverlay />
+              </Box>
+            ) : (
+              <DetailsPanel
+                agent={agent}
+                agentStatus={agentStatus}
+                selectedNode={tree.selectedNode}
+                rooms={state.rooms}
+                messages={state.messages}
+                tasks={state.tasks}
+                isSyncing={isSyncing}
+                height={layout.bottomH}
+                tokenUsage={state.tokenUsage}
+              />
+            )}
+          </Box>
         </Box>
-      </Box>
+      ) : currentView === 'tasks' ? (
+        <Box height={layout.panelRows}>
+          <TaskBoard />
+        </Box>
+      ) : (
+        <Box height={layout.panelRows}>
+          <TimelineView />
+        </Box>
+      )}
       <StatusBar hasErrors={hasErrors()} showHelp={showHelp} />
     </Box>
   );

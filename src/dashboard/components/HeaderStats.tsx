@@ -1,6 +1,7 @@
 import React, { memo, useMemo } from 'react';
 import { Box, Text } from 'ink';
 import type { AgentStatusEntry } from '../hooks/useStatus.ts';
+import type { ViewName } from '../hooks/useViews.ts';
 import type { Message, Task, TokenUsage } from '../../shared/types.ts';
 
 function formatTokenCount(n: number): string {
@@ -10,6 +11,7 @@ function formatTokenCount(n: number): string {
 }
 
 interface HeaderStatsProps {
+  currentView: ViewName;
   statuses: Map<string, AgentStatusEntry>;
   messages: Message[];
   tasks: Task[];
@@ -18,7 +20,7 @@ interface HeaderStatsProps {
   cols: number;
 }
 
-export const HeaderStats = memo(function HeaderStats({ statuses, messages, tasks, tokenUsage, earliestJoinedAt, cols }: HeaderStatsProps) {
+export const HeaderStats = memo(function HeaderStats({ currentView, statuses, messages, tasks, tokenUsage, earliestJoinedAt, cols }: HeaderStatsProps) {
   const stats = useMemo(() => {
     let busy = 0, idle = 0, dead = 0;
     for (const entry of statuses.values()) {
@@ -60,49 +62,49 @@ export const HeaderStats = memo(function HeaderStats({ statuses, messages, tasks
   const totalCost = [...latestByAgent.values()].reduce((sum, t) => sum + (t.cost_usd ?? 0), 0);
   const totalTokens = [...latestByAgent.values()].reduce((sum, t) => sum + t.input_tokens + t.output_tokens, 0);
 
+  const viewTabs = (
+    <Text>
+      {(['dashboard', 'tasks', 'timeline'] as const).map(v => (
+        <Text key={v} color={v === currentView ? 'cyan' : 'gray'} bold={v === currentView}>
+          {` [${v === 'dashboard' ? 'Dashboard' : v === 'tasks' ? 'Tasks' : 'Timeline'}] `}
+        </Text>
+      ))}
+      <Text dimColor> Tab to switch</Text>
+    </Text>
+  );
+
   const compact = cols < 100;
 
   if (compact) {
     return (
       <Box height={1} width={cols}>
-        <Text>
-          <Text color="yellow">{stats.busy}</Text>
-          <Text dimColor>{'↑ '}</Text>
-          <Text color="green">{stats.idle}</Text>
-          <Text dimColor>{'○ '}</Text>
-          {stats.dead > 0 && <><Text color="red">{stats.dead}</Text><Text dimColor>{'✗ '}</Text></>}
-          <Text dimColor>{'│ '}</Text>
-          <Text color="green">{stats.done}</Text>
-          <Text dimColor>{'✓ '}</Text>
-          {stats.active > 0 && <><Text color="yellow">{stats.active}</Text><Text dimColor>{'● '}</Text></>}
-          {stats.queued > 0 && <><Text>{stats.queued}</Text><Text dimColor>{'◌ '}</Text></>}
-          {stats.errors > 0 && <><Text color="red">{stats.errors}</Text><Text dimColor>{'! '}</Text></>}
-          {stats.uptime && <><Text dimColor>{'│ '}</Text><Text dimColor>{stats.uptime}</Text></>}
-          <Text dimColor>{'│ $'}</Text>
-          <Text color="green">{totalCost.toFixed(2)}</Text>
-          <Text dimColor>{` (${formatTokenCount(totalTokens)}tok)`}</Text>
-        </Text>
+        {viewTabs}
       </Box>
     );
   }
 
   return (
-    <Box height={1} width={cols}>
-      <Text>
-        <Text dimColor> Agents: </Text>
-        <Text color="yellow">{stats.busy}</Text><Text dimColor> busy  </Text>
-        <Text color="green">{stats.idle}</Text><Text dimColor> idle</Text>
-        {stats.dead > 0 && <><Text dimColor>  </Text><Text color="red">{stats.dead}</Text><Text dimColor> dead</Text></>}
-        <Text dimColor> │ Tasks: </Text>
-        <Text color="green">{stats.done}</Text><Text dimColor> done</Text>
-        {stats.active > 0 && <><Text dimColor>  </Text><Text color="yellow">{stats.active}</Text><Text dimColor> active</Text></>}
-        {stats.queued > 0 && <><Text dimColor>  </Text><Text>{stats.queued}</Text><Text dimColor> queued</Text></>}
-        {stats.errors > 0 && <><Text dimColor>  </Text><Text color="red">{stats.errors}</Text><Text dimColor> err</Text></>}
-        {stats.uptime && <><Text dimColor> │ Up: </Text><Text dimColor>{stats.uptime}</Text></>}
-        <Text dimColor> │ Cost: </Text>
-        <Text color="green">${totalCost.toFixed(2)}</Text>
-        <Text dimColor> ({formatTokenCount(totalTokens)} tok)</Text>
-      </Text>
+    <Box height={2} width={cols} flexDirection="column">
+      <Box height={1} width={cols}>
+        {viewTabs}
+      </Box>
+      <Box height={1} width={cols}>
+        <Text>
+          <Text dimColor> Agents: </Text>
+          <Text color="yellow">{stats.busy}</Text><Text dimColor> busy  </Text>
+          <Text color="green">{stats.idle}</Text><Text dimColor> idle</Text>
+          {stats.dead > 0 && <><Text dimColor>  </Text><Text color="red">{stats.dead}</Text><Text dimColor> dead</Text></>}
+          <Text dimColor> │ Tasks: </Text>
+          <Text color="green">{stats.done}</Text><Text dimColor> done</Text>
+          {stats.active > 0 && <><Text dimColor>  </Text><Text color="yellow">{stats.active}</Text><Text dimColor> active</Text></>}
+          {stats.queued > 0 && <><Text dimColor>  </Text><Text>{stats.queued}</Text><Text dimColor> queued</Text></>}
+          {stats.errors > 0 && <><Text dimColor>  </Text><Text color="red">{stats.errors}</Text><Text dimColor> err</Text></>}
+          {stats.uptime && <><Text dimColor> │ Up: </Text><Text dimColor>{stats.uptime}</Text></>}
+          <Text dimColor> │ Cost: </Text>
+          <Text color="green">${totalCost.toFixed(2)}</Text>
+          <Text dimColor> ({formatTokenCount(totalTokens)} tok)</Text>
+        </Text>
+      </Box>
     </Box>
   );
 });
