@@ -414,6 +414,39 @@ All tmux output is routed through `PaneQueue` (`src/delivery/pane-queue.ts`):
 - Polls for idle prompt before delivering paste items
 - Per-pane buffer names (`_crew_{pane_id}`) prevent cross-pane buffer collisions
 
+## Task Context Sharing
+
+Worker knowledge is preserved in task records for future reference and handoff.
+
+### Context Storage
+
+Tasks table has two note fields with distinct purposes:
+
+- **`note`** — System-level annotations (error messages, status reasons) — set by `update_task` `note` param
+- **`context`** — Worker-written knowledge (files explored, key findings, decisions made) — set by `update_task` `context` param
+
+Example context: "Explored src/auth.ts. Found JWT validation in middleware.ts line 42. Token expiry is 1 hour (should be 24h). Also checked database schema — no migration needed."
+
+### Context Query Tools
+
+Two new MCP tools allow workers and leaders to share knowledge:
+
+- **`get_task_details`** — Returns full task record including context
+  - Used to read what a previous worker learned
+  - Caller: leader investigating task, worker seeking prior context
+  
+- **`search_tasks`** — Search completed tasks by room, agent, keyword, or status
+  - Supports LIKE search on both `summary` and `context` fields
+  - Example: search for "JWT" to find all tasks mentioning JWT issues
+  - Default limit: 10 results, ordered by most recent first
+  - Returns context as preview (truncated to 200 chars + "...")
+
+### Implementation
+
+- **Storage**: SQLite `tasks` table, `context TEXT` column (nullable, backward compatible)
+- **Query**: `searchTasks` in `src/state/index.ts` builds dynamic WHERE clauses and LIKE patterns
+- **API**: `update_task` tool accepts optional `context` param (worker → leader handoff)
+
 ## Token Usage Tracking
 
 Crew automatically collects token consumption and cost data from Claude Code and Codex CLI sessions.

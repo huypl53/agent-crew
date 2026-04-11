@@ -9,7 +9,8 @@ A plugin for AI coding agents that turns your terminal into an AI development te
 3. Your own session is the boss — give natural language direction
 4. Leaders coordinate workers, workers execute tasks, everyone communicates through rooms
 5. Task tracking with lifecycle statuses — leaders can interrupt or reassign worker tasks
-6. Automatic token/cost tracking — collects usage from Claude Code and Codex CLI, displays in dashboard
+6. Task context sharing — workers record findings in task notes for handoff, leaders search prior work to avoid repeating investigations
+7. Automatic token/cost tracking — collects usage from Claude Code and Codex CLI, displays in dashboard
 
 ## Architecture
 
@@ -114,9 +115,11 @@ bun ~/.crew/test/uat-sqlite.ts
 | `read_messages` | Read room log or inbox with optional `kinds` filter |
 | `get_status` | Check agent status |
 | `set_room_topic` | Set current objective for a room |
-| `update_task` | Worker: update task status (queued/active/completed/error) |
+| `update_task` | Worker: update task status (queued/active/completed/error) — now accepts `context` for handoff notes |
 | `interrupt_worker` | Leader/Boss: send Escape to worker pane, mark task interrupted |
 | `reassign_task` | Leader/Boss: replace worker's current/queued task with a new one |
+| `get_task_details` | Get full details of a task including worker context notes |
+| `search_tasks` | Search completed tasks by room, agent, keyword, or status — find relevant context from previous work |
 
 ### `send_message` params
 
