@@ -59,3 +59,23 @@ export function ok(data: Record<string, unknown>): ToolResult {
 export function err(error: string): ToolResult {
   return { content: [{ type: 'text', text: JSON.stringify({ error }) }], isError: true };
 }
+
+/* ── Token tracking ─────────────────────────────────────── */
+
+export interface TokenUsage {
+  id: number;
+  agent_name: string;
+  session_id: string | null;
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number | null;
+  source: 'statusline' | 'jsonl' | 'codex_db';
+  recorded_at: string;
+}
+
+export interface PricingEntry {
+  model_name: string;
+  input_cost_per_million: number;
+  output_cost_per_million: number;
+}
