@@ -44,6 +44,7 @@ export interface Task {
   summary: string;
   status: TaskStatus;
   note?: string;
+  context?: string;
   created_at: string;
   updated_at: string;
 }

@@ -58,6 +58,7 @@ const SCHEMA = `
     summary     TEXT NOT NULL,
     status      TEXT NOT NULL DEFAULT 'sent',
     note        TEXT,
+    context     TEXT,
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
   );
