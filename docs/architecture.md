@@ -447,6 +447,72 @@ Two new MCP tools allow workers and leaders to share knowledge:
 - **Query**: `searchTasks` in `src/state/index.ts` builds dynamic WHERE clauses and LIKE patterns
 - **API**: `update_task` tool accepts optional `context` param (worker → leader handoff)
 
+## Dashboard Views
+
+The dashboard supports three complementary views of agent activity and task progress, switchable via Tab key.
+
+### View Switching
+
+Press **Tab** to cycle through three views:
+1. **Dashboard** — Default. Room/agent tree (left), messages + details (right). Original layout.
+2. **Task Board** — Task-focused view. Groups tasks by agent or room (toggle with `r`), shows status, duration, context preview. Navigate with `j`/`k`, expand with Enter to see full history.
+3. **Timeline** — Waterfall chart. One row per agent, horizontal bars showing task status periods over time. Zoom with `+`/`-`, scroll with `j`/`k`/`h`/`l`.
+
+### Task Board
+
+Groups completed and in-progress tasks:
+
+- **Grouping**: Toggle with `r` key between "grouped by agent" or "grouped by room"
+- **Navigation**: `j`/`k` to move up/down, `j`/`k` also wrap within groups
+- **Selection**: Highlighted task shown with `▶` prefix
+- **Expansion**: Press Enter on a task to expand and show:
+  - Full summary text
+  - Full context field (worker knowledge notes)
+  - Status history: timestamps + transitions (sent → queued → active → completed) + who triggered each
+  - Total duration from first event to last event
+- **Status indicators**:
+  - `✓` = completed (green)
+  - `✗` = error (red)
+  - `●` = active (yellow)
+  - `◌` = queued/sent (cyan)
+- **Line format**: `#12 ✓ completed wk-03 Fix auth middleware (2m 34s) JWT tokens expire too early...`
+
+### Timeline
+
+Horizontal waterfall chart showing task execution over time:
+
+- **Time axis**: X-axis represents absolute time elapsed. Automatically scales to fit all task events.
+- **Agent rows**: One row per agent with their tasks rendered as Unicode block characters:
+  - `░` = queued/sent (cyan)
+  - `▓` = active (yellow)
+  - `█` = completed (green)
+  - `▒` = error (red)
+- **Colors**: Status-coded by state transition
+- **Zoom controls**: 
+  - `+` to zoom in (narrow time window, see fine detail)
+  - `-` to zoom out (wide time window, see full history)
+- **Scroll controls**:
+  - `j`/`k` or up/down arrows: scroll vertically through agents
+  - `h`/`l` or left/right arrows: scroll horizontally through time
+- **Time labels**: Bottom axis shows relative timestamps (e.g., "2m 34s", "45s")
+
+### Task Events Table
+
+Drives the timeline and task board detail views. Every task status transition is recorded in the `task_events` table:
+
+```sql
+CREATE TABLE task_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL REFERENCES tasks(id),
+  from_status TEXT,          -- null for initial creation
+  to_status TEXT NOT NULL,   -- 'sent', 'queued', 'active', 'completed', 'error', 'interrupted'
+  triggered_by TEXT,         -- agent name or 'system'
+  timestamp TEXT NOT NULL    -- ISO 8601 datetime
+);
+```
+
+**Automatic recording**: Every `update_task` call automatically records a transition event. Timeline and Task Board views query this table to reconstruct execution history.
+
 ## Token Usage Tracking
 
 Crew automatically collects token consumption and cost data from Claude Code and Codex CLI sessions.

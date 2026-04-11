@@ -10,7 +10,8 @@ A plugin for AI coding agents that turns your terminal into an AI development te
 4. Leaders coordinate workers, workers execute tasks, everyone communicates through rooms
 5. Task tracking with lifecycle statuses — leaders can interrupt or reassign worker tasks
 6. Task context sharing — workers record findings in task notes for handoff, leaders search prior work to avoid repeating investigations
-7. Automatic token/cost tracking — collects usage from Claude Code and Codex CLI, displays in dashboard
+7. Dashboard visualization — three views (Tab to switch): dashboard (original), task board (grouped by agent/room), timeline (waterfall chart)
+8. Automatic token/cost tracking — collects usage from Claude Code and Codex CLI, displays in dashboard
 
 ## Architecture
 
