@@ -63,6 +63,16 @@ const SCHEMA = `
     updated_at  TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS task_events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id      INTEGER NOT NULL,
+    from_status  TEXT,
+    to_status    TEXT NOT NULL,
+    triggered_by TEXT,
+    timestamp    TEXT NOT NULL,
+    FOREIGN KEY (task_id) REFERENCES tasks(id)
+  );
+
   CREATE TABLE IF NOT EXISTS token_usage (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_name  TEXT NOT NULL,
