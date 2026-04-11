@@ -145,6 +145,16 @@ Agent read cursors are cleaned up when an agent departs:
 
 `members` table has `ON DELETE CASCADE` for both `rooms(name)` and `agents(name)`. When an agent is deleted, all memberships are removed. Empty rooms are cleaned up explicitly after membership deletion.
 
+## Liveness Sweep
+
+The MCP server runs a periodic liveness check every 30 seconds. When an agent's tmux pane is detected as dead, the server automatically:
+
+1. Cleans up the agent's pending tasks (marks active/queued tasks as error with note "agent pane died")
+2. Removes the agent from the agents table and all room memberships
+3. Logs "Swept dead agent: <name>" to stderr
+
+This prevents "ghost" agents from accumulating in the dashboard after disconnection. The sweep is triggered at server startup and then on a 30-second interval via `setInterval`.
+
 ## Key Patterns
 
 - **Naming:** snake_case for MCP (tools, params, JSON), camelCase for TS, kebab-case for files

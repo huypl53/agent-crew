@@ -6,4 +6,5 @@
 - [x] clear the worker session when task done, send command `/clear`
 - [ ] right now agents that use polling to track lower-level agents cost lot of token on tracking, think about a better solution to minize cost
 - [ ] Switch to CLI tool for usage cost reduce. This is huge change, do this in new branch with strict test and UAT
-- [ ] check the memory leak when an agent disconnect but still showing active in dashboard
+- [x] check the memory leak when an agent disconnect but still showing active in dashboard
+- [ ] in the dashboard, I can revoke worker is I want. Of course, I want to have more control over the tasks, the actors
