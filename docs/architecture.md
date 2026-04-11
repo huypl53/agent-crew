@@ -362,7 +362,7 @@ Push messages are delivered to agent tmux panes via `tmux load-buffer` + `paste-
 
 1. `tmux load-buffer -b _crew -` — loads text into a named buffer via stdin (safe for arbitrary content, no shell escaping issues)
 2. `tmux paste-buffer -dp -b _crew -t target` — pastes with bracketed paste mode (`-p`), deletes buffer after (`-d`)
-3. 150ms settle delay — lets the terminal app finish processing the paste (empirically tested: 80ms fails against Claude Code, 100ms works, 150ms for safety margin)
+3. 500ms settle delay — lets the terminal app finish processing the paste (empirically tested: 80ms fails against Claude Code, 100ms works, 500ms for wide margin across machines/apps)
 4. `tmux send-keys -t target Enter` — submits the pasted text
 
 The `-p` flag wraps the text in `\e[200~...\e[201~` escape sequences. Terminal apps that enable bracketed paste mode (Claude Code does) treat the entire payload as one atomic paste — newlines become part of the pasted text, not Enter keypresses.

@@ -30,8 +30,8 @@ export async function validateTmux(): Promise<{ ok: boolean; version?: string; e
 
 // Delay between paste-buffer and Enter to let the terminal app finish processing
 // the bracketed paste before we submit. Empirically tested against Claude Code:
-// 80ms fails, 100ms works, using 150ms for margin.
-const PASTE_SETTLE_MS = 150;
+// 80ms fails, 100ms works. Using 500ms for wide margin across machines/apps.
+const PASTE_SETTLE_MS = 500;
 
 export async function sendKeys(target: string, text: string): Promise<{ delivered: boolean; error?: string }> {
   // Use tmux paste-buffer with bracketed paste mode (-p) instead of send-keys -l.
