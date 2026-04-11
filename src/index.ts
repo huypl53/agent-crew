@@ -16,6 +16,7 @@ import { handleReadMessages } from './tools/read-messages.ts';
 import { handleGetStatus } from './tools/get-status.ts';
 import { handleSetRoomTopic } from './tools/set-room-topic.ts';
 import { handleRefresh } from './tools/refresh.ts';
+import { handleUpdateTask } from './tools/update-task.ts';
 import { err } from './shared/types.ts';
 
 // Validate tmux
@@ -152,6 +153,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ['room', 'text', 'name'],
       },
     },
+    {
+      name: 'update_task',
+      description: 'Update a task\'s status. Worker-only: you can only update tasks assigned to you.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          task_id: { type: 'number', description: 'Task ID to update' },
+          status: { type: 'string', enum: ['queued', 'active', 'completed', 'error'], description: 'New task status' },
+          note: { type: 'string', description: 'Optional note (e.g., error message)' },
+          name: { type: 'string', description: 'Your agent name' },
+        },
+        required: ['task_id', 'status', 'name'],
+      },
+    },
   ],
 }));
 
@@ -179,6 +194,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleRefresh(args as any);
       case 'set_room_topic':
         return await handleSetRoomTopic(args as any);
+      case 'update_task':
+        return await handleUpdateTask(args as any);
       default:
         return err(`Unknown tool: ${name}`);
     }
