@@ -116,10 +116,10 @@ reassign_task({
 - Role enforcement: caller must be leader or boss
 - Validates worker is in the same room
 - Checks worker's current state:
-  - **queued** task → enqueues `escape` then `paste` (interrupt + new text). Old task → `cancelled`, new task → `sent`
+  - **queued** task → enqueues `ctrl-l` then `paste` (clear input + new text). Old task → `cancelled`, new task → `sent`
   - **active** task → enqueues `escape` then `paste` (interrupt + new text). Old task → `interrupted`, new task → `sent`
   - **idle** (no task) → enqueues `paste` (same as send_message). New task → `sent`
-- **Note:** Both queued and active paths use the same interrupt-then-resend approach. The `clearQueuedInput` (Up + Esc Esc) sequence was considered but not validated against Claude Code's input handling. Escape is a safe universal interrupt.
+- **Note:** `Ctrl-L` clears the input buffer without interrupting the agent (safe for queued tasks). `Escape` interrupts the running operation (needed for active tasks).
 - Returns: `{ reassigned: true, old_task_id?, new_task_id }`
 
 ---
@@ -210,9 +210,8 @@ reassign_task       ────┤
 type QueueItem =
   | { type: "paste", text: string, resolve: Function }
   | { type: "escape", resolve: Function }
+  | { type: "clear", resolve: Function }           // Ctrl-L to clear input without interrupting
 ```
-
-**Note:** `clear_and_paste` was removed — reassign always uses `escape` then `paste` (two separate queue items).
 
 ### Delivery Loop
 
@@ -261,6 +260,9 @@ class PaneQueue {
       case "escape":
         await sendEscape(this.target);
         break;
+      case "clear":
+        await sendClear(this.target);
+        break;
     }
   }
 }
@@ -290,6 +292,12 @@ One `PaneQueue` instance per tmux target, stored in a module-level `Map<string, 
 // Send Escape to interrupt current operation
 export async function sendEscape(target: string): Promise<void> {
   await run('send-keys', '-t', target, 'Escape');
+  await Bun.sleep(PASTE_SETTLE_MS);
+}
+
+// Send Ctrl-L to clear input buffer without interrupting the agent
+export async function sendClear(target: string): Promise<void> {
+  await run('send-keys', '-t', target, 'C-l');
   await Bun.sleep(PASTE_SETTLE_MS);
 }
 ```
