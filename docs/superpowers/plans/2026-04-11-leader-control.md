@@ -196,6 +196,14 @@ describe('Task CRUD', () => {
     expect(fetched!.note).toBe('Something broke');
   });
 
+  test('updateTaskStatus rejects invalid transitions', () => {
+    const task = createTask('frontend', 'worker-1', 'lead-1', null, 'Task');
+    updateTaskStatus(task.id, 'active');
+    updateTaskStatus(task.id, 'completed');
+    // completed → active is not valid
+    expect(() => updateTaskStatus(task.id, 'active')).toThrow('Invalid transition');
+  });
+
   test('updateTaskStatus returns undefined for non-existent task', () => {
     expect(updateTaskStatus(999, 'active')).toBeUndefined();
   });
@@ -268,8 +276,24 @@ export function getTasksForAgent(agentName: string, statuses?: TaskStatus[]): Ta
   return (db.query(sql).all(...params) as Record<string, unknown>[]).map(rowToTask);
 }
 
+const VALID_TRANSITIONS: Record<string, TaskStatus[]> = {
+  sent:        ['queued', 'active', 'error'],
+  queued:      ['active', 'cancelled', 'error'],
+  active:      ['completed', 'error', 'interrupted'],
+  interrupted: ['active', 'error'],
+};
+
 export function updateTaskStatus(id: number, status: TaskStatus, note?: string): Task | undefined {
   const db = getDb();
+  const existing = getTask(id);
+  if (!existing) return undefined;
+
+  // Validate transition
+  const allowed = VALID_TRANSITIONS[existing.status];
+  if (!allowed || !allowed.includes(status)) {
+    throw new Error(`Invalid transition: ${existing.status} → ${status}`);
+  }
+
   const ts = now();
   let sql = 'UPDATE tasks SET status = ?, updated_at = ?';
   const params: unknown[] = [status, ts];
@@ -279,11 +303,11 @@ export function updateTaskStatus(id: number, status: TaskStatus, note?: string):
   }
   sql += ' WHERE id = ?';
   params.push(id);
-  const result = db.run(sql, params);
-  if (result.changes === 0) return undefined;
+  db.run(sql, params);
   return getTask(id);
 }
 
+/** Bypass transition validation — force-transition all non-terminal tasks to error */
 export function cleanupDeadAgentTasks(agentName: string): void {
   const db = getDb();
   const ts = now();
@@ -1166,9 +1190,8 @@ Create `src/tools/interrupt-worker.ts`:
 import { ok, err } from '../shared/types.ts';
 import type { ToolResult } from '../shared/types.ts';
 import { assertRole } from '../shared/role-guard.ts';
-import { getAgent, getTasksForAgent, updateTaskStatus } from '../state/index.ts';
+import { getAgent, getTasksForAgent, updateTaskStatus, addMessage } from '../state/index.ts';
 import { getQueue } from '../delivery/pane-queue.ts';
-import { deliverMessage } from './index.ts';
 
 interface InterruptWorkerParams {
   worker_name: string;
@@ -1213,8 +1236,10 @@ export async function handleInterruptWorker(params: InterruptWorkerParams): Prom
   // Mark task as interrupted
   updateTaskStatus(task.id, 'interrupted');
 
-  // Send system notification to worker
-  const notifyText = `[system@${room}]: Your current task was interrupted by ${name}`;
+  // Record and send system notification to worker
+  const notifyBody = `Your current task was interrupted by ${name}`;
+  const notifyText = `[system@${room}]: ${notifyBody}`;
+  addMessage(worker_name, 'system', room, notifyBody, 'push', worker_name, 'status');
   await getQueue(worker.tmux_target).enqueue({ type: 'paste', text: notifyText });
 
   return ok({ interrupted: true, task_id: task.id, previous_status: 'active' });
@@ -1556,7 +1581,19 @@ In the final `return ok({...})` block (line 45), add task info:
   });
 ```
 
-Apply the same to the `dead` return block.
+Also update the `dead` return block (lines 27-35) to include task info. Move the task query code **before** the dead check so it runs for both paths:
+
+```typescript
+  // Get task info (before dead check — dead agents may still have tasks)
+  const activeTasks = getTasksForAgent(targetName, ['active']);
+  const queuedTasks = getTasksForAgent(targetName, ['queued', 'sent']);
+  const currentTask = activeTasks.length > 0 ? {
+    id: activeTasks[0]!.id, status: activeTasks[0]!.status, summary: activeTasks[0]!.summary,
+  } : null;
+  const queuedTasksList = queuedTasks.map(t => ({ id: t.id, status: t.status, summary: t.summary }));
+```
+
+Then include `current_task` and `queued_tasks` in both the dead and alive return objects.
 
 - [ ] **Step 3: Run tests**
 
