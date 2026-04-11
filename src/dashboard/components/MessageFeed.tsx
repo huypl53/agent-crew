@@ -10,9 +10,11 @@ function parseTimestamp(ts: string): number {
 
 const KIND_COLORS: Record<string, string> = {
   task: 'cyan', completion: 'green', error: 'red', question: 'yellow',
+  interrupted: 'magenta', cancelled: 'gray',
 };
 const KIND_BADGES: Record<string, string> = {
   task: '[TASK]', completion: '[DONE]', error: '[ERR]', question: '[?]',
+  interrupted: '[INT]', cancelled: '[CXL]',
 };
 
 interface MessageFeedPanelProps {
