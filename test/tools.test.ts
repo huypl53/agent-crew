@@ -14,6 +14,7 @@ import { handleGetStatus } from '../src/tools/get-status.ts';
 import { handleUpdateTask } from '../src/tools/update-task.ts';
 import { handleInterruptWorker } from '../src/tools/interrupt-worker.ts';
 import { handleReassignTask } from '../src/tools/reassign-task.ts';
+import { handleClearWorkerSession } from '../src/tools/clear-worker-session.ts';
 import { handleGetTaskDetails } from '../src/tools/get-task-details.ts';
 import { handleSearchTasks } from '../src/tools/search-tasks.ts';
 import { createTestSession, destroyTestSession, cleanupAllTestSessions, captureFromPane } from './helpers.ts';
@@ -411,6 +412,46 @@ describe('MCP tools', () => {
       await handleJoinRoom({ room: 'frontend', role: 'worker', name: 'builder-1', tmux_target: testPaneB });
 
       const result = await handleInterruptWorker({ worker_name: 'builder-1', room: 'frontend', name: 'lead-1' });
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  describe('clear_worker_session', () => {
+    test('leader can clear worker session', async () => {
+      await handleJoinRoom({ room: 'test-room', role: 'leader', name: 'lead-01', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'test-room', role: 'worker', name: 'wk-01', tmux_target: testPaneB });
+
+      const result = await handleClearWorkerSession({
+        worker_name: 'wk-01',
+        room: 'test-room',
+        name: 'lead-01',
+      });
+      expect(result.isError).toBeUndefined();
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.cleared).toBe(true);
+      expect(data.worker_name).toBe('wk-01');
+    });
+
+    test('worker cannot clear sessions', async () => {
+      await handleJoinRoom({ room: 'test-room', role: 'leader', name: 'lead-01', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'test-room', role: 'worker', name: 'wk-01', tmux_target: testPaneB });
+
+      const result = await handleClearWorkerSession({
+        worker_name: 'lead-01',
+        room: 'test-room',
+        name: 'wk-01',
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    test('errors when worker not found', async () => {
+      await handleJoinRoom({ room: 'test-room', role: 'leader', name: 'lead-01', tmux_target: testPaneA });
+
+      const result = await handleClearWorkerSession({
+        worker_name: 'nonexistent',
+        room: 'test-room',
+        name: 'lead-01',
+      });
       expect(result.isError).toBe(true);
     });
   });
