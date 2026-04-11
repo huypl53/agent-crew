@@ -12,6 +12,8 @@ import { handleSetRoomTopic } from '../src/tools/set-room-topic.ts';
 import { handleRefresh } from '../src/tools/refresh.ts';
 import { handleGetStatus } from '../src/tools/get-status.ts';
 import { handleUpdateTask } from '../src/tools/update-task.ts';
+import { handleInterruptWorker } from '../src/tools/interrupt-worker.ts';
+import { handleReassignTask } from '../src/tools/reassign-task.ts';
 import { createTestSession, destroyTestSession, cleanupAllTestSessions, captureFromPane } from './helpers.ts';
 
 let testPaneA: string;
@@ -371,6 +373,105 @@ describe('MCP tools', () => {
     test('errors for invalid pane', async () => {
       await handleJoinRoom({ room: 'r', role: 'worker', name: 'w1', tmux_target: testPaneA });
       const result = await handleRefresh({ name: 'w1', tmux_target: '%99999' });
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  describe('interrupt_worker', () => {
+    test('leader can interrupt worker with active task', async () => {
+      await handleJoinRoom({ room: 'frontend', role: 'leader', name: 'lead-1', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'frontend', role: 'worker', name: 'builder-1', tmux_target: testPaneB });
+
+      // Create and activate a task
+      const sendResult = await handleSendMessage({
+        room: 'frontend', text: 'Build login', to: 'builder-1', name: 'lead-1', kind: 'task',
+      });
+      const taskId = JSON.parse(sendResult.content[0]!.text).task_id;
+      await handleUpdateTask({ task_id: taskId, status: 'active', name: 'builder-1' });
+
+      const result = await handleInterruptWorker({ worker_name: 'builder-1', room: 'frontend', name: 'lead-1' });
+      expect(result.isError).toBeUndefined();
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.interrupted).toBe(true);
+      expect(data.task_id).toBe(taskId);
+    });
+
+    test('worker cannot interrupt', async () => {
+      await handleJoinRoom({ room: 'frontend', role: 'leader', name: 'lead-1', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'frontend', role: 'worker', name: 'builder-1', tmux_target: testPaneB });
+
+      const result = await handleInterruptWorker({ worker_name: 'lead-1', room: 'frontend', name: 'builder-1' });
+      expect(result.isError).toBe(true);
+    });
+
+    test('errors when no active task', async () => {
+      await handleJoinRoom({ room: 'frontend', role: 'leader', name: 'lead-1', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'frontend', role: 'worker', name: 'builder-1', tmux_target: testPaneB });
+
+      const result = await handleInterruptWorker({ worker_name: 'builder-1', room: 'frontend', name: 'lead-1' });
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  describe('reassign_task', () => {
+    test('leader can reassign active task', async () => {
+      await handleJoinRoom({ room: 'frontend', role: 'leader', name: 'lead-1', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'frontend', role: 'worker', name: 'builder-1', tmux_target: testPaneB });
+
+      const sendResult = await handleSendMessage({
+        room: 'frontend', text: 'Build login', to: 'builder-1', name: 'lead-1', kind: 'task',
+      });
+      const taskId = JSON.parse(sendResult.content[0]!.text).task_id;
+      await handleUpdateTask({ task_id: taskId, status: 'active', name: 'builder-1' });
+
+      const result = await handleReassignTask({
+        worker_name: 'builder-1', room: 'frontend', text: 'Build signup instead', name: 'lead-1',
+      });
+      expect(result.isError).toBeUndefined();
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.reassigned).toBe(true);
+      expect(data.old_task_id).toBe(taskId);
+      expect(data.new_task_id).toBeDefined();
+    });
+
+    test('leader can reassign queued task', async () => {
+      await handleJoinRoom({ room: 'frontend', role: 'leader', name: 'lead-1', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'frontend', role: 'worker', name: 'builder-1', tmux_target: testPaneB });
+
+      const sendResult = await handleSendMessage({
+        room: 'frontend', text: 'Build login', to: 'builder-1', name: 'lead-1', kind: 'task',
+      });
+      const taskId = JSON.parse(sendResult.content[0]!.text).task_id;
+      await handleUpdateTask({ task_id: taskId, status: 'queued', name: 'builder-1' });
+
+      const result = await handleReassignTask({
+        worker_name: 'builder-1', room: 'frontend', text: 'Build signup instead', name: 'lead-1',
+      });
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.reassigned).toBe(true);
+      expect(data.old_task_id).toBe(taskId);
+    });
+
+    test('leader can reassign to idle worker', async () => {
+      await handleJoinRoom({ room: 'frontend', role: 'leader', name: 'lead-1', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'frontend', role: 'worker', name: 'builder-1', tmux_target: testPaneB });
+
+      const result = await handleReassignTask({
+        worker_name: 'builder-1', room: 'frontend', text: 'Build login', name: 'lead-1',
+      });
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.reassigned).toBe(true);
+      expect(data.old_task_id).toBeUndefined();
+      expect(data.new_task_id).toBeDefined();
+    });
+
+    test('worker cannot reassign', async () => {
+      await handleJoinRoom({ room: 'frontend', role: 'leader', name: 'lead-1', tmux_target: testPaneA });
+      await handleJoinRoom({ room: 'frontend', role: 'worker', name: 'builder-1', tmux_target: testPaneB });
+
+      const result = await handleReassignTask({
+        worker_name: 'lead-1', room: 'frontend', text: 'Do something', name: 'builder-1',
+      });
       expect(result.isError).toBe(true);
     });
   });

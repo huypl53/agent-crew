@@ -17,6 +17,7 @@ import { handleGetStatus } from './tools/get-status.ts';
 import { handleSetRoomTopic } from './tools/set-room-topic.ts';
 import { handleRefresh } from './tools/refresh.ts';
 import { handleUpdateTask } from './tools/update-task.ts';
+import { handleInterruptWorker } from './tools/interrupt-worker.ts';
 import { err } from './shared/types.ts';
 
 // Validate tmux
@@ -154,6 +155,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: 'interrupt_worker',
+      description: 'Interrupt a busy worker by sending Escape to their pane. Leader/Boss only.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          worker_name: { type: 'string', description: 'Worker agent name to interrupt' },
+          room: { type: 'string', description: 'Room the worker is in' },
+          name: { type: 'string', description: 'Your agent name (caller)' },
+        },
+        required: ['worker_name', 'room', 'name'],
+      },
+    },
+    {
       name: 'update_task',
       description: 'Update a task\'s status. Worker-only: you can only update tasks assigned to you.',
       inputSchema: {
@@ -196,6 +210,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleSetRoomTopic(args as any);
       case 'update_task':
         return await handleUpdateTask(args as any);
+      case 'interrupt_worker':
+        return await handleInterruptWorker(args as any);
       default:
         return err(`Unknown tool: ${name}`);
     }
