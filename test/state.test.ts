@@ -4,7 +4,7 @@ import {
   addAgent, getAgent, removeAgent, getRoom, getAllRooms,
   getRoomMembers, isNameTakenInRoom, addMessage, readMessages,
   getRoomMessages, getCursor, advanceCursor, readRoomMessages,
-  clearState, removeAgentFully,
+  clearState, removeAgentFully, validateLiveness,
   createTask, getTask, getTasksForAgent, updateTaskStatus, cleanupDeadAgentTasks,
 } from '../src/state/index.ts';
 
@@ -324,6 +324,19 @@ describe('state module', () => {
       expect(getTask(t2.id)!.status).toBe('error');
       // Completed should be unchanged
       expect(getTask(t3.id)!.status).toBe('completed');
+    });
+
+    test('validateLiveness cleans up tasks for dead agents', async () => {
+      // This test uses a fake pane that doesn't exist — isPaneDead returns true
+      addAgent('dead-worker', 'worker', 'frontend', '%99999');
+      const task = createTask('frontend', 'dead-worker', 'lead-1', null, 'Doomed task');
+      updateTaskStatus(task.id, 'active');
+
+      await validateLiveness();
+
+      const updated = getTask(task.id);
+      expect(updated!.status).toBe('error');
+      expect(updated!.note).toBe('agent pane died');
     });
   });
 });

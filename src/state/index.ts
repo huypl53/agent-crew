@@ -299,6 +299,7 @@ export async function validateLiveness(): Promise<string[]> {
   const dead: string[] = [];
   for (const agent of getAllAgents()) {
     if (await isPaneDead(agent.tmux_target)) {
+      cleanupDeadAgentTasks(agent.name);
       removeAgentFully(agent.name);
       dead.push(agent.name);
     }
