@@ -292,3 +292,19 @@ await server.connect(transport);
 
 // Start token collection
 startTokenCollection();
+
+// Periodic liveness sweep — clean up dead agents every 30s
+const livenessInterval = setInterval(async () => {
+  try {
+    const deadAgents = await validateLiveness();
+    for (const name of deadAgents) {
+      console.error(`Swept dead agent: ${name}`);
+    }
+  } catch (e) {
+    console.error(`Liveness sweep error: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}, 30_000);
+
+// Clean up on shutdown
+process.on('SIGINT', () => { clearInterval(livenessInterval); process.exit(0); });
+process.on('SIGTERM', () => { clearInterval(livenessInterval); process.exit(0); });

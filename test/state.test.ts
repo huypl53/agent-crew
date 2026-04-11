@@ -341,6 +341,21 @@ describe('state module', () => {
       expect(updated!.status).toBe('error');
       expect(updated!.note).toBe('agent pane died');
     });
+
+    test('validateLiveness removes agents with dead tmux panes', async () => {
+      // Register an agent with a fake (dead) tmux pane
+      addAgent('ghost-agent', 'worker', '%99999', 'crew');
+      const before = getAgent('ghost-agent');
+      expect(before).toBeTruthy();
+
+      // Run liveness check — should detect fake pane as dead and remove
+      const dead = await validateLiveness();
+      expect(dead).toContain('ghost-agent');
+
+      // Agent should be gone from DB
+      const after = getAgent('ghost-agent');
+      expect(after).toBeUndefined();
+    });
   });
 
   describe('token_usage table', () => {
