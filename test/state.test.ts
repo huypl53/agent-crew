@@ -7,6 +7,7 @@ import {
   clearState, removeAgentFully, validateLiveness,
   createTask, getTask, getTasksForAgent, updateTaskStatus, cleanupDeadAgentTasks,
   getTaskDetails, searchTasks,
+  recordTaskEvent, getTaskEvents, getAllTaskEvents,
   recordTokenUsage, getTokenUsageForAgent, getTotalCost, getPricing, upsertPricing,
 } from '../src/state/index.ts';
 
@@ -429,6 +430,47 @@ describe('state module', () => {
       if (results.length > 0) {
         expect(results[0].context_preview!.length).toBeLessThanOrEqual(203);
       }
+    });
+  });
+
+  describe('task events', () => {
+    beforeEach(() => {
+      clearState();
+      addAgent('lead-01', 'leader', 'test-room', '%1');
+      addAgent('wk-01', 'worker', 'test-room', '%2');
+    });
+
+    test('recordTaskEvent stores a transition', () => {
+      const task = createTask('test-room', 'wk-01', 'lead-01', null, 'event test');
+      recordTaskEvent(task.id, null, 'sent', 'system');
+      const events = getTaskEvents(task.id);
+      expect(events.length).toBe(1);
+      expect(events[0]!.to_status).toBe('sent');
+    });
+
+    test('getTaskEvents returns events in order', () => {
+      const task = createTask('test-room', 'wk-01', 'lead-01', null, 'multi event');
+      recordTaskEvent(task.id, null, 'sent', 'system');
+      recordTaskEvent(task.id, 'sent', 'active', 'wk-01');
+      recordTaskEvent(task.id, 'active', 'completed', 'wk-01');
+      const events = getTaskEvents(task.id);
+      expect(events.length).toBe(3);
+      expect(events[2]!.to_status).toBe('completed');
+    });
+
+    test('getAllTaskEvents returns array', () => {
+      expect(Array.isArray(getAllTaskEvents())).toBe(true);
+    });
+
+    test('updateTaskStatus auto-records event', () => {
+      const task = createTask('test-room', 'wk-01', 'lead-01', null, 'auto event');
+      // Task starts with status 'sent'
+      updateTaskStatus(task.id, 'active', undefined, undefined, 'wk-01');
+      const events = getTaskEvents(task.id);
+      expect(events.length).toBe(1);
+      expect(events[0]!.from_status).toBe('sent');
+      expect(events[0]!.to_status).toBe('active');
+      expect(events[0]!.triggered_by).toBe('wk-01');
     });
   });
 });

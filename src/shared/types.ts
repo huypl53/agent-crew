@@ -49,6 +49,15 @@ export interface Task {
   updated_at: string;
 }
 
+export interface TaskEvent {
+  id: number;
+  task_id: number;
+  from_status: string | null;
+  to_status: string;
+  triggered_by: string | null;
+  timestamp: string;
+}
+
 export interface ToolResult {
   content: Array<{ type: 'text'; text: string }>;
   isError?: boolean;

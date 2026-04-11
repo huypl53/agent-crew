@@ -1,4 +1,4 @@
-import type { Agent, AgentRole, Room, Message, MessageKind, Task, TaskStatus, TokenUsage, PricingEntry } from '../shared/types.ts';
+import type { Agent, AgentRole, Room, Message, MessageKind, Task, TaskStatus, TaskEvent, TokenUsage, PricingEntry } from '../shared/types.ts';
 import { isPaneDead } from '../tmux/index.ts';
 import { getDb, initDb, closeDb, getDbPath } from './db.ts';
 
@@ -356,7 +356,7 @@ const VALID_TRANSITIONS: Record<string, TaskStatus[]> = {
   interrupted: ['active', 'error'],
 };
 
-export function updateTaskStatus(id: number, status: TaskStatus, note?: string, context?: string): Task | undefined {
+export function updateTaskStatus(id: number, status: TaskStatus, note?: string, context?: string, triggeredBy?: string): Task | undefined {
   const db = getDb();
   const existing = getTask(id);
   if (!existing) return undefined;
@@ -381,6 +381,10 @@ export function updateTaskStatus(id: number, status: TaskStatus, note?: string, 
   sql += ' WHERE id = ?';
   params.push(id);
   db.run(sql, params);
+
+  // Record the event
+  recordTaskEvent(id, existing.status, status, triggeredBy ?? null);
+
   return getTask(id);
 }
 
@@ -457,6 +461,27 @@ function rowToTask(row: Record<string, unknown>): Task {
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };
+}
+
+// --- Task event operations ---
+
+export function recordTaskEvent(taskId: number, fromStatus: string | null, toStatus: string, triggeredBy: string | null): void {
+  const db = getDb();
+  const ts = now();
+  db.run(
+    'INSERT INTO task_events (task_id, from_status, to_status, triggered_by, timestamp) VALUES (?, ?, ?, ?, ?)',
+    [taskId, fromStatus, toStatus, triggeredBy, ts],
+  );
+}
+
+export function getTaskEvents(taskId: number): TaskEvent[] {
+  const db = getDb();
+  return (db.query('SELECT * FROM task_events WHERE task_id = ? ORDER BY timestamp').all(taskId) as TaskEvent[]);
+}
+
+export function getAllTaskEvents(): TaskEvent[] {
+  const db = getDb();
+  return (db.query('SELECT * FROM task_events ORDER BY timestamp').all() as TaskEvent[]);
 }
 
 // --- Token usage operations ---
