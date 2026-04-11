@@ -2,7 +2,7 @@ import React, { memo, useMemo } from 'react';
 import { Box, Text } from 'ink';
 import type { TreeNode } from '../hooks/useTree.ts';
 import type { AgentStatusEntry } from '../hooks/useStatus.ts';
-import type { Agent, Room, Message, Task } from '../../shared/types.ts';
+import type { Agent, Room, Message, Task, TokenUsage } from '../../shared/types.ts';
 import { useTaskTracker, formatDuration, type TrackedTask } from '../hooks/useTaskTracker.ts';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -23,6 +23,12 @@ function stripControlCodes(str: string): string {
   return str.replace(/\x1b\[[\d;]*[A-LN-Za-z]/g, '').replace(/\x1b[()][AB0-9]/g, '').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
 }
 
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
 interface DetailsPanelProps {
   agent: Agent | null;
   agentStatus: AgentStatusEntry | null;
@@ -30,11 +36,12 @@ interface DetailsPanelProps {
   rooms: Record<string, Room>;
   messages: Message[];
   tasks: Task[];
+  tokenUsage: TokenUsage[];
   isSyncing: boolean;
   height: number;
 }
 
-export const DetailsPanel = memo(function DetailsPanel({ agent, agentStatus, selectedNode, rooms, messages, tasks, isSyncing, height }: DetailsPanelProps) {
+export const DetailsPanel = memo(function DetailsPanel({ agent, agentStatus, selectedNode, rooms, messages, tasks, tokenUsage, isSyncing, height }: DetailsPanelProps) {
   const roomName = selectedNode?.type === 'room' ? selectedNode.label : null;
   const trackedTasks = useTaskTracker(tasks, roomName);
 
@@ -46,7 +53,7 @@ export const DetailsPanel = memo(function DetailsPanel({ agent, agentStatus, sel
         <RoomDetails node={selectedNode} room={rooms[selectedNode.label]} trackedTasks={trackedTasks} />
       )}
       {!agent && !isSyncing && !selectedNode && <RoomOverview rooms={rooms} messages={messages} />}
-      {agent && <AgentDetails agent={agent} status={agentStatus} rooms={rooms} messages={messages} height={height} />}
+      {agent && <AgentDetails agent={agent} status={agentStatus} rooms={rooms} messages={messages} tokenUsage={tokenUsage} height={height} />}
     </Box>
   );
 });
@@ -138,7 +145,7 @@ function RoomDetails({ node, room, trackedTasks }: { node: TreeNode; room?: Room
   );
 }
 
-function AgentDetails({ agent, status, rooms, messages, height }: { agent: Agent; status: AgentStatusEntry | null; rooms: Record<string, Room>; messages: Message[]; height: number }) {
+function AgentDetails({ agent, status, rooms, messages, tokenUsage, height }: { agent: Agent; status: AgentStatusEntry | null; rooms: Record<string, Room>; messages: Message[]; tokenUsage: TokenUsage[]; height: number }) {
   const s = status?.status ?? 'unknown';
   const color = STATUS_COLORS[s] ?? 'gray';
   const roomTopic = agent.rooms[0] ? rooms[agent.rooms[0]]?.topic : undefined;
@@ -235,6 +242,21 @@ function AgentDetails({ agent, status, rooms, messages, height }: { agent: Agent
           {agentStats.activeFor && <Text>Active: <Text dimColor>{agentStats.activeFor}</Text></Text>}
         </Box>
       )}
+      {(() => {
+        const agentTokens = tokenUsage.find(t => t.agent_name === agent.name);
+        if (!agentTokens) return null;
+        return (
+          <Box flexDirection="column" marginTop={1}>
+            <Text dimColor>─ Cost ─</Text>
+            {agentTokens.cost_usd !== null && (
+              <Text>Session: <Text color="green">${agentTokens.cost_usd.toFixed(4)}</Text></Text>
+            )}
+            {agentTokens.model && <Text>Model: <Text dimColor>{agentTokens.model}</Text></Text>}
+            <Text>Tokens: {formatTokenCount(agentTokens.input_tokens)} in / {formatTokenCount(agentTokens.output_tokens)} out</Text>
+            <Text>Source: <Text dimColor>{agentTokens.source}</Text></Text>
+          </Box>
+        );
+      })()}
       {paneLines.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
           <Text dimColor>─ pane ─</Text>
