@@ -369,7 +369,7 @@ const bufferName = `_crew_${target.replace('%', '')}`;
 | `src/shared/types.ts` | Add `TaskStatus`, `Task` types |
 | `src/delivery/pane-queue.ts` | New file — per-pane delivery queue |
 | `src/delivery/index.ts` | Route push deliveries through pane queue |
-| `src/tmux/index.ts` | Add `sendEscape`, `clearQueuedInput` |
+| `src/tmux/index.ts` | Add `sendEscape`, per-pane buffer names |
 | `src/tools/update-task.ts` | New tool handler |
 | `src/tools/interrupt-worker.ts` | New tool handler |
 | `src/tools/reassign-task.ts` | New tool handler |
