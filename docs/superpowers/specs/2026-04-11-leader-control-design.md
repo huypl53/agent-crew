@@ -22,7 +22,6 @@ Additionally, when multiple sources send messages to the same worker pane simult
 - Modifying existing tools' role-agnostic behavior
 - Task priorities, dependencies, or retry logic
 - Worker heartbeat/auto-detection of hangs (but dead agent tasks are cleaned up — see below)
-- Dashboard changes (existing `useTaskTracker` heuristic remains; may be migrated to `tasks` table later)
 
 ---
 
@@ -364,6 +363,118 @@ const bufferName = `_crew_${target.replace('%', '')}`;
 - Interrupt a busy Claude Code worker via Escape
 - Reassign a queued task on a busy worker
 - Verify task status transitions end-to-end
+
+---
+
+## Dashboard UI/UX Enhancements
+
+### Current State
+
+The dashboard (`src/dashboard/`) currently infers task status heuristically via `useTaskTracker`:
+- Scans messages for `kind: "task"`, matches completions/errors by agent + timestamp
+- Shows tasks as `✓` done / `✗` error / `↻` open in DetailsPanel
+- HeaderStats shows aggregate counts (done/total, errors)
+- No visibility into `queued`, `interrupted`, or `cancelled` states
+
+### Migration: `useTaskTracker` → `tasks` Table
+
+Replace the heuristic message-scanning approach with direct reads from the `tasks` table. The existing `useStateReader` hook already polls SQLite with `PRAGMA data_version` change detection — task reads plug into this naturally.
+
+```typescript
+// Current: infer from messages (heuristic, lossy)
+const tasks = useTaskTracker(messages);
+
+// New: read authoritative task status from DB
+const tasks = useTasksFromDB(stateReader);
+```
+
+### Enhanced Task Display
+
+**DetailsPanel — Agent View:**
+
+When an agent is selected, show their task timeline:
+
+```
+Tasks for worker-1:
+  ● Build login form                    active    2m30s
+  ◌ Add form validation                queued    —
+  ✓ Set up project scaffolding         completed 1m15s
+  ✗ Configure auth middleware           error     0m45s
+  ⊘ Implement SSO integration          cancelled —
+  ⚡ Write unit tests                   interrupted 3m10s
+```
+
+| Symbol | Status | Color |
+|--------|--------|-------|
+| `●` | active | yellow |
+| `◌` | queued | dim/gray |
+| `✓` | completed | green |
+| `✗` | error | red |
+| `⊘` | cancelled | dim/gray strikethrough |
+| `⚡` | interrupted | magenta |
+| `→` | sent | cyan |
+
+**DetailsPanel — Room View:**
+
+Show room-level task overview table:
+
+```
+Tasks in #frontend:
+  Agent       Active  Queued  Done  Errors
+  worker-1    1       1       3     0
+  worker-2    0       0       2     1
+  ─────────────────────────────────────
+  Total       1       1       5     1
+```
+
+**HeaderStats:**
+
+Add task breakdown to global stats:
+
+```
+Before: Tasks: 5/8 done  1 err
+After:  Tasks: 5 done  1 active  1 queued  1 err
+```
+
+### TreePanel Task Indicators
+
+Show task status inline with agent entries:
+
+```
+#frontend
+  ● worker-1  ●1 ◌1     (1 active, 1 queued)
+  ● worker-2  idle       (no tasks)
+```
+
+### MessageFeed Integration
+
+Add `[INT]` (magenta) and `[CXL]` (gray) badges for interrupt and cancel events:
+
+```
+14:32:05 [INT] leader@frontend → worker-1: interrupted "Build login form"
+14:32:06 [TASK] leader@frontend → worker-1: Rebuild login form with OAuth
+14:35:10 [CXL] leader@frontend → worker-2: cancelled "SSO integration"
+```
+
+### Keyboard Shortcuts
+
+Add task-specific filter toggles (extend existing 1-6 kind filters):
+
+| Key | Filter |
+|-----|--------|
+| `7` | Show/hide interrupted tasks |
+| `8` | Show/hide cancelled tasks |
+
+### File Changes (Dashboard)
+
+| File | Change |
+|------|--------|
+| `src/dashboard/hooks/useTaskTracker.ts` | Rewrite to read from `tasks` table instead of heuristic message scanning |
+| `src/dashboard/components/DetailsPanel.tsx` | Add task timeline view (agent) and task overview table (room) |
+| `src/dashboard/components/HeaderStats.tsx` | Show task breakdown by status |
+| `src/dashboard/components/TreePanel.tsx` | Add inline task indicators per agent |
+| `src/dashboard/components/MessageFeed.tsx` | Add `[INT]` and `[CXL]` badges |
+| `src/dashboard/App.tsx` | Add filter toggles for keys 7-8 |
 
 ---
 
