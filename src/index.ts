@@ -20,6 +20,7 @@ import { handleRefresh } from './tools/refresh.ts';
 import { handleUpdateTask } from './tools/update-task.ts';
 import { handleInterruptWorker } from './tools/interrupt-worker.ts';
 import { handleReassignTask } from './tools/reassign-task.ts';
+import { handleClearWorkerSession } from './tools/clear-worker-session.ts';
 import { handleGetTaskDetails } from './tools/get-task-details.ts';
 import { handleSearchTasks } from './tools/search-tasks.ts';
 import { err } from './shared/types.ts';
@@ -172,6 +173,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: 'clear_worker_session',
+      description: 'Clear a worker\'s Claude Code session and auto-refresh their registration. Leader/Boss only. Use between tasks to free context. Worker\'s next task must be self-contained.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          worker_name: { type: 'string', description: 'Worker agent name to clear' },
+          room: { type: 'string', description: 'Room the worker is in' },
+          name: { type: 'string', description: 'Your agent name (caller)' },
+        },
+        required: ['worker_name', 'room', 'name'],
+      },
+    },
+    {
       name: 'reassign_task',
       description: 'Replace a worker\'s current or queued task with a new one. Leader/Boss only. Handles interrupt/clear automatically based on task state.',
       inputSchema: {
@@ -256,6 +270,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleUpdateTask(args as any);
       case 'interrupt_worker':
         return await handleInterruptWorker(args as any);
+      case 'clear_worker_session':
+        return await handleClearWorkerSession(args as any);
       case 'reassign_task':
         return await handleReassignTask(args as any);
       case 'get_task_details':
