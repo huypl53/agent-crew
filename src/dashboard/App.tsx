@@ -11,7 +11,7 @@ import { StatusBar } from './components/StatusBar.tsx';
 import { HelpOverlay } from './components/HelpOverlay.tsx';
 import { HeaderStats } from './components/HeaderStats.tsx';
 import { hasErrors, logError } from './logger.ts';
-import type { MessageKind } from '../shared/types.ts';
+import type { MessageKind, TokenUsage } from '../shared/types.ts';
 
 const POLL_INTERVAL = 2000;
 const ALL_KINDS: MessageKind[] = ['task', 'completion', 'error', 'question', 'status', 'chat'];
@@ -100,9 +100,9 @@ export function App() {
 
   return (
     <Box flexDirection="column" height={rows} width={cols}>
-      <HeaderStats statuses={statuses} messages={state.messages} tasks={state.tasks} earliestJoinedAt={earliestJoinedAt} cols={cols} />
+      <HeaderStats statuses={statuses} messages={state.messages} tasks={state.tasks} earliestJoinedAt={earliestJoinedAt} cols={cols} tokenUsage={state.tokenUsage} />
       <Box flexDirection="row" height={layout.panelRows}>
-        <TreePanel nodes={tree.nodes} selectedIndex={tree.selectedIndex} height={layout.panelRows} width={layout.treeW} statuses={statuses} messages={state.messages} tasks={state.tasks} />
+        <TreePanel nodes={tree.nodes} selectedIndex={tree.selectedIndex} height={layout.panelRows} width={layout.treeW} statuses={statuses} messages={state.messages} tasks={state.tasks} tokenUsage={state.tokenUsage} />
         <Box flexDirection="column" flexGrow={1}>
           <MessageFeedPanel messages={messages} roomFilter={tree.selectedRoomName} height={layout.topH} enabledKinds={enabledKinds} />
           {showHelp ? (
@@ -119,6 +119,7 @@ export function App() {
               tasks={state.tasks}
               isSyncing={isSyncing}
               height={layout.bottomH}
+              tokenUsage={state.tokenUsage}
             />
           )}
         </Box>
