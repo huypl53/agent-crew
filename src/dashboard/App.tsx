@@ -14,7 +14,7 @@ import { HeaderStats } from './components/HeaderStats.tsx';
 import { TaskBoard } from './components/TaskBoard.tsx';
 import { TimelineView } from './components/TimelineView.tsx';
 import { hasErrors, logError } from './logger.ts';
-import type { MessageKind, TokenUsage } from '../shared/types.ts';
+import type { MessageKind, TokenUsage, TaskEvent } from '../shared/types.ts';
 
 const POLL_INTERVAL = 2000;
 const ALL_KINDS: MessageKind[] = ['task', 'completion', 'error', 'question', 'status', 'chat'];
@@ -89,11 +89,14 @@ export function App() {
       });
       return;
     }
-    if (input === 'k' || key.upArrow) { tree.moveUp(); return; }
-    if (input === 'j' || key.downArrow) { tree.moveDown(); return; }
-    if (input === 'g') { tree.moveToTop(); return; }
-    if (input === 'G') { tree.moveToBottom(); return; }
-    if (key.return) { tree.toggleCollapse(); return; }
+    // Only forward tree navigation when in dashboard view
+    if (currentView === 'dashboard') {
+      if (input === 'k' || key.upArrow) { tree.moveUp(); return; }
+      if (input === 'j' || key.downArrow) { tree.moveDown(); return; }
+      if (input === 'g') { tree.moveToTop(); return; }
+      if (input === 'G') { tree.moveToBottom(); return; }
+      if (key.return) { tree.toggleCollapse(); return; }
+    }
   });
 
   if (!isAvailable) {
@@ -132,8 +135,8 @@ export function App() {
           </Box>
         </Box>
       ) : currentView === 'tasks' ? (
-        <Box height={layout.panelRows}>
-          <TaskBoard />
+        <Box height={layout.panelRows} width={cols}>
+          <TaskBoard tasks={state.tasks} taskEvents={state.taskEvents} agents={Object.values(state.agents)} height={layout.panelRows} width={cols} />
         </Box>
       ) : (
         <Box height={layout.panelRows}>
