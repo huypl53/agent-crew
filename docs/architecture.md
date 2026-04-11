@@ -400,6 +400,7 @@ Workers update task status via `update_task`. Dead agent tasks are cleaned up au
 ### Worker Control Tools
 - `interrupt_worker` — Leader/Boss only. Sends Escape to worker pane, marks task interrupted.
 - `reassign_task` — Leader/Boss only. Replaces queued/active task with new one.
+- `clear_worker_session` — Leader/Boss only. Sends `/clear` command to worker pane (clears Claude Code context), then auto-sends `/crew:refresh` to re-register. Use between long task sequences to free context. Worker's next task must be self-contained (cannot reference prior context).
 - `update_task` — Worker only. Reports task lifecycle transitions.
 
 ### Role Enforcement
