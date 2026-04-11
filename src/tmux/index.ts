@@ -44,9 +44,10 @@ export async function sendKeys(target: string, text: string): Promise<{ delivere
   // paste-buffer -p wraps the text in bracketed paste escape sequences (\e[200~...\e[201~)
   // so the terminal app treats the entire payload as one atomic paste. Enter sent after
   // the paste completes then submits cleanly.
+  const bufferName = `_crew_${target.replace('%', '')}`;
   try {
     // Load text into a named tmux buffer via stdin (safe for arbitrary content)
-    const loadProc = Bun.spawn(['tmux', 'load-buffer', '-b', '_crew', '-'], {
+    const loadProc = Bun.spawn(['tmux', 'load-buffer', '-b', bufferName, '-'], {
       stdin: Buffer.from(text),
       stdout: 'pipe',
       stderr: 'pipe',
@@ -60,7 +61,7 @@ export async function sendKeys(target: string, text: string): Promise<{ delivere
     }
 
     // Paste with bracketed paste mode; -d deletes the buffer after pasting
-    const pasteResult = await run('paste-buffer', '-dp', '-b', '_crew', '-t', target);
+    const pasteResult = await run('paste-buffer', '-dp', '-b', bufferName, '-t', target);
     if (!pasteResult.success) {
       return { delivered: false, error: pasteResult.stderr || 'paste-buffer failed' };
     }
@@ -77,8 +78,34 @@ export async function sendKeys(target: string, text: string): Promise<{ delivere
     return { delivered: true };
   } catch {
     // Clean up buffer on failure
-    await run('delete-buffer', '-b', '_crew').catch(() => {});
+    await run('delete-buffer', '-b', bufferName).catch(() => {});
     return { delivered: false, error: 'paste delivery failed' };
+  }
+}
+
+export async function sendEscape(target: string): Promise<{ delivered: boolean; error?: string }> {
+  try {
+    const result = await run('send-keys', '-t', target, 'Escape');
+    if (!result.success) {
+      return { delivered: false, error: result.stderr || 'send-keys Escape failed' };
+    }
+    await Bun.sleep(PASTE_SETTLE_MS);
+    return { delivered: true };
+  } catch {
+    return { delivered: false, error: 'Escape delivery failed' };
+  }
+}
+
+export async function sendClear(target: string): Promise<{ delivered: boolean; error?: string }> {
+  try {
+    const result = await run('send-keys', '-t', target, 'C-l');
+    if (!result.success) {
+      return { delivered: false, error: result.stderr || 'send-keys C-l failed' };
+    }
+    await Bun.sleep(PASTE_SETTLE_MS);
+    return { delivered: true };
+  } catch {
+    return { delivered: false, error: 'Ctrl-L delivery failed' };
   }
 }
 
