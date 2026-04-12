@@ -124,6 +124,7 @@ bun ~/.crew/test/uat-sqlite.ts
 | `clear_worker_session` | Leader/Boss: send `/clear` to worker (clears Claude Code context), auto-refresh registration |
 | `get_task_details` | Get full details of a task including worker context notes |
 | `search_tasks` | Search completed tasks by room, agent, keyword, or status — find relevant context from previous work |
+| `check_changes` | Return version numbers for `messages`, `tasks`, `agents` scopes — call before `get_status`/`read_messages` to skip polls when nothing changed (~90% cost reduction during quiet periods) |
 
 ### `send_message` params
 

@@ -170,6 +170,69 @@ Agent read cursors are cleaned up when an agent departs:
 
 `members` table has `ON DELETE CASCADE` for both `rooms(name)` and `agents(name)`. When an agent is deleted, all memberships are removed. Empty rooms are cleaned up explicitly after membership deletion.
 
+## Change Detection
+
+The `check_changes` tool provides lightweight version polling to avoid expensive full-data reads.
+
+### change_log Table
+
+```sql
+CREATE TABLE change_log (
+  scope TEXT PRIMARY KEY,   -- 'messages', 'tasks', or 'agents'
+  version INTEGER NOT NULL  -- monotonically incremented on each change
+);
+```
+
+Three scopes track independent change streams:
+- `messages` — bumped whenever a message is inserted
+- `tasks` — bumped whenever a task is created, updated, or its event is recorded
+- `agents` — bumped whenever an agent joins, leaves, or is cleaned up
+
+### SQLite Triggers
+
+Versions are auto-incremented by SQLite triggers on each table, requiring no application-level coordination:
+
+```sql
+CREATE TRIGGER bump_messages_version AFTER INSERT ON messages
+  BEGIN UPDATE change_log SET version = version + 1 WHERE scope = 'messages'; END;
+
+CREATE TRIGGER bump_tasks_version AFTER UPDATE ON tasks
+  BEGIN UPDATE change_log SET version = version + 1 WHERE scope = 'tasks'; END;
+
+-- Similar triggers for agents INSERT/DELETE
+```
+
+### check_changes Tool
+
+Returns current version numbers for requested scopes:
+
+```json
+{
+  "versions": {
+    "messages": 42,
+    "tasks": 7,
+    "agents": 3
+  }
+}
+```
+
+### Check-Before-Poll Pattern
+
+Leaders and bosses store the last-seen version per scope and only call expensive tools when a version changes:
+
+```
+1. versions = check_changes({ scopes: ['messages', 'tasks', 'agents'] })
+2. if versions.agents != lastAgentsVersion:
+     get_status(worker)          ← pane capture + status match
+     lastAgentsVersion = versions.agents
+3. if versions.messages != lastMessagesVersion:
+     read_messages(room)         ← DB query + cursor advance
+     lastMessagesVersion = versions.messages
+4. sleep 5-10s, go to step 1
+```
+
+`check_changes` itself is a single-row SQLite read with no tmux interaction — negligible cost compared to `get_status` (which runs `tmux capture-pane`) or `read_messages` (which scans the messages table). During quiet periods (no activity), all versions stay constant and full-data polls are skipped entirely.
+
 ## Liveness Sweep
 
 The MCP server runs a periodic liveness check every 30 seconds. When an agent's tmux pane is detected as dead, the server automatically:
