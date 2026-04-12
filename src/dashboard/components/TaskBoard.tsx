@@ -1,6 +1,11 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Task, TaskEvent, Agent } from '../../shared/types.ts';
+import { useActions } from '../hooks/useActions.ts';
+import { ConfirmPrompt } from './ConfirmPrompt.tsx';
+import { StatusFeedback } from './StatusFeedback.tsx';
+import { InlineTextInput } from './InlineTextInput.tsx';
+import { interruptTask, cancelTask, reassignTask } from '../actions/task-actions.ts';
 
 type GroupBy = 'agent' | 'room';
 
@@ -22,6 +27,13 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
   const [groupBy, setGroupBy] = useState<GroupBy>('agent');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
+
+  const {
+    pendingAction, feedback, textInput,
+    requestAction, confirm, cancel,
+    showFeedback, requestTextInput, cancelTextInput,
+    isBlocking,
+  } = useActions();
 
   const agentMap = useMemo(() => new Map(agents.map(a => [a.name, a])), [agents]);
 
@@ -51,6 +63,7 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
   }
 
   const selectedLine = allLines[selectedIndex];
+  const selectedTask = selectedLine?.type === 'task' ? selectedLine.task : null;
 
   const statusColor = (status: string): string => {
     if (status === 'completed') return 'green';
@@ -94,6 +107,20 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
   };
 
   useInput((input, key) => {
+    // When text input is active, only handle Escape; let TextInput capture typing
+    if (textInput) {
+      if (key.escape) { cancelTextInput(); }
+      return;
+    }
+
+    // When confirm prompt is active, handle y/n only
+    if (pendingAction) {
+      if (input === 'y') { confirm(); return; }
+      if (input === 'n' || key.escape) { cancel(); return; }
+      return;
+    }
+
+    // Normal navigation
     if (input === 'j' || key.downArrow) {
       setSelectedIndex(prev => Math.min(prev + 1, allLines.length - 1));
       return;
@@ -102,7 +129,8 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
       setSelectedIndex(prev => Math.max(prev - 1, 0));
       return;
     }
-    if (input === 'r') {
+    // 'g' toggles groupBy (was 'r' — freed up for reassign)
+    if (input === 'g') {
       setGroupBy(prev => prev === 'agent' ? 'room' : 'agent');
       setSelectedIndex(0);
       return;
@@ -115,6 +143,43 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
       setExpandedTaskId(null);
       return;
     }
+
+    // Task action hotkeys — only when a task line is selected
+    if (!selectedTask) return;
+
+    if (input === 'i' && selectedTask.status === 'active') {
+      const task = selectedTask;
+      requestAction({
+        label: `Interrupt task #${task.id}?`,
+        execute: async () => { await interruptTask(task); },
+      });
+      return;
+    }
+
+    if (input === 'd' && selectedTask.status === 'queued') {
+      const task = selectedTask;
+      requestAction({
+        label: `Cancel task #${task.id}?`,
+        execute: async () => { await cancelTask(task); },
+      });
+      return;
+    }
+
+    if (input === 'r' && (selectedTask.status === 'active' || selectedTask.status === 'queued')) {
+      const task = selectedTask;
+      requestTextInput(
+        `Reassign #${task.id} (${task.assigned_to})`,
+        (text) => {
+          cancelTextInput();
+          reassignTask(task, text).then(result => {
+            showFeedback(result, 'success');
+          }).catch(e => {
+            showFeedback(`Error: ${e instanceof Error ? e.message : String(e)}`, 'error');
+          });
+        },
+      );
+      return;
+    }
   });
 
   const visibleLines = Math.max(1, height - 3); // header line + status line
@@ -123,12 +188,21 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
   const visibleStart = scrollOffset;
   const visibleEnd = Math.min(allLines.length, visibleStart + visibleLines);
 
+  // Build action hint for the status bar
+  const actionHint = (() => {
+    if (!selectedTask) return '';
+    const hints: string[] = [];
+    if (selectedTask.status === 'active') hints.push('[i]nterrupt', '[r]eassign');
+    if (selectedTask.status === 'queued') hints.push('[d]elete', '[r]eassign');
+    return hints.length > 0 ? '  ' + hints.join(' ') : '';
+  })();
+
   return (
     <Box flexDirection="column" width={width} height={height} paddingLeft={1} paddingRight={1}>
       {/* Header */}
       <Box height={1}>
         <Text dimColor>
-          Grouped by {groupBy === 'agent' ? 'Agent' : 'Room'} | Press [r] to toggle, [j/k] to navigate, [Enter] to expand
+          Grouped by {groupBy === 'agent' ? 'Agent' : 'Room'} | [g] toggle group, [j/k] nav, [Enter] expand
         </Text>
       </Box>
 
@@ -175,9 +249,17 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
         })}
       </Box>
 
-      {/* Status bar */}
+      {/* Status bar — shows action UI when blocking, otherwise position + hints */}
       <Box height={1}>
-        <Text dimColor>{selectedIndex + 1} of {allLines.length}</Text>
+        {textInput ? (
+          <InlineTextInput prompt={textInput.prompt} onSubmit={textInput.onSubmit} onCancel={cancelTextInput} />
+        ) : pendingAction ? (
+          <ConfirmPrompt action={pendingAction} />
+        ) : feedback ? (
+          <StatusFeedback text={feedback.text} type={feedback.type} />
+        ) : (
+          <Text dimColor>{selectedIndex + 1} of {allLines.length}{actionHint}</Text>
+        )}
       </Box>
     </Box>
   );
