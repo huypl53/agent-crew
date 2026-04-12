@@ -228,25 +228,25 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
                 {renderTaskLine(task, isSelected, isExpanded)}
               </Text>
               {isExpanded && (
-                <Box flexDirection="column" paddingLeft={2} borderLeft borderStyle="single" borderColor="gray">
-                  <Text dimColor>Summary:     {task.summary}</Text>
-                  <Text dimColor>Status:      <Text color={statusColor(task.status)}>{task.status}</Text></Text>
-                  <Text dimColor>Assigned to: {task.assigned_to}</Text>
-                  <Text dimColor>Created by:  {task.created_by}</Text>
-                  <Text dimColor>Room:        {task.room}</Text>
-                  <Text dimColor>Created at:  {new Date(task.created_at).toLocaleString()}</Text>
-                  <Text dimColor>Updated at:  {new Date(task.updated_at).toLocaleString()}</Text>
+                <Box flexDirection="column" paddingLeft={2} borderLeft borderStyle="single" borderColor="gray"
+                     width={Math.min(width - 2, 118)}>
+                  <Text dimColor wrap="wrap">Status:      <Text color={statusColor(task.status)}>{task.status}</Text></Text>
+                  <Text dimColor wrap="wrap">Assigned to: {task.assigned_to}</Text>
+                  <Text dimColor wrap="wrap">Created by:  {task.created_by}</Text>
+                  <Text dimColor wrap="wrap">Room:        {task.room}</Text>
+                  <Text dimColor wrap="wrap">Created at:  {new Date(task.created_at).toLocaleString()}</Text>
+                  <Text dimColor wrap="wrap">Updated at:  {new Date(task.updated_at).toLocaleString()}</Text>
                   {task.text && (
-                    <Box flexDirection="column" marginTop={1}>
+                    <Box flexDirection="column" marginTop={1} width="100%">
                       <Text bold dimColor>Task Instructions:</Text>
                       <Text dimColor wrap="wrap">{task.text}</Text>
                     </Box>
                   )}
-                  {task.note && <Text dimColor>Note:        {task.note}</Text>}
-                  {task.context && <Text dimColor>Context:     {task.context}</Text>}
+                  {task.note && <Text dimColor wrap="wrap">Note:        {task.note}</Text>}
+                  {task.context && <Text dimColor wrap="wrap">Context:     {task.context}</Text>}
                   <Text dimColor>Status History:</Text>
                   {getTaskEvents(task.id).map((evt, i) => (
-                    <Text key={i} dimColor>
+                    <Text key={i} dimColor wrap="wrap">
                       {' '}{new Date(evt.timestamp).toLocaleTimeString()} {evt.from_status ?? 'init'} → {evt.to_status} ({evt.triggered_by ?? 'system'})
                     </Text>
                   ))}
