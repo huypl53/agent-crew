@@ -585,7 +585,7 @@ Press **Tab** to cycle through three views:
 
 Groups completed and in-progress tasks:
 
-- **Grouping**: Toggle with `r` key between "grouped by agent" or "grouped by room"
+- **Grouping**: Toggle with `g` key between "grouped by agent" or "grouped by room"
 - **Navigation**: `j`/`k` to move up/down, `j`/`k` also wrap within groups
 - **Selection**: Highlighted task shown with `▶` prefix
 - **Expansion**: Press Enter on a task to expand and show:
@@ -635,6 +635,38 @@ CREATE TABLE task_events (
 ```
 
 **Automatic recording**: Every `update_task` call automatically records a transition event. Timeline and Task Board views query this table to reconstruct execution history.
+
+## Dashboard Interactive Controls
+
+The dashboard provides direct operator control over agents and tasks, bypassing the MCP tool layer. Controls call state/tmux functions directly — no role checks, since the human operator is the ultimate authority.
+
+### Agent Actions (Dashboard view — select agent in tree)
+
+| Key | Action | Confirmation | Implementation |
+|-----|--------|-------------|----------------|
+| `x` | Revoke agent — interrupt + cleanup + remove | y/n | `sendEscape` → `cleanupDeadAgentTasks` → `removeAgentFully` |
+| `i` | Interrupt current task | y/n | `sendEscape` → `updateTaskStatus(interrupted)` |
+| `c` | Clear session — /clear + /refresh | y/n | `sendKeys('/clear')` → 2s delay → `sendKeys('/crew:refresh')` |
+
+### Task Actions (Tasks view — select task)
+
+| Key | Action | Confirmation | Implementation |
+|-----|--------|-------------|----------------|
+| `i` | Interrupt active task | y/n | `sendEscape` → `updateTaskStatus(interrupted)` |
+| `d` | Cancel queued task | y/n | `updateTaskStatus(cancelled)` |
+| `r` | Reassign task (inline text input) | text input | Interrupt/cancel old → `createTask` + `sendKeys(newText)` |
+
+### UI Components
+
+- **ConfirmPrompt** (`src/dashboard/components/ConfirmPrompt.tsx`) — yellow inline "(y/n)" at bottom, blocks all input
+- **StatusFeedback** (`src/dashboard/components/StatusFeedback.tsx`) — green/red result text, auto-dismisses after 3s
+- **InlineTextInput** (`src/dashboard/components/InlineTextInput.tsx`) — cyan prompt with text entry for reassign
+- **useActions hook** (`src/dashboard/hooks/useActions.ts`) — manages pending action, feedback, text input state
+
+### Action Modules
+
+- `src/dashboard/actions/agent-actions.ts` — `revokeAgent`, `interruptAgent`, `clearAgentSession`
+- `src/dashboard/actions/task-actions.ts` — `interruptTask`, `cancelTask`, `reassignTask`
 
 ## Token Usage Tracking
 
