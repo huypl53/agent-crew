@@ -1,6 +1,6 @@
 import { ok, err } from '../shared/types.ts';
 import type { ToolResult, AgentRole } from '../shared/types.ts';
-import { addAgent, getAgent, isNameTakenInRoom } from '../state/index.ts';
+import { addAgent, getAgent, getAllAgents, isNameTakenInRoom, removeAgentFully } from '../state/index.ts';
 import { paneExists } from '../tmux/index.ts';
 
 const VALID_ROLES: AgentRole[] = ['boss', 'leader', 'worker'];
@@ -86,6 +86,13 @@ export async function handleJoinRoom(params: JoinRoomParams): Promise<ToolResult
   const exists = await paneExists(target);
   if (!exists) {
     return err(`tmux pane ${target} does not exist`);
+  }
+
+  // Evict any stale agent occupying the same pane under a different name
+  for (const agent of getAllAgents()) {
+    if (agent.tmux_target === target && agent.name !== name) {
+      removeAgentFully(agent.name);
+    }
   }
 
   // Check duplicate name — allow overwrite if old pane is dead
