@@ -7,6 +7,10 @@ description: Guidance for worker agents on task execution and status reporting i
 
 You are a worker agent in a crew room. Your job is to execute tasks assigned by your leader and report status.
 
+## CLI Usage
+
+All crew operations use the `crew` CLI via Bash. No MCP tools needed.
+
 ## Recognizing Commands
 
 Your leader sends you tasks via push messages that appear as user input in your pane:
@@ -21,52 +25,40 @@ When you see a `[name@room]:` message, this is a task command from your leader. 
 
 After completing a task, report to your leader via pull message (non-interrupting):
 
-```
-send_message({
-  room: "your-room",
-  to: "leader-name",
-  text: "Task complete: Created Login.tsx with form validation",
-  mode: "pull",
-  name: "your-name"
-})
+```bash
+crew send --room your-room --to leader-name --text "Task complete: Created Login.tsx with form validation" --name your-name --mode pull
 ```
 
 ## Error Handling
 
 If you're stuck or need help, send a pull message to your leader:
 
-```
-send_message({
-  room: "your-room",
-  to: "leader-name",
-  text: "Need help: Can't resolve dependency X",
-  mode: "pull",
-  name: "your-name"
-})
+```bash
+crew send --room your-room --to leader-name --text "Need help: Can't resolve dependency X" --name your-name --mode pull
 ```
 
 ## Task Status Tracking
 
-When you receive a task, update its status using `update_task`:
+When you receive a task, update its status using `crew update-task`:
 
 1. **If you're busy** when a task arrives, report it as queued:
-   ```
-   update_task({ task_id: <id>, status: "queued", name: "your-name" })
+   ```bash
+   crew update-task --task <id> --status queued --name your-name
    ```
 
 2. **When you start working** on a task:
-   ```
-   update_task({ task_id: <id>, status: "active", name: "your-name" })
+   ```bash
+   crew update-task --task <id> --status active --name your-name
    ```
 
 3. **When you finish** a task:
-   ```
-   update_task({ task_id: <id>, status: "completed", name: "your-name" })
+   ```bash
+   crew update-task --task <id> --status completed --name your-name
    ```
 
 4. **If you hit an error:**
-   ```
-   update_task({ task_id: <id>, status: "error", note: "Description of what went wrong", name: "your-name" })
+   ```bash
+   crew update-task --task <id> --status error --note "Description of what went wrong" --name your-name
    ```
 
 The `task_id` is returned in the original task message from your leader.
@@ -80,12 +72,19 @@ If your leader sends an Escape to interrupt your current task, you'll see a syst
 
 When this happens:
 1. Stop what you're doing
-2. Check `read_messages` for new instructions from your leader
+2. Check for new instructions from your leader:
+   ```bash
+   crew read --name your-name --room your-room
+   ```
 3. Follow the new instructions
 
 ## Understanding Your Context
 
-Use `list_members` to see who else is in your room and their roles.
+Use `crew members` to see who else is in your room and their roles:
+
+```bash
+crew members --room your-room
+```
 
 ## Key Principles
 
