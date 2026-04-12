@@ -35,10 +35,10 @@ Communication: push messages (tmux paste-buffer with bracketed paste for command
 
 ```bash
 git clone https://github.com/huypl53/agent-crew.git ~/.crew
-cd ~/.crew && bun install
+cd ~/.crew/crew && bun install
 
 # Install CLI globally
-cd ~/.crew && bun link
+cd ~/.crew/crew && bun link
 
 # Install plugin (skills only — behavioral guidance for agents)
 claude plugins marketplace add ~/.crew
@@ -53,7 +53,7 @@ The plugin provides behavioral skills (`/crew:join-room`, `/crew:refresh`, `boss
 ### Local Development
 
 ```bash
-cd ~/.crew && bun link
+cd ~/.crew/crew && bun link
 ```
 
 `bun link` creates a global `crew` symlink pointing to your local source — code changes are instantly available without reinstalling.
@@ -62,10 +62,10 @@ cd ~/.crew && bun link
 
 ```bash
 git clone https://github.com/huypl53/agent-crew.git ~/.crew
-cd ~/.crew && bun install && bun link
+cd ~/.crew/crew && bun install && bun link
 
 # Plugin (skills)
-ln -s ~/.crew ~/.codex/.tmp/plugins/plugins/crew
+ln -s ~/.crew/crew ~/.codex/.tmp/plugins/plugins/crew
 ```
 
 Skills: `crew:boss`, `crew:join-room`, `crew:leader`, `crew:worker`, `crew:refresh`.
@@ -73,7 +73,7 @@ Skills: `crew:boss`, `crew:join-room`, `crew:leader`, `crew:worker`, `crew:refre
 ### Uninstall
 
 ```bash
-cd ~/.crew && bun unlink
+cd ~/.crew/crew && bun unlink
 claude plugins uninstall crew@crew-plugins
 ```
 
@@ -81,13 +81,13 @@ claude plugins uninstall crew@crew-plugins
 
 ```bash
 # TUI dashboard (separate terminal/pane)
-bun run --cwd ~/.crew dashboard
+bun run --cwd ~/.crew/crew dashboard
 
 # Run tests
-bun test --cwd ~/.crew
+bun test --cwd ~/.crew/crew
 
 # End-to-end test with live tmux panes
-bun ~/.crew/test/uat-sqlite.ts
+bun ~/.crew/crew/test/uat-sqlite.ts
 ```
 
 ## CLI
@@ -285,24 +285,19 @@ sqlite3 /tmp/crew/state/crew.db 'SELECT agent_name, cost_usd, model FROM token_u
 ## Project Structure
 
 ```
-src/
-├── index.ts          # MCP server entrypoint
-├── cli.ts            # CLI entrypoint (#!/usr/bin/env bun)
-├── cli/              # CLI modules
-│   ├── parse.ts      #   Arg parser: parseArgs(argv) → { command, positional, flags }
-│   ├── router.ts     #   Dispatch table: 16 subcommands → tool handlers
-│   └── formatter.ts  #   Plain text output formatters + --json flag
-├── tools/            # 16 MCP tool handlers (shared by MCP + CLI)
-├── tmux/             # tmux CLI wrapper
-├── state/            # SQLite state (db.ts = schema, index.ts = queries)
-├── delivery/         # Push (tmux) + pull (queue) delivery
-├── shared/           # Types, status patterns (shared with dashboard)
-├── dashboard.ts      # Dashboard entrypoint
-└── dashboard/        # React+Ink TUI dashboard
-    ├── components/   #   Pure Ink components (TreePanel, MessageFeedPanel, DetailsPanel, ...)
-    └── hooks/        #   Data hooks (useStateReader, useTree, useFeed, useStatus)
-commands/             # 2 slash commands — /crew:{join-room,refresh}
-skills/               # 3 agent skills — boss, leader, worker (model-invoked after join)
-.codex-plugin/        # Codex CLI plugin manifest
-test/                 # Test suite
+.claude-plugin/
+  marketplace.json    # Marketplace config (points to crew/)
+crew/                 # Crew plugin
+  .claude-plugin/
+    plugin.json       # Plugin manifest
+  src/
+    index.ts          # MCP server entrypoint
+    cli.ts            # CLI entrypoint (#!/usr/bin/env bun)
+    cli/              # CLI modules
+    tools/            # 16 MCP tool handlers (shared by MCP + CLI)
+    ...
+  commands/           # 2 slash commands — /crew:{join-room,refresh}
+  skills/             # 3 agent skills — boss, leader, worker (model-invoked after join)
+  test/               # Test suite
+  ...
 ```
