@@ -5,7 +5,7 @@
 - [x] in dashboard, I want to have the ability to see the details tasks, tasks of each agent.... I want much more intuitive visualization. These features are big, new branch for him
 - [x] clear the worker session when task done, send command `/clear`
 - [x] right now agents that use polling to track lower-level agents cost lot of token on tracking, think about a better solution to minize cost
-- [ ] Switch to CLI tool for usage cost reduce. This is huge change, do this in new branch with strict test and UAT
+- [x] Switch to CLI tool for usage cost reduce. This is huge change, do this in new branch with strict test and UAT
 - [x] check the memory leak when an agent disconnect but still showing active in dashboard
 - [x] in the dashboard, I can revoke worker is I want. Of course, I want to have more control over the tasks, the actors
 - [x] the MPC server shutdown after a long run, maybe for our. I am running on macos, debug it. If it's the macos machanism that shutdown service, process after time, show me.
