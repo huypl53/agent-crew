@@ -41,6 +41,7 @@ export interface Task {
   assigned_to: string;
   created_by: string;
   message_id: number | null;
+  text?: string;
   summary: string;
   status: TaskStatus;
   note?: string;

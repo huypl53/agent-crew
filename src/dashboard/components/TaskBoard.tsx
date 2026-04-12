@@ -236,7 +236,12 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
                   <Text dimColor>Room:        {task.room}</Text>
                   <Text dimColor>Created at:  {new Date(task.created_at).toLocaleString()}</Text>
                   <Text dimColor>Updated at:  {new Date(task.updated_at).toLocaleString()}</Text>
-                  {task.message_id != null && <Text dimColor>Message ID:  {task.message_id}</Text>}
+                  {task.text && (
+                    <Box flexDirection="column" marginTop={1}>
+                      <Text bold dimColor>Task Instructions:</Text>
+                      <Text dimColor wrap="wrap">{task.text}</Text>
+                    </Box>
+                  )}
                   {task.note && <Text dimColor>Note:        {task.note}</Text>}
                   {task.context && <Text dimColor>Context:     {task.context}</Text>}
                   <Text dimColor>Status History:</Text>

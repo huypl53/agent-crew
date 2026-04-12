@@ -97,8 +97,8 @@ function readAll(): DashboardState | null {
       const taskRows = db.query<{
         id: number; room: string; assigned_to: string; created_by: string;
         message_id: number | null; summary: string; status: string; note: string | null; context: string | null;
-        created_at: string; updated_at: string;
-      }, []>('SELECT * FROM tasks ORDER BY id ASC').all();
+        created_at: string; updated_at: string; msg_text: string | null;
+      }, []>('SELECT t.*, m.text as msg_text FROM tasks t LEFT JOIN messages m ON t.message_id = m.id ORDER BY t.id ASC').all();
 
       tasks = taskRows.map(row => ({
         id: row.id,
@@ -106,6 +106,7 @@ function readAll(): DashboardState | null {
         assigned_to: row.assigned_to,
         created_by: row.created_by,
         message_id: row.message_id,
+        text: row.msg_text ?? undefined,
         summary: row.summary,
         status: row.status as Task['status'],
         note: row.note ?? undefined,
