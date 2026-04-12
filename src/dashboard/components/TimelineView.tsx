@@ -23,21 +23,37 @@ export function TimelineView({ tasks, taskEvents, agents, height, width }: Timel
 
   const agentMap = useMemo(() => new Map(agents.map(a => [a.name, a])), [agents]);
 
-  // Get global time range
+  // Get global time range from ALL tasks and events
   const timeRange = useMemo(() => {
-    if (taskEvents.length === 0) return { minMs: 0, maxMs: 0, rangeMs: 1 };
-    const times = taskEvents.map(e => new Date(e.timestamp).getTime());
+    const times: number[] = [];
+    for (const task of tasks) {
+      times.push(new Date(task.created_at).getTime());
+      times.push(new Date(task.updated_at).getTime());
+    }
+    for (const e of taskEvents) {
+      times.push(new Date(e.timestamp).getTime());
+    }
+    if (times.length === 0) return { minMs: 0, maxMs: 0, rangeMs: 1 };
     const minMs = Math.min(...times);
     const maxMs = Math.max(...times);
     return { minMs, maxMs, rangeMs: Math.max(1, maxMs - minMs) };
-  }, [taskEvents]);
+  }, [tasks, taskEvents]);
 
   // Build timeline segments per agent
   const agentTimelines = useMemo(() => {
     const result: TimelineSegment[] = [];
 
-    for (const agent of agents) {
-      const agentTasks = tasks.filter(t => t.assigned_to === agent.name);
+    // Collect all agent names from both the agents list and tasks
+    const allAgentNames = new Set<string>(agents.map(a => a.name));
+    for (const task of tasks) {
+      if (task.assigned_to) allAgentNames.add(task.assigned_to);
+    }
+
+    for (const agentName of Array.from(allAgentNames).sort()) {
+      const agent = agentMap.get(agentName);
+      const agentTasks = tasks.filter(t => t.assigned_to === agentName);
+      if (agentTasks.length === 0) continue;
+
       const segments: TimelineSegment['segments'] = [];
 
       for (const task of agentTasks) {
@@ -49,9 +65,8 @@ export function TimelineView({ tasks, taskEvents, agents, height, width }: Timel
         if (events.length === 0) {
           const startMs = new Date(task.created_at).getTime() - timeRange.minMs;
           const endMs = new Date(task.updated_at).getTime() - timeRange.minMs;
-          if (startMs < endMs) {
-            segments.push({ status: 'queued', startMs, endMs, color: 'cyan', char: '░' });
-          }
+          // Always show at least a 1ms bar, even when timestamps are identical
+          segments.push({ status: task.status, startMs, endMs: Math.max(endMs, startMs + 1), color: 'cyan', char: '░' });
           continue;
         }
 
@@ -85,14 +100,12 @@ export function TimelineView({ tasks, taskEvents, agents, height, width }: Timel
         }
       }
 
-      if (segments.length > 0) {
-        const roomName = agent.rooms[0] ?? 'unknown';
-        result.push({ agentName: agent.name, roomName, segments });
-      }
+      const roomName = agent?.rooms[0] ?? 'unknown';
+      result.push({ agentName, roomName, segments });
     }
 
     return result;
-  }, [tasks, taskEvents, agents, timeRange]);
+  }, [tasks, taskEvents, agents, agentMap, timeRange]);
 
   // Calculate bar width in columns
   const barWidth = Math.max(20, Math.floor(width * 0.8));
