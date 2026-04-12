@@ -6,7 +6,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { validateTmux } from './tmux/index.ts';
 import { validateLiveness } from './state/index.ts';
-import { initDb } from './state/db.ts';
+import { initDb, getDb } from './state/db.ts';
 import { startTokenCollection } from './tokens/collector.ts';
 import { handleJoinRoom } from './tools/join-room.ts';
 import { handleLeaveRoom } from './tools/leave-room.ts';
@@ -25,6 +25,11 @@ import { handleGetTaskDetails } from './tools/get-task-details.ts';
 import { handleSearchTasks } from './tools/search-tasks.ts';
 import { handleCheckChanges } from './tools/check-changes.ts';
 import { err } from './shared/types.ts';
+import { logServer, initServerLog } from './shared/server-log.ts';
+
+// Initialize server logger
+initServerLog();
+logServer('START', `crew MCP server starting (pid=${process.pid})`);
 
 // Validate tmux
 const tmuxCheck = await validateTmux();
@@ -313,13 +318,54 @@ const livenessInterval = setInterval(async () => {
   try {
     const deadAgents = await validateLiveness();
     for (const name of deadAgents) {
+      logServer('SWEEP', `Swept dead agent: ${name}`);
       console.error(`Swept dead agent: ${name}`);
     }
   } catch (e) {
+    logServer('ERROR', `Liveness sweep error: ${e instanceof Error ? e.message : String(e)}`);
     console.error(`Liveness sweep error: ${e instanceof Error ? e.message : String(e)}`);
   }
 }, 30_000);
 
-// Clean up on shutdown
-process.on('SIGINT', () => { clearInterval(livenessInterval); process.exit(0); });
-process.on('SIGTERM', () => { clearInterval(livenessInterval); process.exit(0); });
+// Health heartbeat — log memory and uptime every 5 minutes
+const healthInterval = setInterval(() => {
+  try {
+    const mem = process.memoryUsage();
+    const rss = (mem.rss / 1_048_576).toFixed(1);
+    const heapUsed = (mem.heapUsed / 1_048_576).toFixed(1);
+    const heapTotal = (mem.heapTotal / 1_048_576).toFixed(1);
+    const uptime = (process.uptime() / 60).toFixed(1);
+    const row = getDb().query('SELECT COUNT(*) as c FROM agents').get() as { c: number } | null;
+    const agents = row?.c ?? 0;
+    logServer('HEALTH', `rss=${rss}MB heapUsed=${heapUsed}MB heapTotal=${heapTotal}MB agents=${agents} uptime=${uptime}m`);
+  } catch (e) {
+    logServer('ERROR', `Health check failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}, 300_000);
+
+function shutdown(signal: string): void {
+  logServer('SIGNAL', `${signal} received — shutting down`);
+  clearInterval(livenessInterval);
+  clearInterval(healthInterval);
+  process.exit(0);
+}
+
+// Crash guards
+process.stdin.resume(); // prevent stdin EOF from exiting
+process.stdin.on('close', () => { logServer('WARN', 'stdin closed — parent may have disconnected'); });
+
+process.on('SIGHUP', () => shutdown('SIGHUP'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+process.on('uncaughtException', (e) => {
+  logServer('ERROR', `uncaughtException: ${e.message}\n${e.stack}`);
+  // do NOT crash — keep server alive
+});
+process.on('unhandledRejection', (r) => {
+  logServer('ERROR', `unhandledRejection: ${String(r)}`);
+  // do NOT crash — keep server alive
+});
+process.on('exit', (code) => {
+  logServer('EXIT', `Process exiting with code: ${code}`);
+});

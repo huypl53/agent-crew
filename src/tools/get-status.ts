@@ -3,6 +3,7 @@ import type { ToolResult, AgentStatus } from '../shared/types.ts';
 import { getAgent, getTasksForAgent } from '../state/index.ts';
 import { capturePane, isPaneDead } from '../tmux/index.ts';
 import { matchStatusLine } from '../shared/status-patterns.ts';
+import { logServer } from '../shared/server-log.ts';
 
 interface GetStatusParams {
   agent_name?: string;
@@ -46,7 +47,12 @@ export async function handleGetStatus(params: GetStatusParams): Promise<ToolResu
   }
 
   // Capture pane and match status
-  const output = await capturePane(agent.tmux_target);
+  let output: string | null = null;
+  try {
+    output = await capturePane(agent.tmux_target);
+  } catch (e) {
+    logServer('ERROR', `capturePane failed for ${targetName} (pane ${agent.tmux_target}): ${e instanceof Error ? e.message : String(e)}`);
+  }
   let status: AgentStatus = 'unknown';
   if (output !== null) {
     status = matchStatusLine(output);

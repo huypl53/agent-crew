@@ -1,4 +1,5 @@
 import stripAnsi from 'strip-ansi';
+import { logServer } from '../shared/server-log.ts';
 
 const SPAWN_TIMEOUT = 5000;
 
@@ -15,7 +16,8 @@ async function run(...args: string[]): Promise<{ stdout: string; stderr: string;
     const stdout = await new Response(proc.stdout).text();
     const stderr = await new Response(proc.stderr).text();
     return { stdout: stdout.trimEnd(), stderr: stderr.trimEnd(), success: exitCode === 0 };
-  } catch {
+  } catch (e) {
+    logServer('ERROR', `tmux spawn failed (args=${args.join(' ')}): ${e instanceof Error ? e.message : String(e)}`);
     return { stdout: '', stderr: 'tmux command failed', success: false };
   }
 }
@@ -76,8 +78,9 @@ export async function sendKeys(target: string, text: string): Promise<{ delivere
     }
 
     return { delivered: true };
-  } catch {
+  } catch (e) {
     // Clean up buffer on failure
+    logServer('ERROR', `paste delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`);
     await run('delete-buffer', '-b', bufferName).catch(() => {});
     return { delivered: false, error: 'paste delivery failed' };
   }
@@ -91,7 +94,8 @@ export async function sendEscape(target: string): Promise<{ delivered: boolean; 
     }
     await Bun.sleep(PASTE_SETTLE_MS);
     return { delivered: true };
-  } catch {
+  } catch (e) {
+    logServer('ERROR', `Escape delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`);
     return { delivered: false, error: 'Escape delivery failed' };
   }
 }
@@ -104,7 +108,8 @@ export async function sendClear(target: string): Promise<{ delivered: boolean; e
     }
     await Bun.sleep(PASTE_SETTLE_MS);
     return { delivered: true };
-  } catch {
+  } catch (e) {
+    logServer('ERROR', `Ctrl-L delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`);
     return { delivered: false, error: 'Ctrl-L delivery failed' };
   }
 }

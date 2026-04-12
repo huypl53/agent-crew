@@ -2,6 +2,7 @@ import { ok, err } from '../shared/types.ts';
 import type { ToolResult, AgentRole } from '../shared/types.ts';
 import { addAgent, getAgent, getAllAgents, isNameTakenInRoom, removeAgentFully } from '../state/index.ts';
 import { paneExists } from '../tmux/index.ts';
+import { logServer } from '../shared/server-log.ts';
 
 const VALID_ROLES: AgentRole[] = ['boss', 'leader', 'worker'];
 
@@ -55,7 +56,8 @@ export async function detectAgentType(paneTarget: string): Promise<'claude-code'
     if (psOutput.includes('claude')) return 'claude-code';
     if (psOutput.includes('codex')) return 'codex';
     return 'unknown';
-  } catch {
+  } catch (e) {
+    logServer('ERROR', `detectAgentType failed for pane ${paneTarget}: ${e instanceof Error ? e.message : String(e)}`);
     return 'unknown';
   }
 }

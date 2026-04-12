@@ -1,6 +1,7 @@
 import { getAllAgents } from '../state/index.ts';
 import { collectClaudeCodeTokens } from './claude-code.ts';
 import { collectCodexTokens } from './codex.ts';
+import { logServer } from '../shared/server-log.ts';
 
 const COLLECT_INTERVAL_MS = 30_000;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -23,9 +24,11 @@ export async function collectAllTokens(): Promise<void> {
           collectCodexTokens(agent.name);
           break;
       }
-    } catch (err) {
+    } catch (e) {
       // Log but don't crash the loop
-      console.error(`Token collection failed for ${agent.name}:`, err);
+      const msg = e instanceof Error ? e.message : String(e);
+      logServer('ERROR', `Token collection failed for ${agent.name}: ${msg}`);
+      console.error(`Token collection failed for ${agent.name}:`, e);
     }
   });
   await Promise.all(promises);
@@ -34,12 +37,12 @@ export async function collectAllTokens(): Promise<void> {
 /** Start the periodic token collection loop */
 export function startTokenCollection(): void {
   if (intervalHandle) return; // already running
-  collectAllTokens().catch(() => {
-    // Silently fail on first run if DB not ready yet (will retry in next interval)
+  collectAllTokens().catch((e) => {
+    logServer('ERROR', `Token collection first-run failed: ${e instanceof Error ? e.message : String(e)}`);
   });
   intervalHandle = setInterval(() => {
-    collectAllTokens().catch(() => {
-      // Silently fail if collection fails (will retry in next interval)
+    collectAllTokens().catch((e) => {
+      logServer('ERROR', `Token collection interval failed: ${e instanceof Error ? e.message : String(e)}`);
     });
   }, COLLECT_INTERVAL_MS);
 }
