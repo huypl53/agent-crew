@@ -1,6 +1,6 @@
 {
   "name": "crew-plugins",
-  "description": "Marketplace for crew agent coordination plugin",
+  "description": "Marketplace for crew agent coordination plugins",
   "owner": {
     "name": "crew contributors"
   },
@@ -9,7 +9,7 @@
       "name": "crew",
       "description": "Room-based coordination for AI coding agents via tmux",
       "version": "0.2.0",
-      "source": "./"
+      "source": "./crew/"
     }
   ]
 }

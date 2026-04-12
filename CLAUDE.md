@@ -8,16 +8,18 @@
 
 ## Testing
 
-- Shell-based UAT: `bun test/uat-send-reliability.ts`
-- Live Claude Code UAT: `bun test/uat-claude-code.ts <pane-id>` (requires a running Claude Code instance)
-- Full integration: `bun test/uat-sqlite.ts`
-- Unit tests: `bun test`
+Run these from `crew/` subdirectory:
+
+- Shell-based UAT: `bun crew/test/uat-send-reliability.ts`
+- Live Claude Code UAT: `bun crew/test/uat-claude-code.ts <pane-id>` (requires a running Claude Code instance)
+- Full integration: `bun crew/test/uat-sqlite.ts`
+- Unit tests: `cd crew && bun test`
 
 ## Key Architecture Decisions
 
-- **tmux delivery** uses `paste-buffer -dp` (bracketed paste), NOT `send-keys -l`. See `docs/architecture.md` "tmux Delivery" section for rationale.
+- **tmux delivery** uses `paste-buffer -dp` (bracketed paste), NOT `send-keys -l`. See `crew/docs/architecture.md` "tmux Delivery" section for rationale.
 - **State** is SQLite with WAL mode. No JSON files, no in-memory cache.
-- **MCP server** is the same `src/index.ts` for both Claude Code and Codex CLI.
+- **MCP server** is the same `crew/src/index.ts` for both Claude Code and Codex CLI.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
