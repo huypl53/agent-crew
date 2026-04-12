@@ -540,6 +540,18 @@ export function getPricingForModel(modelName: string): PricingEntry | null {
   return (db.query('SELECT * FROM pricing WHERE model_name = ?').get(modelName) as PricingEntry) ?? null;
 }
 
+// --- Change detection ---
+
+export function getChangeVersions(scopes: string[]): Record<string, { version: number; updated_at: string }> {
+  const db = getDb();
+  const result: Record<string, { version: number; updated_at: string }> = {};
+  for (const scope of scopes) {
+    const row = db.query('SELECT version, updated_at FROM change_log WHERE scope = ?').get(scope) as { version: number; updated_at: string } | null;
+    if (row) result[scope] = row;
+  }
+  return result;
+}
+
 // --- Test helpers ---
 
 export function clearState(): void {

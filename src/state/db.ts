@@ -91,11 +91,35 @@ const SCHEMA = `
     output_cost_per_million REAL NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS change_log (
+    scope      TEXT PRIMARY KEY,
+    version    INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_messages_room      ON messages(room, id);
   CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient, id);
   CREATE INDEX IF NOT EXISTS idx_tasks_assigned     ON tasks(assigned_to, status);
   CREATE INDEX IF NOT EXISTS idx_tasks_room         ON tasks(room, status);
   CREATE INDEX IF NOT EXISTS idx_token_usage_agent ON token_usage(agent_name, recorded_at);
+
+  CREATE TRIGGER IF NOT EXISTS trg_messages_change AFTER INSERT ON messages
+  BEGIN UPDATE change_log SET version = version + 1, updated_at = datetime('now') WHERE scope = 'messages'; END;
+
+  CREATE TRIGGER IF NOT EXISTS trg_tasks_change AFTER UPDATE ON tasks
+  BEGIN UPDATE change_log SET version = version + 1, updated_at = datetime('now') WHERE scope = 'tasks'; END;
+
+  CREATE TRIGGER IF NOT EXISTS trg_tasks_insert AFTER INSERT ON tasks
+  BEGIN UPDATE change_log SET version = version + 1, updated_at = datetime('now') WHERE scope = 'tasks'; END;
+
+  CREATE TRIGGER IF NOT EXISTS trg_agents_change AFTER INSERT ON agents
+  BEGIN UPDATE change_log SET version = version + 1, updated_at = datetime('now') WHERE scope = 'agents'; END;
+
+  CREATE TRIGGER IF NOT EXISTS trg_agents_update AFTER UPDATE ON agents
+  BEGIN UPDATE change_log SET version = version + 1, updated_at = datetime('now') WHERE scope = 'agents'; END;
+
+  CREATE TRIGGER IF NOT EXISTS trg_agents_delete AFTER DELETE ON agents
+  BEGIN UPDATE change_log SET version = version + 1, updated_at = datetime('now') WHERE scope = 'agents'; END;
 `;
 
 export function getDbPath(): string {
@@ -132,6 +156,13 @@ export function initDb(path?: string): void {
   for (const [model, inp, out] of DEFAULT_PRICING) {
     insertPricing.run(model, inp, out);
   }
+
+  // Initialize change_log with scopes
+  _db.exec(`
+    INSERT OR IGNORE INTO change_log (scope, version, updated_at) VALUES ('messages', 0, datetime('now'));
+    INSERT OR IGNORE INTO change_log (scope, version, updated_at) VALUES ('tasks', 0, datetime('now'));
+    INSERT OR IGNORE INTO change_log (scope, version, updated_at) VALUES ('agents', 0, datetime('now'));
+  `);
 }
 
 export function getDb(): Database {

@@ -9,6 +9,7 @@ import {
   getTaskDetails, searchTasks,
   recordTaskEvent, getTaskEvents, getAllTaskEvents,
   recordTokenUsage, getTokenUsageForAgent, getTotalCost, getPricing, upsertPricing,
+  getChangeVersions,
 } from '../src/state/index.ts';
 
 describe('state module', () => {
@@ -496,6 +497,75 @@ describe('state module', () => {
       expect(events[0]!.from_status).toBeNull();
       expect(events[0]!.to_status).toBe('sent');
       expect(events[0]!.triggered_by).toBe('lead-01');
+    });
+  });
+
+  describe('change detection', () => {
+    beforeEach(() => {
+      clearState();
+      addAgent('lead-01', 'leader', 'test-room', '%1');
+      addAgent('wk-01', 'worker', 'test-room', '%2');
+    });
+
+    test('change_log table has 3 initial rows after initDb', () => {
+      const db = require('../src/state/db.ts').getDb();
+      const rows = db.prepare('SELECT * FROM change_log').all() as { scope: string; version: number }[];
+      expect(rows.length).toBe(3);
+      const scopes = rows.map(r => r.scope).sort();
+      expect(scopes).toEqual(['agents', 'messages', 'tasks']);
+    });
+
+    test('Inserting a message bumps messages version', () => {
+      const before = getChangeVersions(['messages']);
+      const v1 = before['messages']?.version ?? 0;
+      addMessage('wk-01', 'lead-01', 'test-room', 'hello', 'push', 'wk-01');
+      const after = getChangeVersions(['messages']);
+      const v2 = after['messages']?.version ?? 0;
+      expect(v2).toBeGreaterThan(v1);
+    });
+
+    test('Inserting a task bumps tasks version', () => {
+      const before = getChangeVersions(['tasks']);
+      const v1 = before['tasks']?.version ?? 0;
+      createTask('test-room', 'wk-01', 'lead-01', null, 'test task');
+      const after = getChangeVersions(['tasks']);
+      const v2 = after['tasks']?.version ?? 0;
+      expect(v2).toBeGreaterThan(v1);
+    });
+
+    test('Updating a task bumps tasks version', () => {
+      const task = createTask('test-room', 'wk-01', 'lead-01', null, 'test task');
+      const before = getChangeVersions(['tasks']);
+      const v1 = before['tasks']?.version ?? 0;
+      updateTaskStatus(task.id, 'active');
+      const after = getChangeVersions(['tasks']);
+      const v2 = after['tasks']?.version ?? 0;
+      expect(v2).toBeGreaterThan(v1);
+    });
+
+    test('Inserting an agent bumps agents version', () => {
+      const before = getChangeVersions(['agents']);
+      const v1 = before['agents']?.version ?? 0;
+      addAgent('new-agent', 'worker', 'test-room', '%3');
+      const after = getChangeVersions(['agents']);
+      const v2 = after['agents']?.version ?? 0;
+      expect(v2).toBeGreaterThan(v1);
+    });
+
+    test('getChangeVersions returns correct versions', () => {
+      const versions = getChangeVersions(['messages', 'tasks', 'agents']);
+      expect(versions['messages']).toBeDefined();
+      expect(versions['tasks']).toBeDefined();
+      expect(versions['agents']).toBeDefined();
+      expect(typeof versions['messages']?.version).toBe('number');
+      expect(typeof versions['messages']?.updated_at).toBe('string');
+    });
+
+    test('getChangeVersions filters by requested scopes', () => {
+      const versions = getChangeVersions(['messages']);
+      expect(versions['messages']).toBeDefined();
+      expect(versions['tasks']).toBeUndefined();
+      expect(versions['agents']).toBeUndefined();
     });
   });
 });

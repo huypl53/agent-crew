@@ -23,6 +23,7 @@ import { handleReassignTask } from './tools/reassign-task.ts';
 import { handleClearWorkerSession } from './tools/clear-worker-session.ts';
 import { handleGetTaskDetails } from './tools/get-task-details.ts';
 import { handleSearchTasks } from './tools/search-tasks.ts';
+import { handleCheckChanges } from './tools/check-changes.ts';
 import { err } from './shared/types.ts';
 
 // Validate tmux
@@ -239,6 +240,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
       },
     },
+    {
+      name: 'check_changes',
+      description: 'Check if any changes occurred in specific scopes (messages, tasks, agents) without fetching full state.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          name: { type: 'string', description: 'Your agent name' },
+          scopes: { type: 'array', items: { type: 'string' }, description: 'Scopes to check (messages, tasks, agents). Defaults to all if omitted.' },
+        },
+        required: ['name'],
+      },
+    },
   ],
 }));
 
@@ -278,6 +291,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleGetTaskDetails(args as any);
       case 'search_tasks':
         return await handleSearchTasks(args as any);
+      case 'check_changes':
+        return await handleCheckChanges(args as any);
       default:
         return err(`Unknown tool: ${name}`);
     }
