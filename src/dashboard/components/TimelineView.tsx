@@ -12,6 +12,7 @@ interface TimelineProps {
 
 interface TimelineSegment {
   agentName: string;
+  roomName: string;
   segments: Array<{ status: string; startMs: number; endMs: number; color: string; char: string }>;
 }
 
@@ -44,7 +45,15 @@ export function TimelineView({ tasks, taskEvents, agents, height, width }: Timel
           .filter(e => e.task_id === task.id)
           .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-        if (events.length === 0) continue;
+        // Synthetic bar: if no events, use created_at to updated_at
+        if (events.length === 0) {
+          const startMs = new Date(task.created_at).getTime() - timeRange.minMs;
+          const endMs = new Date(task.updated_at).getTime() - timeRange.minMs;
+          if (startMs < endMs) {
+            segments.push({ status: 'queued', startMs, endMs, color: 'cyan', char: '░' });
+          }
+          continue;
+        }
 
         for (let i = 0; i < events.length - 1; i++) {
           const evt = events[i]!;
@@ -77,7 +86,8 @@ export function TimelineView({ tasks, taskEvents, agents, height, width }: Timel
       }
 
       if (segments.length > 0) {
-        result.push({ agentName: agent.name, segments });
+        const roomName = agent.rooms[0] ?? 'unknown';
+        result.push({ agentName: agent.name, roomName, segments });
       }
     }
 
@@ -144,6 +154,15 @@ export function TimelineView({ tasks, taskEvents, agents, height, width }: Timel
   const barStart = scrollOffsetX;
   const barEnd = Math.min(barWidth, barStart + Math.floor(width * 0.7));
 
+  // Empty state
+  if (agentTimelines.length === 0) {
+    return (
+      <Box flexDirection="column" width={width} height={height} justifyContent="center" alignItems="center">
+        <Text dimColor>No task activity recorded yet</Text>
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column" width={width} height={height} paddingLeft={1} paddingRight={1}>
       {/* Header */}
@@ -177,9 +196,10 @@ export function TimelineView({ tasks, taskEvents, agents, height, width }: Timel
         {agentTimelines.slice(visibleStart, visibleEnd).map(timeline => {
           const bar = renderBar(timeline.segments);
           const visibleBar = bar.substring(barStart, barEnd);
+          const label = `${timeline.roomName}/${timeline.agentName}`;
           return (
             <Box key={timeline.agentName} height={1}>
-              <Text width={12}>{timeline.agentName.padEnd(12).substring(0, 12)}</Text>
+              <Text width={12}>{label.padEnd(12).substring(0, 12)}</Text>
               <Text>{visibleBar}</Text>
             </Box>
           );
