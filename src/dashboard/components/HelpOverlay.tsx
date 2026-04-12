@@ -21,6 +21,16 @@ export function HelpOverlay() {
       <Text>  4      Toggle questions</Text>
       <Text>  5      Toggle status</Text>
       <Text>  6      Toggle chat</Text>
+      <Text> </Text>
+      <Text dimColor>  ── Agent Actions (Dashboard view) ──</Text>
+      <Text>  x      Revoke agent (interrupt + remove)</Text>
+      <Text>  i      Interrupt current task</Text>
+      <Text>  c      Clear worker session</Text>
+      <Text> </Text>
+      <Text dimColor>  ── Task Actions (Tasks view) ──</Text>
+      <Text>  i      Interrupt task</Text>
+      <Text>  d      Cancel/delete task</Text>
+      <Text>  r      Reassign task</Text>
     </>
   );
 }
