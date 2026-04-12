@@ -243,6 +243,30 @@ The MCP server runs a periodic liveness check every 30 seconds. When an agent's 
 
 This prevents "ghost" agents from accumulating in the dashboard after disconnection. The sweep is triggered at server startup and then on a 30-second interval via `setInterval`.
 
+## Server Stability & Crash Guards
+
+The MCP server (`src/index.ts`) includes several mechanisms to survive long-running sessions on macOS:
+
+**Root causes of shutdown (pre-fix):** SIGHUP from macOS when terminal sleeps, stdin EOF when parent disconnects, unhandled exceptions/rejections crashing the process.
+
+**Crash guards:**
+- `process.stdin.resume()` — prevents stdin EOF from exiting the process
+- `SIGHUP` handler — graceful shutdown instead of crash (macOS sends this on terminal sleep)
+- `uncaughtException` / `unhandledRejection` — logged but don't crash the server
+- `SIGINT` / `SIGTERM` — clean interval teardown
+
+**Server logging (`src/shared/server-log.ts`):**
+- Writes to `$CREW_STATE_DIR/server.log` (default `/tmp/crew/state/server.log`)
+- Auto-rotation: truncates to last 500 lines when file exceeds 1MB
+- Levels: START, SWEEP, HEALTH, SIGNAL, WARN, ERROR, EXIT
+- Never throws — all write errors are silently swallowed
+
+**Health heartbeat (every 5 minutes):**
+- Logs RSS, heap used/total, agent count, uptime
+- Uses `process.memoryUsage()` and queries agents table
+
+**Error logging added to:** tmux spawn/delivery (`src/tmux/index.ts`), token collection (`src/tokens/collector.ts`), pane capture (`src/tools/get-status.ts`), agent type detection (`src/tools/join-room.ts`)
+
 ## Key Patterns
 
 - **Naming:** snake_case for MCP (tools, params, JSON), camelCase for TS, kebab-case for files
