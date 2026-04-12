@@ -52,8 +52,9 @@ ensure_repo() {
   fi
 
   info "Installing dependencies..."
-  cd "$(readlink -f "$INSTALL_DIR")"
+  cd "$(readlink -f "$INSTALL_DIR")/crew"
   bun install --frozen-lockfile 2>/dev/null || bun install
+  bun link
 }
 
 # --- Claude Code ---
@@ -76,7 +77,7 @@ cmd_claude() {
   echo "  Skills: /crew:join-room  /crew:boss  /crew:leader  /crew:worker  /crew:refresh"
   echo "  MCP tools: join_room, send_message, read_messages, list_rooms, ..."
   echo ""
-  echo "  Dashboard: bun run --cwd $INSTALL_DIR dashboard"
+  echo "  Dashboard: bun run --cwd $INSTALL_DIR/crew dashboard"
   echo ""
 }
 
@@ -91,7 +92,7 @@ cmd_codex() {
   # 1. Add MCP server
   info "Adding crew MCP server..."
   codex mcp remove crew 2>/dev/null || true
-  codex mcp add crew -- bun run "$INSTALL_DIR/src/index.ts" 2>/dev/null
+  codex mcp add crew -- bun run "$INSTALL_DIR/crew/src/index.ts" 2>/dev/null
   ok "MCP server registered"
 
   # 2. Add tool approval modes (required for --full-auto)
@@ -115,7 +116,7 @@ EOF
   if [ -d "$CODEX_PLUGINS_DIR" ]; then
     info "Installing crew plugin..."
     rm -f "$CODEX_PLUGINS_DIR/crew"
-    ln -s "$INSTALL_DIR" "$CODEX_PLUGINS_DIR/crew"
+    ln -s "$INSTALL_DIR/crew" "$CODEX_PLUGINS_DIR/crew"
 
     # 4. Add to marketplace.json if not already there
     if [ -f "$CODEX_MARKETPLACE" ] && ! grep -q '"crew"' "$CODEX_MARKETPLACE" 2>/dev/null; then
@@ -147,7 +148,7 @@ with open('$CODEX_MARKETPLACE', 'w') as f:
   echo "  MCP tools: join_room, send_message, read_messages, list_rooms, ..."
   echo ""
   echo "  Verify: codex → /plugins → crew should show 'Installed'"
-  echo "  Dashboard: bun run --cwd $INSTALL_DIR dashboard"
+  echo "  Dashboard: bun run --cwd $INSTALL_DIR/crew dashboard"
   echo ""
 }
 

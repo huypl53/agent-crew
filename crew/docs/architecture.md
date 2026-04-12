@@ -369,7 +369,7 @@ Add `--json` for raw JSON output from the tool handler.
 
 ```bash
 # Local development — code changes instantly available
-cd ~/.crew && bun link
+cd ~/.crew/crew && bun link
 crew <command>
 
 # Or run directly without install
@@ -551,10 +551,10 @@ claude plugins install crew@crew-plugins   → copies to plugin cache, enables i
 Uses the Codex plugin system (`.codex-plugin/` manifests):
 
 ```
-git clone → ~/.crew/
-bun install
-codex mcp add crew -- bun run ~/.crew/src/index.ts     → registers MCP server
-ln -s ~/.crew ~/.codex/.tmp/plugins/plugins/crew        → makes plugin discoverable
+git clone → ~/.crew/  (plugin is in ~/.crew/crew/ subdirectory)
+cd ~/.crew/crew && bun install
+codex mcp add crew -- bun run ~/.crew/crew/src/index.ts → registers MCP server
+ln -s ~/.crew/crew ~/.codex/.tmp/plugins/plugins/crew   → makes plugin discoverable
 + add entry to marketplace.json                          → Codex reads plugin metadata
 ```
 
