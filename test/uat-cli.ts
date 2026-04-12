@@ -7,7 +7,7 @@ import { join } from 'path';
 const stateDir = join(tmpdir(), `crew-uat-cli-${Date.now()}`);
 mkdirSync(stateDir, { recursive: true });
 
-const CWD = '/Users/lee/code/utils/agent-crew/.worktrees/feat-cli-tool';
+const CWD = import.meta.dir.replace(/\/test$/, '');
 const CLI = ['bun', 'src/cli.ts'];
 const ENV = { ...process.env, CREW_STATE_DIR: stateDir };
 
