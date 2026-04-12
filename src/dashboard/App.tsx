@@ -14,6 +14,7 @@ import { HeaderStats } from './components/HeaderStats.tsx';
 import { TaskBoard } from './components/TaskBoard.tsx';
 import { TimelineView } from './components/TimelineView.tsx';
 import { hasErrors, logError } from './logger.ts';
+import { revokeAgent, interruptAgent, clearAgentSession } from './actions/agent-actions.ts';
 import type { MessageKind, TokenUsage, TaskEvent } from '../shared/types.ts';
 
 const POLL_INTERVAL = 2000;
@@ -49,9 +50,18 @@ export function App() {
   const { currentView, cycleView } = useViews();
   const [showHelp, setShowHelp] = useState(false);
   const [enabledKinds, setEnabledKinds] = useState<Set<MessageKind>>(new Set(ALL_KINDS));
+  const [confirmAction, setConfirmAction] = useState<{ label: string; execute: () => Promise<void> } | null>(null);
+  const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   // Update feed when state changes
   useEffect(() => { updateFeed(state.messages); }, [state.messages]);
+
+  // Auto-dismiss feedback after 3s
+  useEffect(() => {
+    if (!feedbackMsg) return;
+    const t = setTimeout(() => setFeedbackMsg(null), 3000);
+    return () => clearTimeout(t);
+  }, [feedbackMsg]);
 
   // Poll agent statuses
   useEffect(() => {
@@ -77,6 +87,20 @@ export function App() {
 
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) { exit(); return; }
+
+    // Confirmation modal intercepts all other input
+    if (confirmAction) {
+      if (input === 'y') {
+        confirmAction.execute()
+          .then(msg => setFeedbackMsg({ text: msg, type: 'success' }))
+          .catch(e => setFeedbackMsg({ text: e instanceof Error ? e.message : String(e), type: 'error' }));
+        setConfirmAction(null);
+      } else if (input === 'n' || key.escape) {
+        setConfirmAction(null);
+      }
+      return;
+    }
+
     if (input === '?') { setShowHelp(h => !h); return; }
     if (key.tab) { cycleView(); return; }
     const kindMap: Record<string, MessageKind> = { '1': 'task', '2': 'completion', '3': 'error', '4': 'question', '5': 'status', '6': 'chat' };
@@ -96,6 +120,33 @@ export function App() {
       if (input === 'g') { tree.moveToTop(); return; }
       if (input === 'G') { tree.moveToBottom(); return; }
       if (key.return) { tree.toggleCollapse(); return; }
+
+      // Agent control hotkeys
+      const selectedNode = tree.nodes[tree.selectedIndex];
+      if (selectedNode?.type === 'agent') {
+        const agentName = selectedNode.agentName!;
+        if (input === 'x') {
+          setConfirmAction({
+            label: `Revoke ${agentName}?`,
+            execute: async () => { await revokeAgent(agentName); },
+          });
+          return;
+        }
+        if (input === 'i') {
+          setConfirmAction({
+            label: `Interrupt ${agentName}?`,
+            execute: async () => { await interruptAgent(agentName); },
+          });
+          return;
+        }
+        if (input === 'c') {
+          setConfirmAction({
+            label: `Clear ${agentName} session?`,
+            execute: async () => { await clearAgentSession(agentName); },
+          });
+          return;
+        }
+      }
     }
   });
 
@@ -143,7 +194,13 @@ export function App() {
           <TimelineView tasks={state.tasks} taskEvents={state.taskEvents} agents={Object.values(state.agents)} height={layout.panelRows} width={cols} />
         </Box>
       )}
-      <StatusBar hasErrors={hasErrors()} showHelp={showHelp} />
+      {confirmAction ? (
+        <Box><Text color="yellow">{confirmAction.label} </Text><Text dimColor>(y/n)</Text></Box>
+      ) : feedbackMsg ? (
+        <Box><Text color={feedbackMsg.type === 'success' ? 'green' : 'red'}>{feedbackMsg.text}</Text></Box>
+      ) : (
+        <StatusBar hasErrors={hasErrors()} showHelp={showHelp} />
+      )}
     </Box>
   );
 }
