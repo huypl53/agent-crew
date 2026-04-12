@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "crew": {
-      "command": "bun",
-      "args": ["run", "--cwd", "${CLAUDE_PLUGIN_ROOT:-.}", "./src/index.ts"]
-    }
-  }
-}
