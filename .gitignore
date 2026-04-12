@@ -35,6 +35,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # worktrees
 .worktrees/
-.gitnexus
+# .gitnexus
 _bmad
 _tasks

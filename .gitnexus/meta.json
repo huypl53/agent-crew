@@ -1,0 +1,13 @@
+{
+  "repoPath": "/Users/lee/code/utils/agent-crew",
+  "lastCommit": "239fc2b8fb0a38f797f32bc4626d41182a54d768",
+  "indexedAt": "2026-04-12T10:36:45.817Z",
+  "stats": {
+    "files": 143,
+    "nodes": 1889,
+    "edges": 3044,
+    "communities": 48,
+    "processes": 116,
+    "embeddings": 0
+  }
+}
