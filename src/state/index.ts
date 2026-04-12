@@ -324,7 +324,12 @@ export function createTask(
     'INSERT INTO tasks (room, assigned_to, created_by, message_id, summary, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     [room, assignedTo, createdBy, messageId, truncated, 'sent', ts, ts],
   );
-  return getTask(stmt.lastInsertRowid as number)!;
+  const taskId = stmt.lastInsertRowid as number;
+
+  // Record initial task event
+  recordTaskEvent(taskId, null, 'sent', createdBy);
+
+  return getTask(taskId)!;
 }
 
 export function getTask(id: number): Task | undefined {

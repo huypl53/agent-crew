@@ -8,3 +8,5 @@
 - [ ] Switch to CLI tool for usage cost reduce. This is huge change, do this in new branch with strict test and UAT
 - [x] check the memory leak when an agent disconnect but still showing active in dashboard
 - [ ] in the dashboard, I can revoke worker is I want. Of course, I want to have more control over the tasks, the actors
+- [ ] the MPC server shutdown after a long run, maybe for our. I am running on macos, debug it. If it's the macos machanism that shutdown service, process after time, show me.
+- [ ] UAT test over the dashboard started by ` bun run --cwd ~/.crew dashboard`, I found lot of UI/UX issues: I don't know "tasks" and "timeline" tabs belong to which room; the timeline now shos just empty; the "tasks" tab show poor task's expand information

@@ -459,8 +459,9 @@ describe('state module', () => {
       const task = createTask('test-room', 'wk-01', 'lead-01', null, 'event test');
       recordTaskEvent(task.id, null, 'sent', 'system');
       const events = getTaskEvents(task.id);
-      expect(events.length).toBe(1);
-      expect(events[0]!.to_status).toBe('sent');
+      expect(events.length).toBe(2);
+      expect(events[1]!.to_status).toBe('sent');
+      expect(events[1]!.triggered_by).toBe('system');
     });
 
     test('getTaskEvents returns events in order', () => {
@@ -469,8 +470,8 @@ describe('state module', () => {
       recordTaskEvent(task.id, 'sent', 'active', 'wk-01');
       recordTaskEvent(task.id, 'active', 'completed', 'wk-01');
       const events = getTaskEvents(task.id);
-      expect(events.length).toBe(3);
-      expect(events[2]!.to_status).toBe('completed');
+      expect(events.length).toBe(4);
+      expect(events[3]!.to_status).toBe('completed');
     });
 
     test('getAllTaskEvents returns array', () => {
@@ -482,10 +483,19 @@ describe('state module', () => {
       // Task starts with status 'sent'
       updateTaskStatus(task.id, 'active', undefined, undefined, 'wk-01');
       const events = getTaskEvents(task.id);
+      expect(events.length).toBe(2);
+      expect(events[1]!.from_status).toBe('sent');
+      expect(events[1]!.to_status).toBe('active');
+      expect(events[1]!.triggered_by).toBe('wk-01');
+    });
+
+    test('createTask produces initial task_event', () => {
+      const task = createTask('test-room', 'wk-01', 'lead-01', null, 'initial event task');
+      const events = getTaskEvents(task.id);
       expect(events.length).toBe(1);
-      expect(events[0]!.from_status).toBe('sent');
-      expect(events[0]!.to_status).toBe('active');
-      expect(events[0]!.triggered_by).toBe('wk-01');
+      expect(events[0]!.from_status).toBeNull();
+      expect(events[0]!.to_status).toBe('sent');
+      expect(events[0]!.triggered_by).toBe('lead-01');
     });
   });
 });

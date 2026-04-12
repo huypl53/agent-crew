@@ -89,7 +89,8 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
     const summary = task.summary.length > 40 ? task.summary.substring(0, 37) + '...' : task.summary;
     const prefix = isSelected ? '▶ ' : '  ';
     const statusChar = status === 'completed' ? '✓' : status === 'error' ? '✗' : status === 'active' ? '●' : '◌';
-    return `${prefix}#${task.id} ${statusChar} ${status.padEnd(10)} ${task.assigned_to.padEnd(10)} ${summary} ${durationStr} ${contextPreview}`;
+    const roomPrefix = `[${task.room}]`;
+    return `${prefix}#${task.id} ${statusChar} ${status.padEnd(10)} ${roomPrefix.padEnd(8)} ${task.assigned_to.padEnd(10)} ${summary} ${durationStr} ${contextPreview}`;
   };
 
   useInput((input, key) => {
@@ -154,8 +155,13 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
               </Text>
               {isExpanded && (
                 <Box flexDirection="column" paddingLeft={2} borderLeft borderStyle="single" borderColor="gray">
+                  <Text dimColor>Room: {task.room}</Text>
+                  <Text dimColor>Created by: {task.created_by}</Text>
+                  <Text dimColor>Assigned to: {task.assigned_to}</Text>
+                  <Text dimColor>Created at: {new Date(task.created_at).toLocaleString()}</Text>
                   <Text dimColor>Summary: {task.summary}</Text>
                   {task.context && <Text dimColor>Context: {task.context}</Text>}
+                  {task.note && <Text dimColor>Note: {task.note}</Text>}
                   <Text dimColor>Status History:</Text>
                   {getTaskEvents(task.id).map((evt, i) => (
                     <Text key={i} dimColor>

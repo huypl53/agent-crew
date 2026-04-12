@@ -96,7 +96,7 @@ function readAll(): DashboardState | null {
     try {
       const taskRows = db.query<{
         id: number; room: string; assigned_to: string; created_by: string;
-        message_id: number | null; summary: string; status: string; note: string | null;
+        message_id: number | null; summary: string; status: string; note: string | null; context: string | null;
         created_at: string; updated_at: string;
       }, []>('SELECT * FROM tasks ORDER BY id ASC').all();
 
@@ -109,6 +109,7 @@ function readAll(): DashboardState | null {
         summary: row.summary,
         status: row.status as Task['status'],
         note: row.note ?? undefined,
+        context: row.context ?? undefined,
         created_at: row.created_at,
         updated_at: row.updated_at,
       }));
