@@ -113,6 +113,9 @@ export function initDb(path?: string): void {
   _db = new Database(dbPath, { create: true });
   _db.exec(SCHEMA);
 
+  // Migrate existing tables — ALTER TABLE for columns added after initial schema
+  try { _db.exec('ALTER TABLE agents ADD COLUMN agent_type TEXT NOT NULL DEFAULT \'unknown\''); } catch { /* column already exists */ }
+
   // Insert default pricing
   const DEFAULT_PRICING = [
     ['claude-opus-4-6', 15.0, 75.0],

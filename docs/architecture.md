@@ -83,12 +83,37 @@ idx_messages_recipient ON messages(recipient, id)
 - **Autoincrement ID** — Replaces both `message_id` and `sequence` fields
 - **Cursors persist** — Survive MCP server restarts (stored in `cursors` table)
 
+### Schema Migrations
+
+`CREATE TABLE IF NOT EXISTS` does NOT add new columns to existing tables. When new columns are added to the schema in `db.ts`, existing databases keep the old schema. Two mechanisms handle this:
+
+1. **MCP server (read-write):** `initDb()` runs `ALTER TABLE ... ADD COLUMN` with try/catch after executing the schema DDL. This migrates the running DB when the MCP server starts.
+
+2. **Dashboard (read-only):** `useStateReader.readAll()` uses fallback queries. If a query fails due to a missing column (e.g., `agent_type`), it retries with only the core columns that always exist. This prevents the dashboard from breaking on older DBs it can't migrate.
+
+**Gotcha:** If the dashboard's `readAll()` query references a column that doesn't exist and there's no fallback, the query fails silently (caught by try/catch), returns empty results, and the tree shows rooms with member counts but no agent nodes underneath — mimicking a "collapsed" appearance. Always add a fallback query when selecting optional columns.
+
+**Known migration columns:** `agents.agent_type` (added after initial schema).
+
+### Dashboard Resilience Patterns
+
+The dashboard opens the DB in read-only mode. Every table query in `readAll()` is wrapped in try/catch with an empty-array default. This means:
+
+- Missing tables → empty data (dashboard renders but shows nothing)
+- Missing columns → fallback query without that column
+- DB doesn't exist → `readAll()` returns null → "Waiting for cc-tmux..." screen
+- Once the MCP server creates/migrates tables, the next poll (500ms) picks up data automatically
+
+**React state sync in useTree:** The `selectedIdRef` must be updated synchronously whenever `selectedId` changes (inside setState updaters and useEffect hooks). If only synced via useEffect (async, post-render), rapid keyboard input (navigate then Enter) reads stale ref values. Always assign `selectedIdRef.current = newId` in the same call that updates `setSelectedId`.
+
 ### Debugging
 
 ```bash
 sqlite3 /tmp/crew/state/crew.db '.tables'
 sqlite3 /tmp/crew/state/crew.db 'SELECT * FROM agents;'
 sqlite3 /tmp/crew/state/crew.db 'SELECT * FROM messages ORDER BY id DESC LIMIT 10;'
+# Check actual schema vs expected (missing columns = migration needed):
+sqlite3 /tmp/crew/state/crew.db '.schema agents'
 ```
 
 ## Room Conversation Log

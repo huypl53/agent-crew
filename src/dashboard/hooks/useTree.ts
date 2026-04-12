@@ -83,6 +83,7 @@ export function useTree(
   statuses: Map<string, AgentStatusEntry>,
 ): UseTreeReturn {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
   const [collapsedRooms, setCollapsedRooms] = useState<Set<string>>(new Set());
   const autoSelectRef = useRef(true);
   const lastMostRecentRef = useRef<string | null>(null);
@@ -107,7 +108,10 @@ export function useTree(
     if (statusChangeKey !== lastMostRecentRef.current) {
       lastMostRecentRef.current = statusChangeKey;
       const idx = nodes.findIndex(n => n.type === 'agent' && n.agentName === statusChangeKey);
-      if (idx >= 0) setSelectedId(nodes[idx]!.id);
+      if (idx >= 0) {
+        selectedIdRef.current = nodes[idx]!.id;
+        setSelectedId(nodes[idx]!.id);
+      }
     }
   }, [statusChangeKey, nodes]);
 
@@ -123,12 +127,17 @@ export function useTree(
   }
   if (selectedIndex >= nodes.length) selectedIndex = Math.max(0, nodes.length - 1);
 
+  // Keep ref in sync with state
+  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+
   // Lazily initialize selectedId on first render with nodes
   useEffect(() => {
     if (selectedId === null && nodes.length > 0) {
       const first = nodes.findIndex(n => n.type === 'agent');
       const idx = first >= 0 ? first : 0;
-      setSelectedId(nodes[idx]?.id ?? null);
+      const id = nodes[idx]?.id ?? null;
+      selectedIdRef.current = id;
+      setSelectedId(id);
     }
   }, [nodes, selectedId]);
 
@@ -149,8 +158,9 @@ export function useTree(
     setSelectedId(prev => {
       const ns = nodesRef.current;
       const idx = ns.findIndex(n => n.id === prev);
-      if (idx > 0) return ns[idx - 1]!.id;
-      return prev;
+      const next = idx > 0 ? ns[idx - 1]!.id : prev;
+      selectedIdRef.current = next;
+      return next;
     });
   }, []);
 
@@ -159,36 +169,41 @@ export function useTree(
     setSelectedId(prev => {
       const ns = nodesRef.current;
       const idx = ns.findIndex(n => n.id === prev);
-      if (idx < ns.length - 1) return ns[idx + 1]!.id;
-      return prev;
+      const next = idx < ns.length - 1 ? ns[idx + 1]!.id : prev;
+      selectedIdRef.current = next;
+      return next;
     });
   }, []);
 
   const moveToTop = useCallback(() => {
     autoSelectRef.current = false;
     const ns = nodesRef.current;
-    if (ns.length > 0) setSelectedId(ns[0]!.id);
+    if (ns.length > 0) {
+      selectedIdRef.current = ns[0]!.id;
+      setSelectedId(ns[0]!.id);
+    }
   }, []);
 
   const moveToBottom = useCallback(() => {
     autoSelectRef.current = false;
     const ns = nodesRef.current;
-    if (ns.length > 0) setSelectedId(ns[ns.length - 1]!.id);
+    if (ns.length > 0) {
+      selectedIdRef.current = ns[ns.length - 1]!.id;
+      setSelectedId(ns[ns.length - 1]!.id);
+    }
   }, []);
 
   const toggleCollapse = useCallback(() => {
-    setSelectedId(currentId => {
-      const ns = nodesRef.current;
-      const idx = ns.findIndex(n => n.id === currentId);
-      const node = ns[idx];
-      if (!node || node.type !== 'room') return currentId;
-      const roomId = node.id === 'room:__unassigned__' ? '__unassigned__' : node.label;
-      setCollapsedRooms(prev => {
-        const next = new Set(prev);
-        if (next.has(roomId)) next.delete(roomId); else next.add(roomId);
-        return next;
-      });
-      return currentId;
+    const currentId = selectedIdRef.current;
+    const ns = nodesRef.current;
+    const idx = ns.findIndex(n => n.id === currentId);
+    const node = ns[idx];
+    if (!node || node.type !== 'room') return;
+    const roomId = node.id === 'room:__unassigned__' ? '__unassigned__' : node.label;
+    setCollapsedRooms(prev => {
+      const next = new Set(prev);
+      if (next.has(roomId)) next.delete(roomId); else next.add(roomId);
+      return next;
     });
   }, []);
 

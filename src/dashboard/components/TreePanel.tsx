@@ -135,7 +135,7 @@ export const TreePanel = memo(function TreePanel({ nodes, selectedIndex, height,
             })()}
             {node.agentName && costByAgent.has(node.agentName) && (
               <Text dimColor> ${costByAgent.get(node.agentName)!.toFixed(2)}</Text>
-            )}}
+            )}
           </Text>
         );
       })}

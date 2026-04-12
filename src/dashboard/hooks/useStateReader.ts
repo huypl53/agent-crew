@@ -25,18 +25,45 @@ function readAll(): DashboardState | null {
     if (!existsSync(DB_PATH)) return null;
     db = new Database(DB_PATH, { readonly: true });
 
-    const agentRows = db.query<{ name: string; role: Agent['role']; pane: string; agent_type: string; registered_at: string; last_activity: string | null }, []>(
-      'SELECT name, role, pane, agent_type, registered_at, last_activity FROM agents'
-    ).all();
-    const roomRows = db.query<{ name: string; topic: string | null; created_at: string }, []>(
-      'SELECT name, topic, created_at FROM rooms'
-    ).all();
-    const memberRows = db.query<{ room: string; agent: string; joined_at: string }, []>(
-      'SELECT room, agent, joined_at FROM members'
-    ).all();
-    const messageRows = db.query<{ id: number; sender: string; room: string; recipient: string | null; text: string; kind: Message['kind']; mode: Message['mode']; timestamp: string }, []>(
-      'SELECT id, sender, room, recipient, text, kind, mode, timestamp FROM messages ORDER BY id ASC'
-    ).all();
+    let agentRows: { name: string; role: Agent['role']; pane: string; agent_type?: string; registered_at: string; last_activity: string | null }[] = [];
+    try {
+      agentRows = db.query<typeof agentRows[0], []>(
+        'SELECT name, role, pane, agent_type, registered_at, last_activity FROM agents'
+      ).all();
+    } catch {
+      // agent_type column may not exist in older DBs — fall back to core columns
+      try {
+        agentRows = db.query<typeof agentRows[0], []>(
+          'SELECT name, role, pane, registered_at, last_activity FROM agents'
+        ).all();
+      } catch {
+        // agents table may not exist at all
+      }
+    }
+    let roomRows: { name: string; topic: string | null; created_at: string }[] = [];
+    try {
+      roomRows = db.query<typeof roomRows[0], []>(
+        'SELECT name, topic, created_at FROM rooms'
+      ).all();
+    } catch {
+      // rooms table may not exist yet
+    }
+    let memberRows: { room: string; agent: string; joined_at: string }[] = [];
+    try {
+      memberRows = db.query<typeof memberRows[0], []>(
+        'SELECT room, agent, joined_at FROM members'
+      ).all();
+    } catch {
+      // members table may not exist yet
+    }
+    let messageRows: { id: number; sender: string; room: string; recipient: string | null; text: string; kind: Message['kind']; mode: Message['mode']; timestamp: string }[] = [];
+    try {
+      messageRows = db.query<typeof messageRows[0], []>(
+        'SELECT id, sender, room, recipient, text, kind, mode, timestamp FROM messages ORDER BY id ASC'
+      ).all();
+    } catch {
+      // messages table may not exist yet
+    }
 
     const rooms: Record<string, Room> = {};
     for (const row of roomRows) {
