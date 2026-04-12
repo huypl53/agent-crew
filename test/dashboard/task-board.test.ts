@@ -163,6 +163,23 @@ describe('TaskBoard timestamp formatting', () => {
       expect(task.context).toBe('Build auth flow');
     });
 
+    it('should carry full task text from linked message', () => {
+      const task: Task = {
+        id: 3,
+        room: 'crew',
+        assigned_to: 'wk-01',
+        created_by: 'lead-01',
+        message_id: 616,
+        summary: 'First 200 chars of the task...',
+        status: 'active',
+        text: 'This is the full task text with all the instructions that were sent to the worker.',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      expect(task.text).toBe('This is the full task text with all the instructions that were sent to the worker.');
+    });
+
     it('should handle missing optional fields (note, context)', () => {
       const task: Task = {
         id: 2,
