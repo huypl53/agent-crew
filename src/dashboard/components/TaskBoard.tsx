@@ -188,6 +188,18 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
   const visibleStart = scrollOffset;
   const visibleEnd = Math.min(allLines.length, visibleStart + visibleLines);
 
+  // Sticky header: if first visible item is a task whose group header scrolled off, show it pinned
+  let stickyHeader: GroupedTask | null = null;
+  const firstVisible = allLines[visibleStart];
+  if (firstVisible?.type === 'task') {
+    for (let i = visibleStart - 1; i >= 0; i--) {
+      if (allLines[i]!.type === 'header') {
+        stickyHeader = (allLines[i] as { type: 'header'; group: GroupedTask }).group;
+        break;
+      }
+    }
+  }
+
   // Build action hint for the status bar
   const actionHint = (() => {
     if (!selectedTask) return '';
@@ -208,6 +220,9 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
 
       {/* Task list */}
       <Box flexDirection="column" flexGrow={1} overflowY="hidden">
+        {stickyHeader && (
+          <Text bold dimColor>{stickyHeader.groupName} (cont.)</Text>
+        )}
         {allLines.slice(visibleStart, visibleEnd).map((line, idx) => {
           const actualIndex = visibleStart + idx;
           const isSelected = actualIndex === selectedIndex;
