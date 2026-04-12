@@ -267,6 +267,115 @@ The MCP server (`src/index.ts`) includes several mechanisms to survive long-runn
 
 **Error logging added to:** tmux spawn/delivery (`src/tmux/index.ts`), token collection (`src/tokens/collector.ts`), pane capture (`src/tools/get-status.ts`), agent type detection (`src/tools/join-room.ts`)
 
+## CLI Architecture
+
+The `crew` CLI binary is an alternative interface to the same tool handlers used by the MCP server. Instead of MCP tool calls (which send 17 schemas per turn), agents invoke shell commands via Bash — cutting token overhead by 50-80%.
+
+### CLI vs MCP Comparison
+
+| Aspect | MCP Server | CLI |
+|--------|-----------|-----|
+| Interface | JSON-RPC tool calls | Shell commands (`crew <cmd>`) |
+| Token overhead | ~3,700 tokens (17 schemas) per turn + ~150/call | ~15-20 tokens per Bash call |
+| Output format | JSON wrapped in MCP `content[0].text` | Plain text by default, `--json` for raw JSON |
+| Shared state | SQLite at `$CREW_STATE_DIR/crew.db` | Same SQLite file |
+| Tool handlers | Called via MCP dispatcher in `src/index.ts` | Called directly by `src/cli/router.ts` |
+| Availability | Requires MCP client (Claude Code, Codex) | Any shell — `bun src/cli.ts` or `crew` |
+
+Both interfaces call the **same `src/tools/` handlers** and the **same `src/state/` functions**. No conflict — SQLite WAL mode handles concurrent access from both processes.
+
+### Token Cost Savings
+
+MCP overhead per agent turn:
+- Schema transmission: 17 tool schemas × ~220 tokens = **~3,740 tokens** (sent every turn)
+- Per-call overhead: ~150 tokens (tool use block + result block)
+
+CLI overhead per agent turn:
+- No schema transmission (Bash tool is always in context)
+- Per-call overhead: ~15-20 tokens (command string + text output)
+
+During a 100-tool-call session, switching from MCP to CLI saves approximately:
+- Schema savings: 100 turns × 3,740 = **374,000 tokens**
+- Per-call savings: 100 × 130 = **13,000 tokens**
+- **Total: ~387,000 fewer tokens per 100-call session**
+
+### Entry Point
+
+```
+src/cli.ts  (#!/usr/bin/env bun shebang, chmod +x)
+  ├── initServerLog() + initDb()
+  ├── parseArgs(process.argv.slice(2))   → src/cli/parse.ts
+  ├── COMMANDS[command].buildParams()    → src/cli/router.ts
+  ├── handler(params)                    → src/tools/<handler>.ts  (same as MCP)
+  ├── JSON.parse(result.content[0].text) ← unwrap MCP envelope
+  └── formatResult(command, data)        → src/cli/formatter.ts
+```
+
+### File Structure
+
+```
+src/
+├── cli.ts              # Entry point — shebang, arg parse, route, format, exit
+└── cli/
+    ├── parse.ts        # parseArgs(argv) → { command, positional, flags }
+    ├── router.ts       # COMMANDS map: 16 subcommands → { handler, buildParams }
+    └── formatter.ts    # formatResult(command, data) → compact plain text
+```
+
+### Subcommands (16 total)
+
+| Command | Flags | Description |
+|---------|-------|-------------|
+| `join` | `--room --role --name [--pane]` | Register in a room |
+| `leave` | `--room --name` | Leave a room |
+| `rooms` | — | List all rooms |
+| `members` | `--room` | List room members |
+| `send` | `--room --text --name [--to --kind --mode]` | Send a message |
+| `read` | `--name [--room --kinds --limit]` | Read messages |
+| `status` | `<agent> [--name]` | Check agent status |
+| `refresh` | `--name [--pane]` | Re-register after session resume |
+| `topic` | `--room --text --name` | Set room topic |
+| `update-task` | `--task --status --name [--note --context]` | Update task status |
+| `interrupt` | `--worker --room --name` | Interrupt worker's task |
+| `clear` | `--worker --room --name` | Clear worker session |
+| `reassign` | `--worker --room --text --name` | Reassign task to worker |
+| `task-details` | `<task_id>` | Get full task details |
+| `search-tasks` | `[--room --agent --keyword --status --limit]` | Search tasks |
+| `check` | `--name [--scopes messages,tasks,agents]` | Check for changes |
+
+### Arg Parser
+
+`parseArgs(argv: string[])` in `src/cli/parse.ts`:
+- First token is the command (`argv[0]`)
+- `--flag value` pairs → `flags[flag] = value`
+- Boolean flags (`--json`, `--help`, `--version`) → `flags[flag] = true`
+- Bare tokens after command → `positional[]`
+- Empty argv → `command = 'help'`
+
+### Output Format
+
+Plain text by default, optimised for low token count:
+- `crew check --name me` → `messages:42 tasks:15 agents:8`
+- `crew status wk-01` → `wk-01 idle %33 crew task:#5(active) queued:3`
+- `crew read --name me` → `[boss@crew→wk-01](task): do the thing` (one line per message)
+- `crew send --room crew --text hi --name me` → `msg:42 delivered`
+- `crew rooms` → `crew 5 members (1b 1l 3w)`
+
+Add `--json` for raw JSON output from the tool handler.
+
+### Installation
+
+```bash
+# Direct (no install needed)
+bun /path/to/crew/src/cli.ts <command>
+
+# As global binary after bun link
+cd ~/.crew && bun link
+crew <command>
+```
+
+MCP server remains available as fallback for environments that don't support shell execution.
+
 ## Key Patterns
 
 - **Naming:** snake_case for MCP (tools, params, JSON), camelCase for TS, kebab-case for files

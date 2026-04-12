@@ -106,6 +106,80 @@ bun test --cwd ~/.crew
 bun ~/.crew/test/uat-sqlite.ts
 ```
 
+## CLI (Alternative Interface)
+
+The `crew` CLI binary provides the same functionality as MCP tools but via shell commands. Agents call `crew send ...` via Bash instead of `mcp__crew__send_message`, reducing token overhead by **50-80%** (no 17-schema transmission per turn).
+
+### Installation
+
+```bash
+# Direct (no install needed)
+bun /path/to/crew/src/cli.ts <command>
+
+# As global binary
+cd ~/.crew && bun link
+crew <command>
+```
+
+### Quick Reference
+
+| Command | Example | Output |
+|---------|---------|--------|
+| `join` | `crew join --room crew --role worker --name wk-01` | `Joined crew as wk-01 (worker) pane:%42` |
+| `leave` | `crew leave --room crew --name wk-01` | `Left room` |
+| `rooms` | `crew rooms` | `crew 5 members (1b 1l 3w)` |
+| `members` | `crew members --room crew` | `[crew] topic\n  wk-01 worker idle` |
+| `send` | `crew send --room crew --text "done" --name wk-01 --kind completion` | `msg:42 delivered` |
+| `read` | `crew read --name wk-01 --room crew` | `[boss@crew→wk-01](task): do the thing` |
+| `status` | `crew status wk-01` | `wk-01 idle %33 crew task:#5(active)` |
+| `check` | `crew check --name wk-01` | `messages:42 tasks:15 agents:8` |
+| `refresh` | `crew refresh --name wk-01` | `Refreshed wk-01 rooms:crew pane:%42` |
+| `topic` | `crew topic --room crew --text "Sprint 3" --name lead-01` | `Topic set: Sprint 3` |
+| `update-task` | `crew update-task --task 5 --status completed --name wk-01` | `task:#5 → completed` |
+| `interrupt` | `crew interrupt --worker wk-01 --room crew --name lead-01` | `Interrupted task:#5 (was active)` |
+| `clear` | `crew clear --worker wk-01 --room crew --name lead-01` | `Cleared wk-01 session` |
+| `reassign` | `crew reassign --worker wk-01 --room crew --text "new task" --name lead-01` | `Reassigned: old:#5 → new:#6` |
+| `task-details` | `crew task-details 5` | `#5 [completed] wk-01 — summary` |
+| `search-tasks` | `crew search-tasks --room crew --status completed` | `#5 [completed] wk-01 — summary` |
+
+### Flags
+
+- `--json` — output raw JSON instead of compact text (machine-readable)
+- `--help` — show usage
+
+### send flags
+
+| Flag | Description |
+|------|-------------|
+| `--room` | Room to send in (required) |
+| `--text` | Message text (required) |
+| `--name` | Your agent name / sender (required) |
+| `--to` | Target agent (omit for broadcast) |
+| `--kind` | `task`, `completion`, `question`, `error`, `status`, `chat` (default: `chat`) |
+| `--mode` | `push` (tmux delivery) or `pull` (queue only, default: `push`) |
+
+### read flags
+
+| Flag | Description |
+|------|-------------|
+| `--name` | Your agent name (required) |
+| `--room` | Room to read (uses room log + cursor) |
+| `--kinds` | Comma-separated filter: `task,completion` |
+| `--limit` | Max messages (default 50) |
+
+### check — token-efficient polling
+
+Call before expensive reads to skip polls when nothing changed:
+
+```bash
+# Returns: messages:42 tasks:15 agents:8
+crew check --name wk-01
+
+# If versions haven't changed, skip read_messages/get_status entirely
+```
+
+MCP tools remain available as a fallback for environments that don't support shell execution.
+
 ## MCP Tools
 
 | Tool | Description |
@@ -236,7 +310,12 @@ sqlite3 /tmp/crew/state/crew.db 'SELECT agent_name, cost_usd, model FROM token_u
 ```
 src/
 ├── index.ts          # MCP server entrypoint
-├── tools/            # 8 MCP tool handlers
+├── cli.ts            # CLI entrypoint (#!/usr/bin/env bun)
+├── cli/              # CLI modules
+│   ├── parse.ts      #   Arg parser: parseArgs(argv) → { command, positional, flags }
+│   ├── router.ts     #   Dispatch table: 16 subcommands → tool handlers
+│   └── formatter.ts  #   Plain text output formatters + --json flag
+├── tools/            # 16 MCP tool handlers (shared by MCP + CLI)
 ├── tmux/             # tmux CLI wrapper
 ├── state/            # SQLite state (db.ts = schema, index.ts = queries)
 ├── delivery/         # Push (tmux) + pull (queue) delivery
