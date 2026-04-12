@@ -1,26 +1,3 @@
-# Crew — Project Instructions
-
-## Versioning
-
-- Current version: see `package.json` (`"version"` field) and `git tag --list`
-- When tagging a release: `git tag vX.Y.Z` only — do NOT bump `package.json` unless explicitly asked
-- Semver: patch for bugfixes, minor for features, major for breaking changes
-
-## Testing
-
-Run these from `crew/` subdirectory:
-
-- Shell-based UAT: `bun crew/test/uat-send-reliability.ts`
-- Live Claude Code UAT: `bun crew/test/uat-claude-code.ts <pane-id>` (requires a running Claude Code instance)
-- Full integration: `bun crew/test/uat-sqlite.ts`
-- Unit tests: `cd crew && bun test`
-
-## Key Architecture Decisions
-
-- **tmux delivery** uses `paste-buffer -dp` (bracketed paste), NOT `send-keys -l`. See `crew/docs/architecture.md` "tmux Delivery" section for rationale.
-- **State** is SQLite with WAL mode. No JSON files, no in-memory cache.
-- **MCP server** is the same `crew/src/index.ts` for both Claude Code and Codex CLI.
-
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
