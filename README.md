@@ -35,26 +35,12 @@ Communication: push messages (tmux paste-buffer with bracketed paste for command
 
 ```bash
 git clone https://github.com/huypl53/agent-crew.git ~/.crew
-cd ~/.crew
-
-# Claude Code
-./install.sh
-
-# Codex CLI
-./install.sh --codex
-
-# Both platforms
-./install.sh --all
-```
-
-The installer handles plugin registration, MCP server setup, and (for Codex) tool approval configuration automatically.
-
-### Manual Install — Claude Code
-
-```bash
-git clone https://github.com/huypl53/agent-crew.git ~/.crew
 cd ~/.crew && bun install
 
+# Install CLI globally
+cd ~/.crew && bun link
+
+# Install plugin (skills only — behavioral guidance for agents)
 claude plugins marketplace add ~/.crew
 claude plugins install crew@crew-plugins
 
@@ -62,25 +48,24 @@ claude plugins install crew@crew-plugins
 claude --print "list skills" | grep crew
 ```
 
-Skills: `/crew:boss`, `/crew:join-room`, `/crew:leader`, `/crew:worker`, `/crew:refresh`.
+The plugin provides behavioral skills (`/crew:join-room`, `/crew:refresh`, `boss`, `leader`, `worker`). The CLI (`crew`) provides the actual commands that skills invoke.
+
+### Local Development
+
+```bash
+cd ~/.crew && bun link
+```
+
+`bun link` creates a global `crew` symlink pointing to your local source — code changes are instantly available without reinstalling.
 
 ### Manual Install — Codex CLI
 
 ```bash
 git clone https://github.com/huypl53/agent-crew.git ~/.crew
-cd ~/.crew && bun install
-
-# MCP server
-codex mcp add crew -- bun run ~/.crew/src/index.ts
+cd ~/.crew && bun install && bun link
 
 # Plugin (skills)
 ln -s ~/.crew ~/.codex/.tmp/plugins/plugins/crew
-
-# Tool approvals for --full-auto mode (required per tool)
-# The installer handles this automatically, or add manually to ~/.codex/config.toml:
-# [mcp_servers.crew.tools.join_room]
-# approval_mode = "approve"
-# ... repeat for all 9 tools
 ```
 
 Skills: `crew:boss`, `crew:join-room`, `crew:leader`, `crew:worker`, `crew:refresh`.
@@ -88,9 +73,8 @@ Skills: `crew:boss`, `crew:join-room`, `crew:leader`, `crew:worker`, `crew:refre
 ### Uninstall
 
 ```bash
-./install.sh --uninstall          # Claude Code
-./install.sh --uninstall-codex    # Codex CLI
-./install.sh --uninstall-all      # Both
+cd ~/.crew && bun unlink
+claude plugins uninstall crew@crew-plugins
 ```
 
 ## Usage
@@ -106,18 +90,13 @@ bun test --cwd ~/.crew
 bun ~/.crew/test/uat-sqlite.ts
 ```
 
-## CLI (Alternative Interface)
+## CLI
 
-The `crew` CLI binary provides the same functionality as MCP tools but via shell commands. Agents call `crew send ...` via Bash instead of `mcp__crew__send_message`, reducing token overhead by **50-80%** (no 17-schema transmission per turn).
+The `crew` CLI is the primary interface for agents. Agents call `crew send ...` via Bash, with **50-80% lower token overhead** than MCP (no 17-schema transmission per turn).
 
-### Installation
+After `bun link`, the `crew` binary is available globally:
 
 ```bash
-# Direct (no install needed)
-bun /path/to/crew/src/cli.ts <command>
-
-# As global binary
-cd ~/.crew && bun link
 crew <command>
 ```
 
@@ -178,9 +157,7 @@ crew check --name wk-01
 # If versions haven't changed, skip read_messages/get_status entirely
 ```
 
-MCP tools remain available as a fallback for environments that don't support shell execution.
-
-## MCP Tools
+## MCP Tools (Legacy)
 
 | Tool | Description |
 |------|-------------|
@@ -327,6 +304,5 @@ src/
 commands/             # 2 slash commands — /crew:{join-room,refresh}
 skills/               # 3 agent skills — boss, leader, worker (model-invoked after join)
 .codex-plugin/        # Codex CLI plugin manifest
-.mcp.json             # MCP server config (shared by Claude Code + Codex)
 test/                 # Test suite
 ```

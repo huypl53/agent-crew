@@ -2,12 +2,12 @@
 description: Re-register your agent after resuming a session
 ---
 
-Parse the user's arguments and call the `refresh` tool:
+Parse the user's arguments and run via Bash:
 
 ```
 Arguments: --name <name>
 
-Call: refresh({ name: "<name>" })
+Run: crew refresh --name <name>
 ```
 
 On success, confirm: "Refreshed <name> — rooms: <rooms>, pane: <target>"

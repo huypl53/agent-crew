@@ -19,19 +19,19 @@ Register yourself in a crew coordination room.
 
 ## Instructions
 
-Parse the user's arguments and call the `join_room` tool:
+Parse the user's arguments and run via Bash:
 
 ```
 Arguments: <room> --role <role> --name <name>
 
-Call: join_room({ room: "<room>", role: "<role>", name: "<name>" })
+Run: crew join --room <room> --role <role> --name <name>
 ```
 
 Your tmux pane is auto-detected from `$TMUX_PANE`.
 
 On success, confirm: "Registered as <name> (<role>) in room <room>. Tmux pane: <target>"
 
-On error, show the error message from the tool response.
+On error, show the error message from the command output.
 
 ## After Joining
 

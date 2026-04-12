@@ -2,20 +2,22 @@
 
 ## Overview
 
-Crew is an MCP server plugin + TUI dashboard for AI coding agents (Claude Code, OpenAI Codex CLI). Agents register into rooms with roles (boss/leader/worker) and communicate via tmux.
+Crew is a CLI tool + TUI dashboard for AI coding agents (Claude Code, OpenAI Codex CLI). Agents register into rooms with roles (boss/leader/worker) and communicate via tmux. The CLI (`crew`) is the primary interface — an MCP server is no longer required. Skills reference CLI commands, not MCP tools.
 
 ## Data Flow
 
 ```
-Agent calls MCP tool
-  → src/index.ts routes to tool handler in src/tools/
+Agent calls CLI command (crew <cmd>)
+  → src/cli.ts parses args, routes to tool handler in src/tools/
   → tool calls src/state/ for data operations (synchronous SQLite queries)
-  → if send_message: tool calls src/delivery/
+  → if send: tool calls src/delivery/
     → delivery calls state.addMessage() (always, writes to messages table)
     → delivery calls tmux.sendKeys() (push mode only)
     → if kind ∈ {completion, error, question} and sender is worker:
         delivery calls tmux.sendKeys() for each leader (auto-notify)
-  → tool returns MCP JSON response
+  → CLI formats and prints compact text output
+
+MCP server (src/index.ts) remains available as a legacy interface — calls the same src/tools/ handlers.
 
 Dashboard is a React+Ink app (separate process)
   → useStateReader polls PRAGMA data_version every 500ms (detects ALL DB changes)
@@ -366,15 +368,13 @@ Add `--json` for raw JSON output from the tool handler.
 ### Installation
 
 ```bash
-# Direct (no install needed)
-bun /path/to/crew/src/cli.ts <command>
-
-# As global binary after bun link
+# Local development — code changes instantly available
 cd ~/.crew && bun link
 crew <command>
-```
 
-MCP server remains available as fallback for environments that don't support shell execution.
+# Or run directly without install
+bun /path/to/crew/src/cli.ts <command>
+```
 
 ## Key Patterns
 
