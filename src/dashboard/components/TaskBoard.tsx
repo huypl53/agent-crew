@@ -229,13 +229,16 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
               </Text>
               {isExpanded && (
                 <Box flexDirection="column" paddingLeft={2} borderLeft borderStyle="single" borderColor="gray">
-                  <Text dimColor>Room: {task.room}</Text>
-                  <Text dimColor>Created by: {task.created_by}</Text>
+                  <Text dimColor>Summary:     {task.summary}</Text>
+                  <Text dimColor>Status:      <Text color={statusColor(task.status)}>{task.status}</Text></Text>
                   <Text dimColor>Assigned to: {task.assigned_to}</Text>
-                  <Text dimColor>Created at: {new Date(task.created_at).toLocaleString()}</Text>
-                  <Text dimColor>Summary: {task.summary}</Text>
-                  {task.context && <Text dimColor>Context: {task.context}</Text>}
-                  {task.note && <Text dimColor>Note: {task.note}</Text>}
+                  <Text dimColor>Created by:  {task.created_by}</Text>
+                  <Text dimColor>Room:        {task.room}</Text>
+                  <Text dimColor>Created at:  {new Date(task.created_at).toLocaleString()}</Text>
+                  <Text dimColor>Updated at:  {new Date(task.updated_at).toLocaleString()}</Text>
+                  {task.message_id != null && <Text dimColor>Message ID:  {task.message_id}</Text>}
+                  {task.note && <Text dimColor>Note:        {task.note}</Text>}
+                  {task.context && <Text dimColor>Context:     {task.context}</Text>}
                   <Text dimColor>Status History:</Text>
                   {getTaskEvents(task.id).map((evt, i) => (
                     <Text key={i} dimColor>
