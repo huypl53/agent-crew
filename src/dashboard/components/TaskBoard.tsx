@@ -94,13 +94,13 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
     return taskEvents.filter(e => e.task_id === taskId).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   };
 
-  const renderTaskLine = (task: Task, isSelected: boolean): string => {
+  const renderTaskLine = (task: Task, isSelected: boolean, isExpanded: boolean): string => {
     const status = task.status;
     const duration = getTaskDuration(task.id);
     const durationStr = duration ? `(${formatDuration(duration.totalMs)})` : '';
     const contextPreview = task.context ? task.context.substring(0, 80) : '';
     const summary = task.summary.length > 40 ? task.summary.substring(0, 37) + '...' : task.summary;
-    const prefix = isSelected ? '▶ ' : '  ';
+    const prefix = isExpanded ? '▼ ' : '▶ ';
     const statusChar = status === 'completed' ? '✓' : status === 'error' ? '✗' : status === 'active' ? '●' : '◌';
     const roomPrefix = `[${task.room}]`;
     return `${prefix}#${task.id} ${statusChar} ${status.padEnd(10)} ${roomPrefix.padEnd(8)} ${task.assigned_to.padEnd(10)} ${summary} ${durationStr} ${contextPreview}`;
@@ -225,7 +225,7 @@ export function TaskBoard({ tasks, taskEvents, agents, height, width }: TaskBoar
           return (
             <Box key={`t-${task.id}`} flexDirection="column">
               <Text color={isSelected ? 'cyan' : 'default'}>
-                {renderTaskLine(task, isSelected)}
+                {renderTaskLine(task, isSelected, isExpanded)}
               </Text>
               {isExpanded && (
                 <Box flexDirection="column" paddingLeft={2} borderLeft borderStyle="single" borderColor="gray">
