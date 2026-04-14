@@ -73,15 +73,24 @@ export async function handleJoinRoom(params: JoinRoomParams): Promise<ToolResult
     return err(`Invalid role: ${role}. Must be one of: boss, leader, worker`);
   }
 
-  // Determine tmux target
-  let target = tmux_target;
+  // Determine tmux target — null means pull-only (no tmux pane)
+  let target: string | null = tmux_target ?? null;
   if (!target) {
-    const tmux = process.env.TMUX;
     const pane = process.env.TMUX_PANE;
-    if (!tmux || !pane) {
-      return err('Not running inside a tmux pane. Set TMUX and TMUX_PANE env vars, or provide tmux_target param.');
-    }
-    target = pane; // Use pane ID directly (e.g., %100)
+    target = pane && pane.trim() ? pane.trim() : null;
+  }
+
+  if (target === null) {
+    // Pull-only join: no tmux pane — register with null pane, skip all tmux steps
+    const agent = addAgent(name, role as AgentRole, room, null, 'unknown');
+    return ok({
+      agent_id: agent.agent_id,
+      name: agent.name,
+      role: agent.role,
+      room,
+      tmux_target: null,
+      pull_only: true,
+    });
   }
 
   // Validate pane exists
@@ -101,7 +110,7 @@ export async function handleJoinRoom(params: JoinRoomParams): Promise<ToolResult
   if (isNameTakenInRoom(name, room)) {
     const existing = getAgent(name);
     if (existing) {
-      const oldPaneAlive = await paneExists(existing.tmux_target);
+      const oldPaneAlive = existing.tmux_target ? await paneExists(existing.tmux_target) : false;
       if (oldPaneAlive && existing.tmux_target !== target) {
         return err(`Name "${name}" is already taken in room "${room}" by a live agent (pane ${existing.tmux_target})`);
       }

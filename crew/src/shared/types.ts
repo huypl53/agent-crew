@@ -6,10 +6,12 @@ export interface Agent {
   name: string;
   role: AgentRole;
   rooms: string[];
-  tmux_target: string;
+  tmux_target: string | null;
   agent_type: 'claude-code' | 'codex' | 'unknown';
   joined_at: string;
   last_activity?: string;
+  persona?: string;
+  capabilities?: string;
 }
 
 export interface Room {
