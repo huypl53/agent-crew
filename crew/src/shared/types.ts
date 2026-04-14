@@ -33,6 +33,7 @@ export interface Message {
   timestamp: string;
   sequence: number;
   mode: 'push' | 'pull';
+  reply_to?: number | null;
 }
 
 export type TaskStatus = 'sent' | 'queued' | 'active' | 'completed' | 'error' | 'interrupted' | 'cancelled';
