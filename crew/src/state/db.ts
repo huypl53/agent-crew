@@ -12,11 +12,13 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS agents (
     name          TEXT PRIMARY KEY,
     role          TEXT NOT NULL,
-    pane          TEXT NOT NULL,
+    pane          TEXT,
     agent_type    TEXT NOT NULL DEFAULT 'unknown',
     registered_at TEXT NOT NULL,
     last_activity TEXT,
-    status        TEXT
+    status        TEXT,
+    persona       TEXT,
+    capabilities  TEXT
   );
 
   CREATE TABLE IF NOT EXISTS rooms (
@@ -40,7 +42,8 @@ const SCHEMA = `
     text      TEXT NOT NULL,
     kind      TEXT NOT NULL DEFAULT 'chat',
     mode      TEXT,
-    timestamp TEXT NOT NULL
+    timestamp TEXT NOT NULL,
+    reply_to  INTEGER REFERENCES messages(id)
   );
 
   CREATE TABLE IF NOT EXISTS cursors (
@@ -142,6 +145,52 @@ export function initDb(path?: string): void {
   try { _db.exec('ALTER TABLE agents ADD COLUMN agent_type TEXT NOT NULL DEFAULT \'unknown\''); } catch { /* column already exists */ }
   try { _db.exec('ALTER TABLE tasks ADD COLUMN context TEXT'); } catch { /* column already exists */ }
   try { _db.exec('ALTER TABLE agents ADD COLUMN status TEXT'); } catch { /* column already exists */ }
+
+  // Migrate agents: remove NOT NULL from pane (pull-only agents) + add persona/capabilities
+  {
+    const cols = _db.query('PRAGMA table_info(agents)').all() as Array<{ name: string; notnull: number }>;
+    const paneNotNull = cols.find(c => c.name === 'pane')?.notnull === 1;
+    const hasPersona = cols.some(c => c.name === 'persona');
+    const hasCapabilities = cols.some(c => c.name === 'capabilities');
+
+    if (paneNotNull) {
+      // Rebuild table: make pane nullable, add new columns in one pass
+      _db.exec(`
+        PRAGMA foreign_keys=OFF;
+        CREATE TABLE agents_v2 (
+          name          TEXT PRIMARY KEY,
+          role          TEXT NOT NULL,
+          pane          TEXT,
+          agent_type    TEXT NOT NULL DEFAULT 'unknown',
+          registered_at TEXT NOT NULL,
+          last_activity TEXT,
+          status        TEXT,
+          persona       TEXT,
+          capabilities  TEXT
+        );
+        INSERT INTO agents_v2 (name, role, pane, agent_type, registered_at, last_activity, status)
+          SELECT name, role, pane, agent_type, registered_at, last_activity, status FROM agents;
+        DROP TABLE agents;
+        ALTER TABLE agents_v2 RENAME TO agents;
+        PRAGMA foreign_keys=ON;
+      `);
+      // Recreate triggers dropped with the old table
+      _db.exec(`
+        CREATE TRIGGER IF NOT EXISTS trg_agents_change AFTER INSERT ON agents
+        BEGIN UPDATE change_log SET version = version + 1, updated_at = datetime('now') WHERE scope = 'agents'; END;
+        CREATE TRIGGER IF NOT EXISTS trg_agents_update AFTER UPDATE ON agents
+        BEGIN UPDATE change_log SET version = version + 1, updated_at = datetime('now') WHERE scope = 'agents'; END;
+        CREATE TRIGGER IF NOT EXISTS trg_agents_delete AFTER DELETE ON agents
+        BEGIN UPDATE change_log SET version = version + 1, updated_at = datetime('now') WHERE scope = 'agents'; END;
+      `);
+    } else {
+      if (!hasPersona) try { _db.exec('ALTER TABLE agents ADD COLUMN persona TEXT'); } catch { /* exists */ }
+      if (!hasCapabilities) try { _db.exec('ALTER TABLE agents ADD COLUMN capabilities TEXT'); } catch { /* exists */ }
+    }
+  }
+
+  // Migrate messages: add reply_to column
+  try { _db.exec('ALTER TABLE messages ADD COLUMN reply_to INTEGER REFERENCES messages(id)'); } catch { /* column already exists */ }
 
   // Migrate token_usage: dedupe to one row per agent (fix unbounded growth)
   try {
