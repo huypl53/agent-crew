@@ -45,7 +45,13 @@ export function useFeed() {
     if (newItems.length > 0) {
       setMessages(prev => {
         const combined = [...prev, ...newItems];
-        return combined.length > MAX_MESSAGES ? combined.slice(-MAX_MESSAGES) : combined;
+        if (combined.length > MAX_MESSAGES) {
+          const kept = combined.slice(-MAX_MESSAGES);
+          // Rebuild seenIds from kept messages — drops ids of evicted ones
+          seenIds.current = new Set(kept.map(m => m.id));
+          return kept;
+        }
+        return combined;
       });
     }
   }, []);
