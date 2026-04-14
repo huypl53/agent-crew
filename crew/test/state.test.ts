@@ -6,6 +6,7 @@ import {
   getRoomMessages, getCursor, advanceCursor, readRoomMessages,
   clearState, removeAgentFully, validateLiveness,
   createTask, getTask, getTasksForAgent, updateTaskStatus, cleanupDeadAgentTasks,
+  cancelQueuedTasksForAgent,
   getTaskDetails, searchTasks,
   recordTaskEvent, getTaskEvents, getAllTaskEvents,
   recordTokenUsage, getTokenUsageForAgent, getTotalCost, getPricing, upsertPricing,
@@ -456,6 +457,52 @@ describe('state module', () => {
       if (results.length > 0) {
         expect(results[0].context_preview!.length).toBeLessThanOrEqual(203);
       }
+    });
+  });
+
+  describe('cancelQueuedTasksForAgent', () => {
+    beforeEach(() => {
+      clearState();
+      addAgent('lead-01', 'leader', 'room', '%1');
+      addAgent('wk-01', 'worker', 'room', '%2');
+    });
+
+    test('cancels queued/sent tasks and returns count', () => {
+      const t1 = createTask('room', 'wk-01', 'lead-01', null, 'task a'); // sent
+      const t2 = createTask('room', 'wk-01', 'lead-01', null, 'task b');
+      updateTaskStatus(t2.id, 'queued');
+      const t3 = createTask('room', 'wk-01', 'lead-01', null, 'task c');
+      updateTaskStatus(t3.id, 'active'); // should NOT be cancelled
+
+      const n = cancelQueuedTasksForAgent('wk-01', 'lead-01');
+      expect(n).toBe(2);
+
+      expect(getTask(t1.id)!.status).toBe('cancelled');
+      expect(getTask(t2.id)!.status).toBe('cancelled');
+      expect(getTask(t3.id)!.status).toBe('active');
+    });
+
+    test('leaves other agents untouched', () => {
+      addAgent('wk-02', 'worker', 'room', '%3');
+      const mine = createTask('room', 'wk-01', 'lead-01', null, 'mine');
+      const theirs = createTask('room', 'wk-02', 'lead-01', null, 'theirs');
+
+      cancelQueuedTasksForAgent('wk-01', 'lead-01');
+      expect(getTask(mine.id)!.status).toBe('cancelled');
+      expect(getTask(theirs.id)!.status).toBe('sent');
+    });
+
+    test('returns 0 when nothing to cancel', () => {
+      expect(cancelQueuedTasksForAgent('wk-01', 'lead-01')).toBe(0);
+    });
+
+    test('records task_events for cancellations', () => {
+      const t = createTask('room', 'wk-01', 'lead-01', null, 'task');
+      cancelQueuedTasksForAgent('wk-01', 'lead-01');
+      const events = getTaskEvents(t.id);
+      const cancelEvent = events.find(e => e.to_status === 'cancelled');
+      expect(cancelEvent).toBeDefined();
+      expect(cancelEvent!.triggered_by).toBe('lead-01');
     });
   });
 
