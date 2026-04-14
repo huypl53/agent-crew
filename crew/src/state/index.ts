@@ -47,6 +47,12 @@ function rowToMessage(row: Record<string, unknown>): Message {
 
 // --- Agent operations ---
 
+export function getAgentDbStatus(name: string): 'busy' | 'idle' | null {
+  const row = getDb().query('SELECT status FROM agents WHERE name = ?').get(name) as { status: string | null } | null;
+  const s = row?.status;
+  return s === 'busy' || s === 'idle' ? s : null;
+}
+
 export function getAgent(name: string): Agent | undefined {
   const db = getDb();
   const row = db.query('SELECT * FROM agents WHERE name = ?').get(name) as Record<string, unknown> | null;
@@ -161,6 +167,8 @@ export function isNameTakenInRoom(name: string, room: string): boolean {
 
 // --- Message operations ---
 
+const IDLE_KINDS = new Set<MessageKind>(['completion', 'error', 'question', 'note']);
+
 export function addMessage(
   _to: string,
   from: string,
@@ -171,11 +179,26 @@ export function addMessage(
   kind: MessageKind = 'chat',
 ): Message {
   const db = getDb();
-  const stmt = db.run(
-    'INSERT INTO messages (sender, room, recipient, text, kind, mode, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [from, room, targetName, text, kind, mode, now()],
-  );
-  const row = db.query('SELECT * FROM messages WHERE id = ?').get(stmt.lastInsertRowid) as Record<string, unknown>;
+  const ts = now();
+
+  const insert = db.transaction(() => {
+    const stmt = db.run(
+      'INSERT INTO messages (sender, room, recipient, text, kind, mode, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [from, room, targetName, text, kind, mode, ts],
+    );
+
+    // Event-driven status: update agent busy/idle atomically with the message write
+    if (kind === 'task' && targetName) {
+      db.run('UPDATE agents SET status = ? WHERE name = ?', ['busy', targetName]);
+    } else if (IDLE_KINDS.has(kind)) {
+      db.run('UPDATE agents SET status = ? WHERE name = ?', ['idle', from]);
+    }
+
+    return stmt.lastInsertRowid;
+  });
+
+  const rowid = insert();
+  const row = db.query('SELECT * FROM messages WHERE id = ?').get(rowid) as Record<string, unknown>;
   return rowToMessage(row);
 }
 
