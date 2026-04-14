@@ -38,3 +38,5 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # .gitnexus
 _bmad
 _tasks
+crew/src/web/node_modules/
+crew/dist/web/

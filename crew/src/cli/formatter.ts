@@ -34,6 +34,7 @@ Commands:
   search-tasks [--room <r>] [--keyword <k>] [--status <s>] Search tasks
   create-room --room <name> --name <self> [--topic <t>]   Create a new room
   delete-room --room <name> --confirm --name <self>       Delete room (removes members + messages)
+  serve      [--port N] [--host H]                        Start browser dashboard server (default port 3456)
 
 Flags:
   --json     Output raw JSON instead of text
