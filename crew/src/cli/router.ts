@@ -16,6 +16,8 @@ import { handleSearchTasks } from '../tools/search-tasks.ts';
 import { handleCheckChanges } from '../tools/check-changes.ts';
 import { handleCreateRoom } from '../tools/create-room.ts';
 import { handleDeleteRoom } from '../tools/delete-room.ts';
+import { handleAck } from '../tools/ack.ts';
+import { handleHeartbeat } from '../tools/heartbeat.ts';
 
 type Handler = (params: any) => Promise<any>;
 type ParamBuilder = (flags: Record<string, any>, positional: string[]) => any;
@@ -39,4 +41,6 @@ export const COMMANDS: Record<string, { handler: Handler; buildParams: ParamBuil
   check:          { handler: handleCheckChanges, buildParams: (f) => ({ name: f.name, scopes: typeof f.scopes === 'string' ? f.scopes.split(',') : undefined }) },
   'create-room':  { handler: handleCreateRoom, buildParams: (f) => ({ room: f.room, topic: f.topic, name: f.name }) },
   'delete-room':  { handler: handleDeleteRoom, buildParams: (f) => ({ room: f.room, confirm: !!f.confirm, name: f.name }) },
+  ack:            { handler: handleAck, buildParams: (f, p) => ({ messageId: f['message-id'] != null ? parseInt(String(f['message-id']), 10) : undefined, pane: f.pane }) },
+  heartbeat:      { handler: handleHeartbeat, buildParams: (f) => ({ pane: f.pane, name: f.name }) },
 };

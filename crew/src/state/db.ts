@@ -10,15 +10,16 @@ const SCHEMA = `
   PRAGMA busy_timeout=5000;
 
   CREATE TABLE IF NOT EXISTS agents (
-    name          TEXT PRIMARY KEY,
-    role          TEXT NOT NULL,
-    pane          TEXT,
-    agent_type    TEXT NOT NULL DEFAULT 'unknown',
-    registered_at TEXT NOT NULL,
-    last_activity TEXT,
-    status        TEXT,
-    persona       TEXT,
-    capabilities  TEXT
+    name            TEXT PRIMARY KEY,
+    role            TEXT NOT NULL,
+    pane            TEXT,
+    agent_type      TEXT NOT NULL DEFAULT 'unknown',
+    registered_at   TEXT NOT NULL,
+    last_activity   TEXT,
+    status          TEXT,
+    persona         TEXT,
+    capabilities    TEXT,
+    last_heartbeat  INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS rooms (
@@ -101,11 +102,21 @@ const SCHEMA = `
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS delivery_acks (
+    id          INTEGER PRIMARY KEY,
+    message_id  INTEGER NOT NULL REFERENCES messages(id),
+    target_pane TEXT NOT NULL,
+    sent_at     INTEGER NOT NULL,
+    acked_at    INTEGER,
+    UNIQUE(message_id, target_pane)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_messages_room      ON messages(room, id);
   CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient, id);
   CREATE INDEX IF NOT EXISTS idx_tasks_assigned     ON tasks(assigned_to, status);
   CREATE INDEX IF NOT EXISTS idx_tasks_room         ON tasks(room, status);
   CREATE INDEX IF NOT EXISTS idx_token_usage_agent ON token_usage(agent_name, recorded_at);
+  CREATE INDEX IF NOT EXISTS idx_acks_pending       ON delivery_acks(acked_at) WHERE acked_at IS NULL;
 
   CREATE TRIGGER IF NOT EXISTS trg_messages_change AFTER INSERT ON messages
   BEGIN UPDATE change_log SET version = version + 1, updated_at = datetime('now') WHERE scope = 'messages'; END;
@@ -145,6 +156,7 @@ export function initDb(path?: string): void {
   try { _db.exec('ALTER TABLE agents ADD COLUMN agent_type TEXT NOT NULL DEFAULT \'unknown\''); } catch { /* column already exists */ }
   try { _db.exec('ALTER TABLE tasks ADD COLUMN context TEXT'); } catch { /* column already exists */ }
   try { _db.exec('ALTER TABLE agents ADD COLUMN status TEXT'); } catch { /* column already exists */ }
+  try { _db.exec('ALTER TABLE agents ADD COLUMN last_heartbeat INTEGER'); } catch { /* column already exists */ }
 
   // Migrate agents: remove NOT NULL from pane (pull-only agents) + add persona/capabilities
   {
@@ -158,15 +170,16 @@ export function initDb(path?: string): void {
       _db.exec(`
         PRAGMA foreign_keys=OFF;
         CREATE TABLE agents_v2 (
-          name          TEXT PRIMARY KEY,
-          role          TEXT NOT NULL,
-          pane          TEXT,
-          agent_type    TEXT NOT NULL DEFAULT 'unknown',
-          registered_at TEXT NOT NULL,
-          last_activity TEXT,
-          status        TEXT,
-          persona       TEXT,
-          capabilities  TEXT
+          name            TEXT PRIMARY KEY,
+          role            TEXT NOT NULL,
+          pane            TEXT,
+          agent_type      TEXT NOT NULL DEFAULT 'unknown',
+          registered_at   TEXT NOT NULL,
+          last_activity   TEXT,
+          status          TEXT,
+          persona         TEXT,
+          capabilities    TEXT,
+          last_heartbeat  INTEGER
         );
         INSERT INTO agents_v2 (name, role, pane, agent_type, registered_at, last_activity, status)
           SELECT name, role, pane, agent_type, registered_at, last_activity, status FROM agents;

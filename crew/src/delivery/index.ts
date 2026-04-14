@@ -1,6 +1,7 @@
 import { addMessage, getAgent, getRoomMembers, createTask, markAgentStale } from '../state/index.ts';
 import { paneCommandLooksAlive } from '../tmux/index.ts';
 import { getQueue } from './pane-queue.ts';
+import { getDb } from '../state/db.ts';
 import type { Message, MessageKind } from '../shared/types.ts';
 
 const NOTIFY_KINDS: MessageKind[] = ['completion', 'error', 'question'];
@@ -11,6 +12,69 @@ interface DeliveryResult {
   queued: boolean;
   error?: string;
   task_id?: number;
+}
+
+// --- Delivery ACK tracking ---
+
+/**
+ * Record a pending delivery ACK for a message sent to a pane.
+ * This allows us to track whether messages are actually being received.
+ */
+export function recordPendingAck(messageId: number, targetPane: string): void {
+  const db = getDb();
+  const sentAt = Date.now();
+  db.run(
+    'INSERT OR REPLACE INTO delivery_acks (message_id, target_pane, sent_at, acked_at) VALUES (?, ?, ?, NULL)',
+    [messageId, targetPane, sentAt],
+  );
+}
+
+/**
+ * Mark a delivery ACK as received.
+ * Called by the `crew ack` command when a recipient acknowledges a message.
+ */
+export function markAckReceived(messageId: number, targetPane: string): boolean {
+  const db = getDb();
+  const ackedAt = Date.now();
+  const result = db.run(
+    'UPDATE delivery_acks SET acked_at = ? WHERE message_id = ? AND target_pane = ? AND acked_at IS NULL',
+    [ackedAt, messageId, targetPane],
+  );
+  return result.changes > 0;
+}
+
+/**
+ * Query for pending ACKs (messages sent but not yet acknowledged).
+ * Returns messages sent more than `timeoutMs` ago that haven't been ACKed.
+ * Use timeoutMs=0 to get all pending ACKs regardless of elapsed time.
+ */
+export function getPendingAcks(timeoutMs: number = 10000): Array<{ message_id: number; target_pane: string; sent_at: number; elapsed_ms: number }> {
+  const db = getDb();
+  const now = Date.now();
+  // When timeoutMs is 0, return all pending ACKs; otherwise apply the timeout filter
+  const rows = db.query(
+    timeoutMs === 0
+      ? 'SELECT message_id, target_pane, sent_at FROM delivery_acks WHERE acked_at IS NULL'
+      : 'SELECT message_id, target_pane, sent_at FROM delivery_acks WHERE acked_at IS NULL AND ? - sent_at > ?',
+  ).all(...(timeoutMs === 0 ? [] : [now, timeoutMs])) as Array<{ message_id: number; target_pane: string; sent_at: number }>;
+
+  return rows.map(row => ({
+    message_id: row.message_id,
+    target_pane: row.target_pane,
+    sent_at: row.sent_at,
+    elapsed_ms: now - row.sent_at,
+  }));
+}
+
+/**
+ * Get ACK status for a specific message.
+ */
+export function getAckStatus(messageId: number, targetPane: string): { sent_at: number; acked_at: number | null } | null {
+  const db = getDb();
+  const row = db.query(
+    'SELECT sent_at, acked_at FROM delivery_acks WHERE message_id = ? AND target_pane = ?',
+  ).get(messageId, targetPane) as { sent_at: number; acked_at: number | null } | null;
+  return row;
 }
 
 export async function deliverMessage(
@@ -73,6 +137,8 @@ export async function deliverMessage(
         }
         try {
           await getQueue(agent.tmux_target).enqueue({ type: 'paste', text: fullText });
+          // Record pending ACK for tracking delivery confirmation
+          recordPendingAck(Number(msg.message_id), agent.tmux_target);
           results.push({ message_id: msg.message_id, delivered: true, queued: true, task_id: taskId });
         } catch (e) {
           results.push({
