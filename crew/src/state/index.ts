@@ -44,6 +44,7 @@ function rowToMessage(row: Record<string, unknown>): Message {
     timestamp: row.timestamp as string,
     sequence: row.id as number,
     mode: row.mode as 'push' | 'pull',
+    reply_to: row.reply_to as number | null ?? null,
   };
 }
 
@@ -191,14 +192,15 @@ export function addMessage(
   mode: 'push' | 'pull',
   targetName: string | null,
   kind: MessageKind = 'chat',
+  replyTo?: number | null,
 ): Message {
   const db = getDb();
   const ts = now();
 
   const insert = db.transaction(() => {
     const stmt = db.run(
-      'INSERT INTO messages (sender, room, recipient, text, kind, mode, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [from, room, targetName, text, kind, mode, ts],
+      'INSERT INTO messages (sender, room, recipient, text, kind, mode, timestamp, reply_to) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [from, room, targetName, text, kind, mode, ts, replyTo ?? null],
     );
 
     // Event-driven status: update agent busy/idle atomically with the message write

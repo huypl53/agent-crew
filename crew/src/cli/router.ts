@@ -25,7 +25,7 @@ export const COMMANDS: Record<string, { handler: Handler; buildParams: ParamBuil
   leave:          { handler: handleLeaveRoom, buildParams: (f) => ({ room: f.room, name: f.name }) },
   rooms:          { handler: handleListRooms, buildParams: () => ({}) },
   members:        { handler: handleListMembers, buildParams: (f) => ({ room: f.room }) },
-  send:           { handler: handleSendMessage, buildParams: (f) => ({ room: f.room, text: f.text, name: f.name, to: f.to, mode: f.mode ?? 'push', kind: f.kind ?? 'chat' }) },
+  send:           { handler: handleSendMessage, buildParams: (f) => ({ room: f.room, text: f.text, name: f.name, to: f.to, mode: f.mode ?? 'push', kind: f.kind ?? 'chat', reply_to: f['reply-to'] != null ? parseInt(String(f['reply-to']), 10) : undefined }) },
   read:           { handler: handleReadMessages, buildParams: (f) => ({ name: f.name, room: f.room, kinds: typeof f.kinds === 'string' ? f.kinds.split(',') : undefined, limit: f.limit ? parseInt(f.limit) : undefined }) },
   status:         { handler: handleGetStatus, buildParams: (f, p) => ({ agent_name: p[0] ?? f.agent, name: f.name }) },
   refresh:        { handler: handleRefresh, buildParams: (f) => ({ name: f.name, tmux_target: f.pane }) },
