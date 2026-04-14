@@ -10,10 +10,11 @@ interface SendMessageParams {
   mode?: 'push' | 'pull';
   name: string; // sender identity
   kind?: string; // MessageKind — defaults to 'chat'
+  reply_to?: number;
 }
 
 export async function handleSendMessage(params: SendMessageParams): Promise<ToolResult> {
-  const { room, text, to, mode = 'push', name, kind } = params;
+  const { room, text, to, mode = 'push', name, kind, reply_to } = params;
 
   if (!room || !text || !name) {
     return err('Missing required params: room, text, name');
@@ -48,7 +49,7 @@ export async function handleSendMessage(params: SendMessageParams): Promise<Tool
     }
   }
 
-  const results = await deliverMessage(name, room, text, to ?? null, mode, kind as any);
+  const results = await deliverMessage(name, room, text, to ?? null, mode, kind as any, reply_to);
 
   if (results.length === 1) {
     return ok({
