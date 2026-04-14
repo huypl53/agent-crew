@@ -1,5 +1,5 @@
 import type { Agent, AgentRole, Room, Message, MessageKind, Task, TaskStatus, TaskEvent, TokenUsage, PricingEntry } from '../shared/types.ts';
-import { isPaneDead } from '../tmux/index.ts';
+import { isPaneDead, paneCommandLooksAlive } from '../tmux/index.ts';
 import { getDb, initDb, closeDb, getDbPath } from './db.ts';
 
 // Re-export for callers
@@ -296,13 +296,27 @@ export async function refreshAgent(name: string, newPane: string): Promise<Agent
 
 // --- Liveness ---
 
+/** Error-out tasks and remove an agent from the registry when its pane is stale. */
+export function markAgentStale(agentName: string): void {
+  cleanupDeadAgentTasks(agentName);
+  removeAgentFully(agentName);
+}
+
 export async function validateLiveness(): Promise<string[]> {
   const dead: string[] = [];
   for (const agent of getAllAgents()) {
     if (await isPaneDead(agent.tmux_target)) {
-      cleanupDeadAgentTasks(agent.name);
-      removeAgentFully(agent.name);
+      markAgentStale(agent.name);
       dead.push(agent.name);
+      continue;
+    }
+    // For known agent types, also verify the pane is still running an agent process.
+    // Skip 'unknown' agents (e.g. CLI-registered or test panes) to avoid false evictions.
+    if (agent.agent_type === 'claude-code' || agent.agent_type === 'codex') {
+      if (!await paneCommandLooksAlive(agent.tmux_target)) {
+        markAgentStale(agent.name);
+        dead.push(agent.name);
+      }
     }
   }
   return dead;
@@ -402,6 +416,29 @@ export function cleanupDeadAgentTasks(agentName: string): void {
      WHERE assigned_to = ? AND status IN ('sent', 'queued', 'active', 'interrupted')`,
     [ts, agentName],
   );
+}
+
+/**
+ * Cancel all queued/sent tasks for an agent. Used when clearing a worker's
+ * session so their context wipe doesn't leave orphaned work in the queue.
+ * Returns the number of tasks cancelled. Does not touch active/terminal tasks.
+ */
+export function cancelQueuedTasksForAgent(agentName: string, triggeredBy?: string): number {
+  const db = getDb();
+  const ts = now();
+  const rows = db.query(
+    `SELECT id, status FROM tasks WHERE assigned_to = ? AND status IN ('sent', 'queued')`,
+  ).all(agentName) as Array<{ id: number; status: TaskStatus }>;
+  if (rows.length === 0) return 0;
+  db.run(
+    `UPDATE tasks SET status = 'cancelled', note = 'worker session cleared', updated_at = ?
+     WHERE assigned_to = ? AND status IN ('sent', 'queued')`,
+    [ts, agentName],
+  );
+  for (const row of rows) {
+    recordTaskEvent(row.id, row.status, 'cancelled', triggeredBy ?? null);
+  }
+  return rows.length;
 }
 
 export interface SearchTasksParams {
