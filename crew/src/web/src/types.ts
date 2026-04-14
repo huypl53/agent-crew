@@ -79,3 +79,21 @@ export interface WsEvent {
   type: 'message' | 'task-update' | 'agent-status' | 'room-change';
   [key: string]: unknown;
 }
+
+// TODO: merge with track A types
+export type TraceNodeKind = 'root' | 'room' | 'agent' | 'task' | 'message';
+export type TraceNodeStatus =
+  | 'queued' | 'active' | 'done' | 'error'
+  | 'idle' | 'busy' | 'dead' | 'note'
+  | null;
+
+export interface TraceNode {
+  id: string;
+  kind: TraceNodeKind;
+  label: string;
+  status: TraceNodeStatus;
+  timestamp: number | null;
+  durationMs: number | null;
+  children: TraceNode[];
+  meta: Record<string, unknown>;
+}
