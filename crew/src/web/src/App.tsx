@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import RoomsSidebar from './components/RoomsSidebar.tsx';
 import MessageFeed from './components/MessageFeed.tsx';
 import AgentInspector from './components/AgentInspector.tsx';
+import HeaderStats from './components/HeaderStats.tsx';
 import Composer from './components/Composer.tsx';
 import RoomModal from './components/RoomModal.tsx';
 import AgentEditModal from './components/AgentEditModal.tsx';
@@ -21,7 +22,9 @@ export default function App() {
   const [agentEditTarget, setAgentEditTarget] = useState<Agent | null>(null);
 
   return (
-    <div className="h-screen flex bg-slate-900 text-slate-100 overflow-hidden">
+    <div className="h-screen flex flex-col bg-slate-900 text-slate-100 overflow-hidden">
+      <HeaderStats />
+      <div className="flex flex-1 min-h-0">
       <RoomsSidebar
         selectedRoom={selectedRoom}
         onSelect={setSelectedRoom}
@@ -44,6 +47,7 @@ export default function App() {
         </div>
       </main>
       <AgentInspector room={selectedRoom} onEditAgent={setAgentEditTarget} />
+      </div>
 
       {roomModal && (
         <RoomModal
