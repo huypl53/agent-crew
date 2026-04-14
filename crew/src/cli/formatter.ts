@@ -32,6 +32,8 @@ Commands:
              --name <name>
   task-details <task_id>                                  Get task details
   search-tasks [--room <r>] [--keyword <k>] [--status <s>] Search tasks
+  create-room --room <name> --name <self> [--topic <t>]   Create a new room
+  delete-room --room <name> --confirm --name <self>       Delete room (removes members + messages)
 
 Flags:
   --json     Output raw JSON instead of text
@@ -92,4 +94,6 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     if (!d.tasks?.length) return '(no tasks found)';
     return d.tasks.map((t: any) => `#${t.id} [${t.status}] ${t.assigned_to} — ${t.summary}`).join('\n');
   },
+  'create-room': (d) => `Created room: ${d.room}${d.topic ? ` (${d.topic})` : ''}`,
+  'delete-room': (d) => `Deleted room: ${d.room} (${d.removed_members.length} members removed, ${d.messages_deleted} messages deleted)`,
 };

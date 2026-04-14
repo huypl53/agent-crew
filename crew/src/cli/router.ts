@@ -14,6 +14,8 @@ import { handleReassignTask } from '../tools/reassign-task.ts';
 import { handleGetTaskDetails } from '../tools/get-task-details.ts';
 import { handleSearchTasks } from '../tools/search-tasks.ts';
 import { handleCheckChanges } from '../tools/check-changes.ts';
+import { handleCreateRoom } from '../tools/create-room.ts';
+import { handleDeleteRoom } from '../tools/delete-room.ts';
 
 type Handler = (params: any) => Promise<any>;
 type ParamBuilder = (flags: Record<string, any>, positional: string[]) => any;
@@ -35,4 +37,6 @@ export const COMMANDS: Record<string, { handler: Handler; buildParams: ParamBuil
   'task-details': { handler: handleGetTaskDetails, buildParams: (f, p) => ({ task_id: parseInt(p[0] ?? f.task) }) },
   'search-tasks': { handler: handleSearchTasks, buildParams: (f) => ({ room: f.room, assigned_to: f.agent, keyword: f.keyword, status: f.status, limit: f.limit ? parseInt(f.limit) : undefined }) },
   check:          { handler: handleCheckChanges, buildParams: (f) => ({ name: f.name, scopes: typeof f.scopes === 'string' ? f.scopes.split(',') : undefined }) },
+  'create-room':  { handler: handleCreateRoom, buildParams: (f) => ({ room: f.room, topic: f.topic, name: f.name }) },
+  'delete-room':  { handler: handleDeleteRoom, buildParams: (f) => ({ room: f.room, confirm: !!f.confirm, name: f.name }) },
 };
