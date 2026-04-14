@@ -79,3 +79,16 @@ export interface WsEvent {
   type: 'message' | 'task-update' | 'agent-status' | 'room-change';
   [key: string]: unknown;
 }
+
+export type TraceNodeKind = 'root' | 'room' | 'agent' | 'task' | 'message';
+export type TraceNodeStatus = 'queued' | 'active' | 'done' | 'error' | 'idle' | 'busy' | 'dead' | 'note' | null;
+export interface TraceNode {
+  id: string;                    // unique, e.g. 'room:crew', 'agent:wk-01', 'task:42', 'msg:abc'
+  kind: TraceNodeKind;
+  label: string;
+  status: TraceNodeStatus;
+  timestamp: number | null;      // unix seconds of node's primary time
+  durationMs: number | null;     // null if unknown
+  children: TraceNode[];
+  meta: Record<string, unknown>; // raw backing row (Room / AgentInfo / Task / Message)
+}
