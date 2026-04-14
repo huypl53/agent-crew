@@ -1,7 +1,7 @@
 import { ok, err } from '../shared/types.ts';
 import type { ToolResult } from '../shared/types.ts';
 import { assertRole } from '../shared/role-guard.ts';
-import { getAgent } from '../state/index.ts';
+import { getAgent, cancelQueuedTasksForAgent } from '../state/index.ts';
 import { getQueue } from '../delivery/pane-queue.ts';
 
 interface ClearWorkerSessionParams {
@@ -36,13 +36,17 @@ export async function handleClearWorkerSession(params: ClearWorkerSessionParams)
     return err(`Worker "${worker_name}" has no tmux target`);
   }
 
-  // Step 1: Send /clear to the worker's pane
+  // Step 1: Cancel queued/sent tasks in DB — worker's context is about to be wiped,
+  // so any pending work targeting the old session is no longer valid.
+  const cancelled = cancelQueuedTasksForAgent(worker_name, name);
+
+  // Step 2: Send /clear to the worker's pane
   await getQueue(worker.tmux_target).enqueue({ type: 'paste', text: '/clear' });
 
-  // Step 2: Wait 2 seconds for CC to process /clear
+  // Step 3: Wait 2 seconds for CC to process /clear
   await new Promise(resolve => setTimeout(resolve, 2000));
 
-  // Step 3: Send crew:refresh command to re-register the worker
+  // Step 4: Send crew:refresh command to re-register the worker
   const refreshText = `/crew:refresh --name ${worker_name}`;
   await getQueue(worker.tmux_target).enqueue({ type: 'paste', text: refreshText });
 
@@ -50,6 +54,7 @@ export async function handleClearWorkerSession(params: ClearWorkerSessionParams)
     cleared: true,
     worker_name,
     room,
-    message: `Session cleared and refresh sent. IMPORTANT: ${worker_name}'s context is now blank. Your next task message must be fully self-contained — do not reference prior conversation.`,
+    cancelled_tasks: cancelled,
+    message: `Session cleared and refresh sent. ${cancelled} queued task(s) cancelled. IMPORTANT: ${worker_name}'s context is now blank. Your next task message must be fully self-contained — do not reference prior conversation.`,
   });
 }
