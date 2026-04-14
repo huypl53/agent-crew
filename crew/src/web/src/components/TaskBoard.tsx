@@ -45,6 +45,13 @@ function elapsed(ts: string): string {
   return `${Math.floor(m / 60)}h`;
 }
 
+function fmtDateTime(ts: string): string {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return ts;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 interface TaskRowProps {
   task: Task;
 }
@@ -52,64 +59,134 @@ interface TaskRowProps {
 function TaskRow({ task }: TaskRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [events, setEvents] = useState<TaskEvent[] | null>(null);
-  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const expand = useCallback(async () => {
-    if (!expanded && events === null) {
-      setLoadingEvents(true);
+  const toggle = useCallback(async () => {
+    // Lazy-load detail on first expand
+    if (!expanded && events === null && fetchError === null) {
+      setLoadingDetail(true);
       try {
         const detail = await get<Task & { events: TaskEvent[] }>(`/tasks/${task.id}`);
         setEvents(detail.events ?? []);
-      } catch {
-        setEvents([]);
+      } catch (e) {
+        setFetchError(e instanceof Error ? e.message : 'Unknown error');
       } finally {
-        setLoadingEvents(false);
+        setLoadingDetail(false);
       }
     }
     setExpanded(e => !e);
-  }, [expanded, events, task.id]);
+  }, [expanded, events, fetchError, task.id]);
+
+  const caret = expanded ? '▼' : '▶';
 
   return (
     <>
+      {/* Task row — caret makes expandability obvious */}
       <tr
-        className="border-b border-slate-800 hover:bg-slate-800/50 cursor-pointer"
-        onClick={expand}
+        className={`border-b border-slate-800 cursor-pointer transition-colors ${
+          expanded ? 'bg-slate-800/60 hover:bg-slate-800/80' : 'hover:bg-slate-800/40'
+        }`}
+        onClick={toggle}
       >
-        <td className="px-3 py-1.5 text-slate-500 text-xs font-mono">#{task.id}</td>
+        <td className="px-3 py-1.5 text-slate-500 text-xs w-4">
+          <span className="text-slate-500 font-mono text-xs">{caret}</span>
+        </td>
+        <td className="px-2 py-1.5 text-slate-500 text-xs font-mono">#{task.id}</td>
         <td className="px-3 py-1.5"><StatusBadge status={task.status} /></td>
         <td className="px-3 py-1.5 text-slate-400 text-xs">{task.room}</td>
         <td className="px-3 py-1.5 text-slate-200 text-sm max-w-xs truncate">{task.summary}</td>
-        <td className="px-3 py-1.5 text-slate-500 text-xs">{elapsed(task.updated_at)} ago</td>
+        <td className="px-3 py-1.5 text-slate-500 text-xs whitespace-nowrap">{elapsed(task.updated_at)} ago</td>
       </tr>
+
+      {/* Expanded detail panel */}
       {expanded && (
-        <tr className="bg-slate-800/30">
-          <td colSpan={5} className="px-4 py-2">
-            {task.text && (
-              <p className="text-slate-300 text-sm font-mono whitespace-pre-wrap mb-2 border-l-2 border-slate-600 pl-3">
-                {task.text}
-              </p>
+        <tr className="bg-slate-900/60 border-b border-slate-700">
+          <td colSpan={6} className="px-6 py-3">
+            {loadingDetail && (
+              <div className="text-xs text-slate-500 italic">Loading details…</div>
             )}
-            <div className="text-xs text-slate-500 mb-1">
-              created by <span className="text-slate-400">{task.created_by}</span>
-              {' · '}created {elapsed(task.created_at)} ago
-            </div>
-            {loadingEvents && <div className="text-xs text-slate-500">Loading events…</div>}
-            {events && events.length > 0 && (
-              <div className="mt-1 space-y-0.5">
-                {events.map(ev => (
-                  <div key={ev.id} className="text-xs text-slate-500 font-mono">
-                    {ev.timestamp.slice(0, 19).replace('T', ' ')}
-                    {' · '}
-                    <span className={STATUS_COLOR[ev.from_status ?? ''] ?? 'text-slate-400'}>{ev.from_status ?? '—'}</span>
-                    {' → '}
-                    <span className={STATUS_COLOR[ev.to_status] ?? 'text-slate-400'}>{ev.to_status}</span>
-                    {ev.triggered_by && <span className="text-slate-600"> (by {ev.triggered_by})</span>}
+            {fetchError && (
+              <div className="text-xs text-red-400">Failed to load details. {fetchError}</div>
+            )}
+            {!loadingDetail && !fetchError && (
+              <div className="space-y-3 text-xs">
+
+                {/* Full task instructions */}
+                {task.text && (
+                  <div>
+                    <div className="text-slate-500 uppercase tracking-widest text-xs mb-1">Instructions</div>
+                    <pre className="text-slate-200 font-mono whitespace-pre-wrap leading-relaxed border-l-2 border-slate-600 pl-3 text-xs">
+                      {task.text}
+                    </pre>
                   </div>
-                ))}
+                )}
+
+                {/* Metadata grid */}
+                <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs">
+                  <div>
+                    <span className="text-slate-500">Task ID: </span>
+                    <span className="text-slate-300 font-mono">#{task.id}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Status: </span>
+                    <StatusBadge status={task.status} />
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Room: </span>
+                    <span className="text-slate-300">#{task.room}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Assigned to: </span>
+                    <span className="text-slate-300">{task.assigned_to}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Created by: </span>
+                    <span className="text-slate-300">{task.created_by}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Created: </span>
+                    <span className="text-slate-400 font-mono">{fmtDateTime(task.created_at)}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Updated: </span>
+                    <span className="text-slate-400 font-mono">{fmtDateTime(task.updated_at)}</span>
+                  </div>
+                </div>
+
+                {/* Lifecycle events */}
+                <div>
+                  <div className="text-slate-500 uppercase tracking-widest text-xs mb-1">Lifecycle</div>
+                  {events === null && (
+                    <div className="text-slate-600 italic">No lifecycle events yet.</div>
+                  )}
+                  {events !== null && events.length === 0 && (
+                    <div className="text-slate-600 italic">No lifecycle events yet.</div>
+                  )}
+                  {events !== null && events.length > 0 && (
+                    <div className="space-y-0.5 font-mono">
+                      {events.map(ev => (
+                        <div key={ev.id} className="flex gap-3 text-xs">
+                          <span className="text-slate-600 flex-shrink-0">{fmtDateTime(ev.timestamp)}</span>
+                          <span>
+                            <span className={STATUS_COLOR[ev.from_status ?? ''] ?? 'text-slate-500'}>
+                              {ev.from_status ?? 'init'}
+                            </span>
+                            <span className="text-slate-600"> → </span>
+                            <span className={STATUS_COLOR[ev.to_status] ?? 'text-slate-400'}>
+                              {ev.to_status}
+                            </span>
+                          </span>
+                          {ev.triggered_by && (
+                            <span className="text-slate-600">by {ev.triggered_by}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
               </div>
-            )}
-            {events && events.length === 0 && (
-              <div className="text-xs text-slate-600">No events recorded.</div>
             )}
           </td>
         </tr>
