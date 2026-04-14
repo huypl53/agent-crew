@@ -15,10 +15,12 @@ function dbAgentToAgent(row: Record<string, unknown>, agentRooms: string[]): Age
     name: row.name as string,
     role: row.role as AgentRole,
     rooms: agentRooms,
-    tmux_target: row.pane as string,
+    tmux_target: (row.pane as string | null) ?? null,
     agent_type: (row.agent_type as string ?? 'unknown') as 'claude-code' | 'codex' | 'unknown',
     joined_at: row.registered_at as string,
     last_activity: row.last_activity as string | undefined,
+    persona: (row.persona as string | null) ?? undefined,
+    capabilities: (row.capabilities as string | null) ?? undefined,
   };
 }
 
@@ -70,14 +72,26 @@ export function getAllAgents(): Agent[] {
   });
 }
 
-export function addAgent(name: string, role: AgentRole, room: string, tmuxTarget: string, agentType: 'claude-code' | 'codex' | 'unknown' = 'unknown'): Agent {
+export function addAgent(
+  name: string,
+  role: AgentRole,
+  room: string,
+  tmuxTarget: string | null,
+  agentType: 'claude-code' | 'codex' | 'unknown' = 'unknown',
+  persona?: string,
+  capabilities?: string,
+): Agent {
   const db = getDb();
   const ts = now();
 
   db.run(
-    `INSERT INTO agents (name, role, pane, agent_type, registered_at) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(name) DO UPDATE SET pane = excluded.pane, agent_type = excluded.agent_type`,
-    [name, role, tmuxTarget, agentType, ts],
+    `INSERT INTO agents (name, role, pane, agent_type, registered_at, persona, capabilities) VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(name) DO UPDATE SET
+       pane = excluded.pane,
+       agent_type = excluded.agent_type,
+       persona = COALESCE(excluded.persona, agents.persona),
+       capabilities = COALESCE(excluded.capabilities, agents.capabilities)`,
+    [name, role, tmuxTarget, agentType, ts, persona ?? null, capabilities ?? null],
   );
 
   db.run(
@@ -328,6 +342,7 @@ export function markAgentStale(agentName: string): void {
 export async function validateLiveness(): Promise<string[]> {
   const dead: string[] = [];
   for (const agent of getAllAgents()) {
+    if (!agent.tmux_target) continue; // pull-only agent: no pane to check
     if (await isPaneDead(agent.tmux_target)) {
       markAgentStale(agent.name);
       dead.push(agent.name);

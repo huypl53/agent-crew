@@ -50,6 +50,10 @@ export async function deliverMessage(
     if (mode === 'push') {
       const agent = getAgent(to);
       if (agent) {
+        if (!agent.tmux_target) {
+          results.push({ message_id: msg.message_id, delivered: false, queued: true, error: 'pull-only agent: no tmux pane', task_id: taskId });
+          continue;
+        }
         // For known agent types, verify the pane is still running an agent process
         // before delivery. A plain shell means the worker restarted without refreshing
         // its registration — pasting there would inject text into the wrong terminal.
