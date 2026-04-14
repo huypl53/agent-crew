@@ -16,9 +16,13 @@
     "dev:web": "cd src/web && npx vite dev"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/bun": "latest",
     "@types/react": "^19.2.14",
-    "ink-testing-library": "^4.0.0"
+    "ink-testing-library": "^4.0.0",
+    "jsdom": "^29.0.2",
+    "vitest": "^4.1.4"
   },
   "peerDependencies": {
     "typescript": "^5"
