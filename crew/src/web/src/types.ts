@@ -5,6 +5,16 @@ export interface Room {
   created_at: string;
 }
 
+export interface TokenUsage {
+  agent_name: string;
+  session_id: string | null;
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number | null;
+  recorded_at: string;
+}
+
 export interface Agent {
   agent_id: string;
   name: string;
@@ -17,6 +27,15 @@ export interface Agent {
   persona?: string;
   capabilities?: string;
   status: 'busy' | 'idle' | 'dead' | 'unknown';
+  token_usage?: TokenUsage | null;
+  message_stats?: { sent: number; received: number };
+  task_stats?: { done: number; active: number; queued: number; error: number };
+}
+
+export interface Stats {
+  agents: { busy: number; idle: number; dead: number; total: number };
+  tasks: { done: number; active: number; queued: number; error: number; total: number };
+  cost: { total_usd: number | null; total_input_tokens: number; total_output_tokens: number };
 }
 
 export interface Message {
