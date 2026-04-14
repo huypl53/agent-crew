@@ -459,6 +459,44 @@ describe('state module', () => {
     });
   });
 
+  describe('migrations', () => {
+    test('adds context column to pre-existing tasks table (regression)', async () => {
+      // Simulate a DB created before `context` was added: build a tasks table
+      // without the column, then re-init and ensure searchTasks works.
+      const tmpPath = `/tmp/crew-migration-test-${Date.now()}.db`;
+      const { Database } = await import('bun:sqlite');
+
+      closeDb();
+      const raw = new Database(tmpPath, { create: true });
+      raw.exec(`
+        CREATE TABLE tasks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          room TEXT NOT NULL,
+          assigned_to TEXT NOT NULL,
+          created_by TEXT NOT NULL,
+          message_id INTEGER,
+          summary TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'sent',
+          note TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+      raw.close();
+
+      initDb(tmpPath);
+      // Should not throw — the migration must have added `context`
+      const results = searchTasks({ status: 'queued' });
+      expect(Array.isArray(results)).toBe(true);
+
+      closeDb();
+      const { unlinkSync } = await import('fs');
+      try { unlinkSync(tmpPath); } catch {}
+      try { unlinkSync(tmpPath + '-wal'); } catch {}
+      try { unlinkSync(tmpPath + '-shm'); } catch {}
+    });
+  });
+
   describe('task events', () => {
     beforeEach(() => {
       clearState();
