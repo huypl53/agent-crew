@@ -32,6 +32,30 @@ export interface Message {
   reply_to?: number | null;
 }
 
+export type TaskStatus = 'sent' | 'queued' | 'active' | 'completed' | 'error' | 'cancelled' | 'interrupted';
+
+export interface Task {
+  id: number;
+  room: string;
+  assigned_to: string;
+  created_by: string;
+  summary: string;
+  status: TaskStatus;
+  created_at: string;
+  updated_at: string;
+  text?: string;
+  note?: string;
+}
+
+export interface TaskEvent {
+  id: number;
+  task_id: number;
+  from_status: string | null;
+  to_status: string;
+  triggered_by: string | null;
+  timestamp: string;
+}
+
 export interface WsEvent {
   type: 'message' | 'task-update' | 'agent-status' | 'room-change';
   [key: string]: unknown;

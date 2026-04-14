@@ -5,13 +5,17 @@ import AgentInspector from './components/AgentInspector.tsx';
 import Composer from './components/Composer.tsx';
 import RoomModal from './components/RoomModal.tsx';
 import AgentEditModal from './components/AgentEditModal.tsx';
+import NavBar from './components/NavBar.tsx';
+import TaskBoard from './components/TaskBoard.tsx';
 import { useWebSocket } from './hooks/useWebSocket.ts';
 import { useMessages } from './hooks/useMessages.ts';
 import type { Agent, Message, Room } from './types.ts';
+import type { View } from './components/NavBar.tsx';
 
 type RoomModalState = { mode: 'create' } | { mode: 'delete-confirm'; room: Room };
 
 export default function App() {
+  const [currentView, setCurrentView] = useState<View>('dashboard');
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
   const { subscribe } = useWebSocket();
   const { messages, loading, error } = useMessages(selectedRoom, subscribe);
@@ -21,29 +25,50 @@ export default function App() {
   const [agentEditTarget, setAgentEditTarget] = useState<Agent | null>(null);
 
   return (
-    <div className="h-screen flex bg-slate-900 text-slate-100 overflow-hidden">
-      <RoomsSidebar
-        selectedRoom={selectedRoom}
-        onSelect={setSelectedRoom}
-        onCreateRoom={() => setRoomModal({ mode: 'create' })}
-        onDeleteRoom={room => setRoomModal({ mode: 'delete-confirm', room })}
-      />
-      <main className="flex-1 flex flex-col min-w-0">
-        <header className="px-4 py-2 border-b border-slate-700 text-sm text-slate-400 flex-shrink-0">
-          {selectedRoom ? <span className="text-slate-200 font-medium">#{selectedRoom}</span> : 'Crew Dashboard'}
-        </header>
-        <MessageFeed
-          messages={messages}
-          loading={loading}
-          error={error}
-          room={selectedRoom}
-          onReplySelect={setReplyTarget}
-        />
-        <div className="border-t border-slate-700 flex-shrink-0">
-          <Composer room={selectedRoom} replyTarget={replyTarget} onClearReply={() => setReplyTarget(null)} />
+    <div className="h-screen flex flex-col bg-slate-900 text-slate-100 overflow-hidden">
+      <NavBar currentView={currentView} onViewChange={setCurrentView} />
+
+      {currentView === 'dashboard' && (
+        <div className="flex-1 flex overflow-hidden">
+          <RoomsSidebar
+            selectedRoom={selectedRoom}
+            onSelect={setSelectedRoom}
+            onCreateRoom={() => setRoomModal({ mode: 'create' })}
+            onDeleteRoom={room => setRoomModal({ mode: 'delete-confirm', room })}
+          />
+          <main className="flex-1 flex flex-col min-w-0">
+            <header className="px-4 py-2 border-b border-slate-700 text-sm text-slate-400 flex-shrink-0">
+              {selectedRoom ? <span className="text-slate-200 font-medium">#{selectedRoom}</span> : 'Crew Dashboard'}
+            </header>
+            <MessageFeed
+              messages={messages}
+              loading={loading}
+              error={error}
+              room={selectedRoom}
+              onReplySelect={setReplyTarget}
+            />
+            <div className="border-t border-slate-700 flex-shrink-0">
+              <Composer room={selectedRoom} replyTarget={replyTarget} onClearReply={() => setReplyTarget(null)} />
+            </div>
+          </main>
+          <AgentInspector room={selectedRoom} onEditAgent={setAgentEditTarget} />
         </div>
-      </main>
-      <AgentInspector room={selectedRoom} onEditAgent={setAgentEditTarget} />
+      )}
+
+      {currentView === 'tasks' && (
+        <div className="flex-1 flex overflow-hidden">
+          <TaskBoard />
+        </div>
+      )}
+
+      {currentView === 'timeline' && (
+        <div className="flex-1 flex items-center justify-center text-slate-500">
+          <div className="text-center">
+            <div className="text-lg font-medium text-slate-400">Timeline</div>
+            <div className="text-sm mt-1">Coming soon — Gantt-style task lifecycle view</div>
+          </div>
+        </div>
+      )}
 
       {roomModal && (
         <RoomModal
