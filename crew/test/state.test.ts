@@ -400,6 +400,16 @@ describe('state module', () => {
       expect(getTotalCost()).toBeCloseTo(3.50);
     });
 
+    test('recordTokenUsage upserts — second call for same agent updates row, not inserts', () => {
+      recordTokenUsage({ agent_name: 'wk-01', session_id: 's1', model: 'o3', input_tokens: 100, output_tokens: 50, cost_usd: 0.01, source: 'statusline' });
+      recordTokenUsage({ agent_name: 'wk-01', session_id: 's2', model: 'gpt-4.1', input_tokens: 200, output_tokens: 100, cost_usd: 0.02, source: 'statusline' });
+      const rows = getTokenUsageForAgent('wk-01');
+      expect(rows.length).toBe(1);
+      expect(rows[0]!.input_tokens).toBe(200);
+      expect(rows[0]!.cost_usd).toBe(0.02);
+      expect(rows[0]!.model).toBe('gpt-4.1');
+    });
+
     test('getPricing returns default entries', () => {
       const pricing = getPricing();
       expect(pricing.length).toBeGreaterThan(0);
