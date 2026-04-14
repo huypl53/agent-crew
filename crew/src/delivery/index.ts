@@ -20,6 +20,7 @@ export async function deliverMessage(
   targetName: string | null,
   mode: 'push' | 'pull',
   kind: MessageKind = 'chat',
+  replyTo?: number | null,
 ): Promise<DeliveryResult[]> {
   const header = `[${senderName}@${room}]:`;
   const fullText = `${header} ${text}`;
@@ -39,7 +40,7 @@ export async function deliverMessage(
   for (const to of targets) {
     // Always queue first (NFR6)
     // For broadcast (targetName=null), store each recipient's copy with their name
-    const msg = addMessage(to, senderName, room, text, mode, targetName ?? to, kind);
+    const msg = addMessage(to, senderName, room, text, mode, targetName ?? to, kind, replyTo);
 
     let taskId: number | undefined;
     if (kind === 'task') {
