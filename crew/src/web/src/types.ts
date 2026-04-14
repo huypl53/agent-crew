@@ -85,10 +85,14 @@ export type TraceNodeStatus = 'queued' | 'active' | 'done' | 'error' | 'idle' | 
 export interface TraceNode {
   id: string;                    // unique, e.g. 'room:crew', 'agent:wk-01', 'task:42', 'msg:abc'
   kind: TraceNodeKind;
+  iconKey: string;               // maps to kind: 'root' | 'room' | 'agent' | 'task' | 'message'
   label: string;
   status: TraceNodeStatus;
   timestamp: number | null;      // unix seconds of node's primary time
   durationMs: number | null;     // null if unknown
+  tokensIn: number | null;       // aggregated input tokens (null if unknown)
+  tokensOut: number | null;      // aggregated output tokens (null if unknown)
+  cost: number | null;           // aggregated cost in USD (null if unknown)
   children: TraceNode[];
   meta: Record<string, unknown>; // raw backing row (Room / AgentInfo / Task / Message)
 }

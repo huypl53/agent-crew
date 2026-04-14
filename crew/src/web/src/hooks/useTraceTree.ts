@@ -83,10 +83,14 @@ function buildTree(payload: TracePayload): TraceNode {
     return {
       id: `msg:${msg.message_id}`,
       kind: 'message',
+      iconKey: 'message',
       label: `${msg.from}→${msg.to ?? '*'}: ${msg.text.slice(0, 60)}`,
       status: null,
       timestamp: parseTs(msg.timestamp),
       durationMs: null,
+      tokensIn: null,
+      tokensOut: null,
+      cost: null,
       children: [],
       meta: msg as unknown as Record<string, unknown>,
     };
@@ -97,13 +101,21 @@ function buildTree(payload: TracePayload): TraceNode {
     const updatedMs = Date.parse(task.updated_at);
     const durationMs = !isNaN(createdMs) && !isNaN(updatedMs) ? updatedMs - createdMs : null;
     const msgs = (msgsByTask.get(task.id) ?? []).map(makeMessageNode);
+    // Aggregate tokens from children (messages) - currently all null but structured for future
+    const tokensIn = msgs.reduce((sum, m) => sum + (m.tokensIn ?? 0), 0) || null;
+    const tokensOut = msgs.reduce((sum, m) => sum + (m.tokensOut ?? 0), 0) || null;
+    const cost = msgs.reduce((sum, m) => sum + (m.cost ?? 0), 0) || null;
     return {
       id: `task:${task.id}`,
       kind: 'task',
+      iconKey: 'task',
       label: `#${task.id} ${task.summary}`,
       status: toTaskStatus(task.status),
       timestamp: !isNaN(createdMs) ? Math.floor(createdMs / 1000) : null,
       durationMs,
+      tokensIn,
+      tokensOut,
+      cost,
       children: msgs,
       meta: task as unknown as Record<string, unknown>,
     };
@@ -117,39 +129,69 @@ function buildTree(payload: TracePayload): TraceNode {
     const unassigned = (msgsByAgent.get(agent.name) ?? [])
       .filter(m => m.room === roomName)
       .map(makeMessageNode);
+    const allChildren = [...agentTasks, ...unassigned];
+    // Aggregate tokens: start with agent.token_usage if available, then add children sums
+    const agentTokensIn = agent.token_usage?.input_tokens ?? null;
+    const agentTokensOut = agent.token_usage?.output_tokens ?? null;
+    const agentCost = agent.token_usage?.cost_usd ?? null;
+    const childrenTokensIn = allChildren.reduce((sum, c) => sum + (c.tokensIn ?? 0), 0) || null;
+    const childrenTokensOut = allChildren.reduce((sum, c) => sum + (c.tokensOut ?? 0), 0) || null;
+    const childrenCost = allChildren.reduce((sum, c) => sum + (c.cost ?? 0), 0) || null;
+    const tokensIn = agentTokensIn != null ? agentTokensIn + (childrenTokensIn ?? 0) : childrenTokensIn;
+    const tokensOut = agentTokensOut != null ? agentTokensOut + (childrenTokensOut ?? 0) : childrenTokensOut;
+    const cost = agentCost != null ? agentCost + (childrenCost ?? 0) : childrenCost;
     return {
       id: `agent:${roomName}:${agent.name}`,
       kind: 'agent',
+      iconKey: 'agent',
       label: agent.name,
       status: toAgentStatus(agent.status),
       timestamp: null,
       durationMs: null,
-      children: [...agentTasks, ...unassigned],
+      tokensIn,
+      tokensOut,
+      cost,
+      children: allChildren,
       meta: agent as unknown as Record<string, unknown>,
     };
   }
 
   const roomNodes: TraceNode[] = rooms.map(room => {
     const roomAgents = agents.filter(a => a.rooms.includes(room.name));
+    const agentNodes = roomAgents.map(a => makeAgentNode(a, room.name));
+    const tokensIn = agentNodes.reduce((sum, a) => sum + (a.tokensIn ?? 0), 0) || null;
+    const tokensOut = agentNodes.reduce((sum, a) => sum + (a.tokensOut ?? 0), 0) || null;
+    const cost = agentNodes.reduce((sum, a) => sum + (a.cost ?? 0), 0) || null;
     return {
       id: `room:${room.name}`,
       kind: 'room',
+      iconKey: 'room',
       label: `#${room.name}`,
       status: null,
       timestamp: parseTs(room.created_at),
       durationMs: null,
-      children: roomAgents.map(a => makeAgentNode(a, room.name)),
+      tokensIn,
+      tokensOut,
+      cost,
+      children: agentNodes,
       meta: room as unknown as Record<string, unknown>,
     };
   });
 
+  const tokensIn = roomNodes.reduce((sum, r) => sum + (r.tokensIn ?? 0), 0) || null;
+  const tokensOut = roomNodes.reduce((sum, r) => sum + (r.tokensOut ?? 0), 0) || null;
+  const cost = roomNodes.reduce((sum, r) => sum + (r.cost ?? 0), 0) || null;
   return {
     id: 'root',
     kind: 'root',
+    iconKey: 'root',
     label: 'Crew',
     status: null,
     timestamp: null,
     durationMs: null,
+    tokensIn,
+    tokensOut,
+    cost,
     children: roomNodes,
     meta: {},
   };
