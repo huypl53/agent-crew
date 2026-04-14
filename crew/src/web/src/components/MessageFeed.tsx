@@ -21,9 +21,10 @@ interface Props {
   loading: boolean;
   error: string | null;
   room: string | null;
+  onReplySelect?: (msg: Message) => void;
 }
 
-export default function MessageFeed({ messages, loading, error, room }: Props) {
+export default function MessageFeed({ messages, loading, error, room, onReplySelect }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -67,7 +68,7 @@ export default function MessageFeed({ messages, loading, error, room }: Props) {
     const id = nodeId ?? msg.message_id;
 
     return (
-      <div key={id} className="flex gap-2 px-3 py-0.5 hover:bg-slate-800/50 group text-sm font-mono">
+      <div key={id} className="flex gap-2 px-3 py-0.5 hover:bg-slate-800/50 group text-sm font-mono cursor-pointer" onClick={() => onReplySelect?.(msg)}>
         {prefix != null && (
           <span className="text-slate-600 select-none whitespace-pre">{prefix}</span>
         )}
