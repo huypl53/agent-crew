@@ -1,7 +1,7 @@
 import {
   getAllRooms, getRoom, getRoomMembers, getRoomMessages,
   getAllAgents, getAgent, getAgentDbStatus,
-  getTaskEvents,
+  searchTasks, getTaskEvents,
   getChangeVersions,
   getLatestTokenUsage,
   getAgentMessageCounts,
