@@ -6,7 +6,7 @@ import { existsSync } from 'fs';
 
 const STATE_DIR = process.env.CREW_STATE_DIR ?? '/tmp/crew/state';
 const DB_PATH = `${STATE_DIR}/crew.db`;
-const POLL_INTERVAL = 500;
+const POLL_INTERVAL = 1500;
 
 export interface DashboardState {
   agents: Record<string, Agent>;
@@ -59,7 +59,7 @@ function readAll(): DashboardState | null {
     let messageRows: { id: number; sender: string; room: string; recipient: string | null; text: string; kind: Message['kind']; mode: Message['mode']; timestamp: string }[] = [];
     try {
       messageRows = db.query<typeof messageRows[0], []>(
-        'SELECT id, sender, room, recipient, text, kind, mode, timestamp FROM messages ORDER BY id ASC'
+        'SELECT id, sender, room, recipient, text, kind, mode, timestamp FROM (SELECT * FROM messages ORDER BY id DESC LIMIT 2000) ORDER BY id ASC'
       ).all();
     } catch {
       // messages table may not exist yet
@@ -120,14 +120,22 @@ function readAll(): DashboardState | null {
 
     let tokenUsage: TokenUsage[] = [];
     try {
-      tokenUsage = db.prepare('SELECT * FROM token_usage ORDER BY recorded_at DESC').all() as TokenUsage[];
+      tokenUsage = db.prepare(`
+        SELECT t.* FROM token_usage t
+        INNER JOIN (
+          SELECT agent_name, MAX(recorded_at) AS max_recorded
+          FROM token_usage
+          GROUP BY agent_name
+        ) latest
+        ON t.agent_name = latest.agent_name AND t.recorded_at = latest.max_recorded
+      `).all() as TokenUsage[];
     } catch {
       // token_usage table may not exist in older DBs
     }
 
     let taskEvents: TaskEvent[] = [];
     try {
-      taskEvents = db.prepare('SELECT * FROM task_events ORDER BY timestamp ASC').all() as TaskEvent[];
+      taskEvents = db.prepare('SELECT * FROM (SELECT * FROM task_events ORDER BY id DESC LIMIT 2000) ORDER BY timestamp ASC').all() as TaskEvent[];
     } catch {
       // task_events table may not exist in older DBs
     }
@@ -144,8 +152,11 @@ function readAll(): DashboardState | null {
 export function useStateReader() {
   const [state, setState] = useState<DashboardState>(EMPTY_STATE);
   const [isAvailable, setIsAvailable] = useState(false);
+  const isAvailableRef = useRef(false);
   const lastDataVersion = useRef(0);
   const lastHash = useRef('');
+
+  const setAvail = (v: boolean) => { isAvailableRef.current = v; setIsAvailable(v); };
 
   useEffect(() => {
     const initial = readAll();
@@ -153,20 +164,20 @@ export function useStateReader() {
       const hash = quickHash(initial);
       lastHash.current = hash;
       setState(initial);
-      setIsAvailable(true);
+      setAvail(true);
     }
 
     const timer = setInterval(() => {
       let db: Database | null = null;
       try {
         if (!existsSync(DB_PATH)) {
-          if (isAvailable) { setState(EMPTY_STATE); setIsAvailable(false); lastDataVersion.current = 0; lastHash.current = ''; }
+          if (isAvailableRef.current) { setState(EMPTY_STATE); setAvail(false); lastDataVersion.current = 0; lastHash.current = ''; }
           return;
         }
         db = new Database(DB_PATH, { readonly: true });
         const row = db.query<{ data_version: number }, []>('PRAGMA data_version').get();
         const version = row?.data_version ?? 0;
-        if (version !== lastDataVersion.current || !isAvailable) {
+        if (version !== lastDataVersion.current || !isAvailableRef.current) {
           lastDataVersion.current = version;
           db.close(false);
           db = null;
@@ -177,13 +188,13 @@ export function useStateReader() {
               lastHash.current = hash;
               setState(next);
             }
-            setIsAvailable(true);
+            setAvail(true);
           }
-          else { setState(EMPTY_STATE); setIsAvailable(false); lastHash.current = ''; }
+          else { setState(EMPTY_STATE); setAvail(false); lastHash.current = ''; }
         }
       } catch (e) {
         logError('state-reader.poll', e);
-        setState(EMPTY_STATE); setIsAvailable(false); lastDataVersion.current = 0; lastHash.current = '';
+        setState(EMPTY_STATE); setAvail(false); lastDataVersion.current = 0; lastHash.current = '';
       } finally {
         db?.close(false);
       }
