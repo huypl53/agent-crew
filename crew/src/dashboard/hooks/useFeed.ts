@@ -13,6 +13,7 @@ export interface FormattedMessage {
   text: string;
   kind: string;
   roomColor: typeof ROOM_COLORS[number];
+  reply_to?: number | null;
 }
 
 export function useFeed() {
@@ -39,7 +40,7 @@ export function useFeed() {
       newItems.push({
         id: msg.message_id, timestamp: ts, sender: msg.from, room: msg.room,
         target: msg.to ?? 'ALL', text: msg.text, kind: msg.kind ?? 'chat',
-        roomColor: getRoomColor(msg.room),
+        roomColor: getRoomColor(msg.room), reply_to: msg.reply_to,
       });
     }
     if (newItems.length > 0) {

@@ -20,6 +20,7 @@ export async function deliverMessage(
   targetName: string | null,
   mode: 'push' | 'pull',
   kind: MessageKind = 'chat',
+  replyTo?: number | null,
 ): Promise<DeliveryResult[]> {
   const header = `[${senderName}@${room}]:`;
   const fullText = `${header} ${text}`;
@@ -39,7 +40,7 @@ export async function deliverMessage(
   for (const to of targets) {
     // Always queue first (NFR6)
     // For broadcast (targetName=null), store each recipient's copy with their name
-    const msg = addMessage(to, senderName, room, text, mode, targetName ?? to, kind);
+    const msg = addMessage(to, senderName, room, text, mode, targetName ?? to, kind, replyTo);
 
     let taskId: number | undefined;
     if (kind === 'task') {
@@ -50,6 +51,10 @@ export async function deliverMessage(
     if (mode === 'push') {
       const agent = getAgent(to);
       if (agent) {
+        if (!agent.tmux_target) {
+          results.push({ message_id: msg.message_id, delivered: false, queued: true, error: 'pull-only agent: no tmux pane', task_id: taskId });
+          continue;
+        }
         // For known agent types, verify the pane is still running an agent process
         // before delivery. A plain shell means the worker restarted without refreshing
         // its registration — pasting there would inject text into the wrong terminal.

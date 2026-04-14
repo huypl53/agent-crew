@@ -4,7 +4,7 @@ export interface ParsedArgs {
   flags: Record<string, string | boolean>;
 }
 
-const BOOLEAN_FLAGS = new Set(['json', 'help', 'version']);
+const BOOLEAN_FLAGS = new Set(['json', 'help', 'version', 'confirm']);
 
 export function parseArgs(argv: string[]): ParsedArgs {
   if (argv.length === 0) return { command: 'help', positional: [], flags: {} };
