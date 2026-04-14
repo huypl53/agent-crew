@@ -43,7 +43,7 @@ export function startServer(opts: ServeOptions = {}): ReturnType<typeof Bun.serv
 
       // Static: Phase B will write its Vite build to crew/dist/web/
       // For now serve a placeholder. When dist/web/index.html exists, serve it.
-      const distPath = new URL('../../../dist/web/index.html', import.meta.url).pathname;
+      const distPath = new URL('../../dist/web/index.html', import.meta.url).pathname;
       const distFile = Bun.file(distPath);
       return distFile.exists().then(exists => {
         if (exists) return new Response(distFile);
