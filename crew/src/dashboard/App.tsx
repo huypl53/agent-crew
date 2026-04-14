@@ -15,6 +15,9 @@ import { TaskBoard } from './components/TaskBoard.tsx';
 import { TimelineView } from './components/TimelineView.tsx';
 import { hasErrors, logError } from './logger.ts';
 import { revokeAgent, interruptAgent, clearAgentSession } from './actions/agent-actions.ts';
+import { RoomOverlay, type RoomActionMode } from './components/RoomOverlay.tsx';
+import { AgentOverlay, type AgentActionMode, parseCapabilities, capabilitiesToInput } from './components/AgentOverlay.tsx';
+import { dbSetTopic, dbCreateRoom, dbDeleteRoom, dbUpdateAgentPersona, dbUpdateAgentCapabilities, dbRemoveAgentFromRoom, dbDeleteAgent } from '../state/db-write.ts';
 import type { MessageKind, TokenUsage, TaskEvent } from '../shared/types.ts';
 
 const POLL_INTERVAL = 2000;
@@ -53,6 +56,18 @@ export function App() {
   const [confirmAction, setConfirmAction] = useState<{ label: string; execute: () => Promise<void> } | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
+  // Room management overlay state
+  const [roomAction, setRoomAction] = useState<RoomActionMode | null>(null);
+  const [roomInput, setRoomInput] = useState('');
+  const [createStep, setCreateStep] = useState<'name' | 'topic'>('name');
+  const [createName, setCreateName] = useState('');
+  const [createError, setCreateError] = useState('');
+
+  // Agent management overlay state
+  const [agentAction, setAgentAction] = useState<AgentActionMode | null>(null);
+  const [agentInput, setAgentInput] = useState('');
+  const [agentError, setAgentError] = useState('');
+
   // Update feed when state changes
   useEffect(() => { updateFeed(state.messages); }, [state.messages]);
 
@@ -85,8 +100,87 @@ export function App() {
   );
   const isSyncing = tree.selectedAgentName !== null && agent === null;
 
+  const closeRoomOverlay = () => { setRoomAction(null); setRoomInput(''); setCreateName(''); setCreateError(''); setCreateStep('name'); };
+  const closeAgentOverlay = () => { setAgentAction(null); setAgentInput(''); setAgentError(''); };
+  const selectedRoomForOverlay = tree.selectedNode?.type === 'room' ? (state.rooms[tree.selectedNode.label] ?? null) : null;
+
   useInput((input, key) => {
     if (input === 'q' || (key.ctrl && input === 'c')) { exit(); return; }
+
+    // Agent overlay intercepts all input
+    if (agentAction) {
+      if (key.escape) { closeAgentOverlay(); return; }
+      if (agentAction === 'menu') {
+        if (input === 'p' || input === 'P') { setAgentInput(agent?.persona?.replace(/\n/g, ' ') ?? ''); setAgentAction('edit-persona'); return; }
+        if (input === 'c' || input === 'C') { setAgentInput(capabilitiesToInput(agent?.capabilities)); setAgentAction('edit-capabilities'); return; }
+        if (input === 'r' || input === 'R') { setAgentInput(''); setAgentError(''); setAgentAction('confirm-remove'); return; }
+        if (input === 'd' || input === 'D') { setAgentInput(''); setAgentError(''); setAgentAction('confirm-delete'); return; }
+        return;
+      }
+      if (agentAction === 'confirm-remove') {
+        if (input === 'y' || input === 'Y') {
+          const room = tree.selectedRoomName ?? '';
+          const result = dbRemoveAgentFromRoom(agent?.name ?? '', room);
+          if (result.error) { setAgentError(result.error); return; }
+          closeAgentOverlay();
+        }
+        return;
+      }
+      if (key.backspace || key.delete) { setAgentInput(q => q.slice(0, -1)); return; }
+      if (input && !key.ctrl && !key.meta && !key.return) { setAgentInput(q => q + input); return; }
+      if (key.return) {
+        if (agentAction === 'edit-persona' && agent) {
+          const result = dbUpdateAgentPersona(agent.name, agentInput);
+          if (result.error) { setAgentError(result.error); return; }
+          closeAgentOverlay(); return;
+        }
+        if (agentAction === 'edit-capabilities' && agent) {
+          const result = dbUpdateAgentCapabilities(agent.name, parseCapabilities(agentInput));
+          if (result.error) { setAgentError(result.error); return; }
+          closeAgentOverlay(); return;
+        }
+        if (agentAction === 'confirm-delete' && agent && agentInput === agent.name) {
+          const result = dbDeleteAgent(agent.name);
+          if (result.error) { setAgentError(result.error); return; }
+          closeAgentOverlay(); return;
+        }
+      }
+      return;
+    }
+
+    // Room overlay intercepts all input
+    if (roomAction) {
+      if (key.escape) { closeRoomOverlay(); return; }
+      if (roomAction === 'menu') {
+        if (input === 's' || input === 'S') { setRoomAction('set-topic'); setRoomInput(''); return; }
+        if (input === 'd' || input === 'D') { setRoomAction('confirm-delete'); setRoomInput(''); return; }
+        return;
+      }
+      if (key.backspace || key.delete) { setRoomInput(q => q.slice(0, -1)); return; }
+      if (input && !key.ctrl && !key.meta && !key.return) { setRoomInput(q => q + input); return; }
+      if (key.return) {
+        if (roomAction === 'set-topic' && selectedRoomForOverlay) {
+          dbSetTopic(selectedRoomForOverlay.name, roomInput);
+          closeRoomOverlay(); return;
+        }
+        if (roomAction === 'create') {
+          if (createStep === 'name') {
+            const trimmed = roomInput.trim();
+            if (!trimmed) { setCreateError('Name required'); return; }
+            if (!/^[a-zA-Z0-9_-]{1,32}$/.test(trimmed)) { setCreateError('Letters, digits, - or _ only (max 32)'); return; }
+            setCreateName(trimmed); setCreateStep('topic'); setRoomInput(''); setCreateError(''); return;
+          }
+          const result = dbCreateRoom(createName, roomInput.trim() || undefined);
+          if (result.error) { setCreateError(result.error); setCreateStep('name'); setRoomInput(createName); return; }
+          closeRoomOverlay(); return;
+        }
+        if (roomAction === 'confirm-delete' && selectedRoomForOverlay && roomInput === selectedRoomForOverlay.name) {
+          dbDeleteRoom(selectedRoomForOverlay.name);
+          closeRoomOverlay(); return;
+        }
+      }
+      return;
+    }
 
     // Confirmation modal intercepts all other input
     if (confirmAction) {
@@ -120,6 +214,13 @@ export function App() {
       if (input === 'g') { tree.moveToTop(); return; }
       if (input === 'G') { tree.moveToBottom(); return; }
       if (key.return) { tree.toggleCollapse(); return; }
+
+      // Room/agent overlay shortcuts
+      const isRoomSelected = tree.selectedNode?.type === 'room';
+      const isAgentSelected = tree.selectedNode?.type === 'agent';
+      if (input === 'r' && isRoomSelected) { setRoomAction('menu'); return; }
+      if (input === 'a' && isAgentSelected) { setAgentAction('menu'); return; }
+      if (input === 'n') { setRoomAction('create'); setCreateStep('name'); setRoomInput(''); setCreateName(''); setCreateError(''); return; }
 
       // Agent control hotkeys
       const selectedNode = tree.nodes[tree.selectedIndex];
@@ -166,7 +267,30 @@ export function App() {
           <TreePanel nodes={tree.nodes} selectedIndex={tree.selectedIndex} height={layout.panelRows} width={layout.treeW} statuses={statuses} messages={state.messages} tasks={state.tasks} tokenUsage={state.tokenUsage} />
           <Box flexDirection="column" flexGrow={1}>
             <MessageFeedPanel messages={messages} roomFilter={tree.selectedRoomName} height={layout.topH} enabledKinds={enabledKinds} />
-            {showHelp ? (
+            {agentAction ? (
+              <AgentOverlay
+                mode={agentAction}
+                agent={agent}
+                selectedRoomName={tree.selectedRoomName}
+                statuses={statuses}
+                inputValue={agentInput}
+                overlayError={agentError}
+                height={layout.bottomH}
+              />
+            ) : roomAction ? (
+              <RoomOverlay
+                mode={roomAction}
+                selectedRoom={selectedRoomForOverlay}
+                rooms={state.rooms}
+                messages={state.messages}
+                statuses={statuses}
+                inputValue={roomInput}
+                createStep={createStep}
+                createName={createName}
+                createError={createError}
+                height={layout.bottomH}
+              />
+            ) : showHelp ? (
               <Box flexDirection="column" borderStyle="single" height={layout.bottomH} justifyContent="center" alignItems="center">
                 <HelpOverlay />
               </Box>
