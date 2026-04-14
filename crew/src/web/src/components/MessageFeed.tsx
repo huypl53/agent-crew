@@ -18,33 +18,51 @@ function fmtTime(ts: string): string {
 
 interface Props {
   messages: Message[];
+  enabledKinds: Set<string>;
   loading: boolean;
   error: string | null;
   room: string | null;
   onReplySelect?: (msg: Message) => void;
 }
 
-export default function MessageFeed({ messages, loading, error, room, onReplySelect }: Props) {
+export default function MessageFeed({ messages, enabledKinds, loading, error, room, onReplySelect }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Thread-collapse state: nodeIds whose children are hidden (existing threading feature)
+  const [threadCollapsed, setThreadCollapsed] = useState<Set<string>>(new Set());
+  // Row-expand state: message_ids whose full text is shown (nothing expanded by default)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
-  // Reset collapsed when room changes
-  useEffect(() => { setCollapsed(new Set()); }, [room]);
+  // Reset both states when room changes
+  useEffect(() => {
+    setThreadCollapsed(new Set());
+    setExpandedIds(new Set());
+  }, [room]);
 
-  const threaded = hasThreading(messages);
-
-  const toggleCollapse = (nodeId: string) => {
-    setCollapsed(prev => {
+  const toggleThread = (nodeId: string) => {
+    setThreadCollapsed(prev => {
       const next = new Set(prev);
       next.has(nodeId) ? next.delete(nodeId) : next.add(nodeId);
       return next;
     });
   };
+
+  const toggleExpand = (messageId: string) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      next.has(messageId) ? next.delete(messageId) : next.add(messageId);
+      return next;
+    });
+  };
+
+  // Apply kind filter before tree building; unknown kinds fall through as 'chat'
+  const filtered = messages.filter(m =>
+    enabledKinds.has(m.kind) || (!KIND_BADGES[m.kind] && enabledKinds.has('chat')),
+  );
 
   if (!room) {
     return (
@@ -62,40 +80,74 @@ export default function MessageFeed({ messages, loading, error, room, onReplySel
     return <div className="flex-1 flex items-center justify-center text-red-400 text-sm">{error}</div>;
   }
 
-  const renderMessage = (msg: Message, prefix?: string, nodeId?: string, hasChildren?: boolean, isCollapsed?: boolean, hiddenCount?: number) => {
+  const renderMessage = (
+    msg: Message,
+    prefix?: string,
+    nodeId?: string,
+    hasChildren?: boolean,
+    isThreadCollapsed?: boolean,
+    hiddenCount?: number,
+  ) => {
     const badge = KIND_BADGES[msg.kind];
     const badgeColor = KIND_COLORS[msg.kind] ?? 'text-slate-400';
     const id = nodeId ?? msg.message_id;
+    const isExpanded = expandedIds.has(msg.message_id);
+    const snippet = msg.text.length > 120 ? msg.text.slice(0, 120) + '…' : msg.text;
 
     return (
-      <div key={id} className="flex gap-2 px-3 py-0.5 hover:bg-slate-800/50 group text-sm font-mono cursor-pointer" onClick={() => onReplySelect?.(msg)}>
-        {prefix != null && (
-          <span className="text-slate-600 select-none whitespace-pre">{prefix}</span>
-        )}
-        {hasChildren && (
-          <button
-            onClick={() => toggleCollapse(id)}
-            className="text-slate-500 hover:text-slate-300 text-xs w-4 flex-shrink-0"
-            title={isCollapsed ? 'Expand' : 'Collapse'}
-          >
-            {isCollapsed ? '▶' : '▼'}
-          </button>
-        )}
-        {!hasChildren && prefix != null && <span className="w-4 flex-shrink-0" />}
-        <span className="text-slate-500 text-xs">{fmtTime(msg.timestamp)}</span>
-        {badge && <span className={`text-xs ${badgeColor}`}>[{badge}]</span>}
-        <span className="text-slate-400">[{msg.from}→{msg.to ?? 'ALL'}]</span>
-        <span className="text-slate-200 break-all">{msg.text}</span>
-        {isCollapsed && hiddenCount != null && hiddenCount > 0 && (
-          <span className="text-slate-500 text-xs">(+{hiddenCount})</span>
+      <div key={id} className="font-mono text-sm">
+        {/* Collapsed row — click to expand/collapse text */}
+        <div
+          className="group flex gap-2 px-3 py-0.5 hover:bg-slate-800/50 cursor-pointer items-baseline"
+          onClick={() => toggleExpand(msg.message_id)}
+        >
+          {prefix != null && (
+            <span className="text-slate-600 select-none whitespace-pre flex-shrink-0">{prefix}</span>
+          )}
+          {hasChildren && (
+            <button
+              onClick={e => { e.stopPropagation(); toggleThread(id); }}
+              className="text-slate-500 hover:text-slate-300 text-xs w-4 flex-shrink-0"
+              title={isThreadCollapsed ? 'Expand thread' : 'Collapse thread'}
+            >
+              {isThreadCollapsed ? '▶' : '▼'}
+            </button>
+          )}
+          {!hasChildren && prefix != null && <span className="w-4 flex-shrink-0" />}
+          <span className="text-slate-500 text-xs flex-shrink-0">{fmtTime(msg.timestamp)}</span>
+          {badge && <span className={`text-xs flex-shrink-0 ${badgeColor}`}>[{badge}]</span>}
+          <span className="text-slate-400 flex-shrink-0">[{msg.from}→{msg.to ?? 'ALL'}]</span>
+          <span className={`truncate ${isExpanded ? 'text-slate-400' : 'text-slate-200'}`}>{snippet}</span>
+          {isThreadCollapsed && hiddenCount != null && hiddenCount > 0 && (
+            <span className="text-slate-500 text-xs flex-shrink-0">(+{hiddenCount})</span>
+          )}
+          {/* Reply button — stopPropagation so it doesn't toggle expand */}
+          {onReplySelect && (
+            <button
+              onClick={e => { e.stopPropagation(); onReplySelect(msg); }}
+              className="ml-auto flex-shrink-0 text-slate-600 hover:text-slate-400 text-xs opacity-0 group-hover:opacity-100"
+              title="Reply to this message"
+            >
+              ↩
+            </button>
+          )}
+        </div>
+
+        {/* Expanded full text */}
+        {isExpanded && (
+          <div className="px-3 pb-1 pl-8 text-slate-300 whitespace-pre-wrap text-xs leading-relaxed border-l-2 border-slate-700 ml-3">
+            {msg.text}
+          </div>
         )}
       </div>
     );
   };
 
+  const threaded = hasThreading(filtered);
+
   if (threaded) {
-    const tree = buildMessageTree(messages);
-    const rows = flattenTree(tree, collapsed);
+    const tree = buildMessageTree(filtered);
+    const rows = flattenTree(tree, threadCollapsed);
     return (
       <div className="flex-1 overflow-y-auto flex flex-col">
         <div className="flex-1" />
@@ -108,7 +160,7 @@ export default function MessageFeed({ messages, loading, error, room, onReplySel
   return (
     <div className="flex-1 overflow-y-auto flex flex-col">
       <div className="flex-1" />
-      {messages.map(msg => renderMessage(msg))}
+      {filtered.map(msg => renderMessage(msg))}
       <div ref={bottomRef} />
     </div>
   );
