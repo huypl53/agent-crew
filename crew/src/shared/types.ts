@@ -19,7 +19,7 @@ export interface Room {
   created_at: string;
 }
 
-export type MessageKind = 'task' | 'completion' | 'question' | 'error' | 'status' | 'chat';
+export type MessageKind = 'task' | 'completion' | 'question' | 'error' | 'status' | 'chat' | 'note';
 
 export interface Message {
   message_id: string;

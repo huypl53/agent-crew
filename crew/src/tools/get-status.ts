@@ -1,6 +1,6 @@
 import { ok, err } from '../shared/types.ts';
 import type { ToolResult, AgentStatus } from '../shared/types.ts';
-import { getAgent, getTasksForAgent } from '../state/index.ts';
+import { getAgent, getAgentDbStatus, getTasksForAgent } from '../state/index.ts';
 import { capturePane, isPaneDead } from '../tmux/index.ts';
 import { matchStatusLine } from '../shared/status-patterns.ts';
 import { logServer } from '../shared/server-log.ts';
@@ -46,16 +46,20 @@ export async function handleGetStatus(params: GetStatusParams): Promise<ToolResu
     });
   }
 
-  // Capture pane and match status
-  let output: string | null = null;
-  try {
-    output = await capturePane(agent.tmux_target);
-  } catch (e) {
-    logServer('ERROR', `capturePane failed for ${targetName} (pane ${agent.tmux_target}): ${e instanceof Error ? e.message : String(e)}`);
-  }
-  let status: AgentStatus = 'unknown';
-  if (output !== null) {
-    status = matchStatusLine(output);
+  // Prefer DB-driven status (set atomically on message write) over pane capture
+  const dbStatus = getAgentDbStatus(targetName);
+  let status: AgentStatus;
+  if (dbStatus === 'busy' || dbStatus === 'idle') {
+    status = dbStatus;
+  } else {
+    // Fall back to pane capture (sweep safety net for agents with no message history)
+    let output: string | null = null;
+    try {
+      output = await capturePane(agent.tmux_target);
+    } catch (e) {
+      logServer('ERROR', `capturePane failed for ${targetName} (pane ${agent.tmux_target}): ${e instanceof Error ? e.message : String(e)}`);
+    }
+    status = output !== null ? matchStatusLine(output) : 'unknown';
   }
 
   return ok({

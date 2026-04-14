@@ -15,7 +15,8 @@ const SCHEMA = `
     pane          TEXT NOT NULL,
     agent_type    TEXT NOT NULL DEFAULT 'unknown',
     registered_at TEXT NOT NULL,
-    last_activity TEXT
+    last_activity TEXT,
+    status        TEXT
   );
 
   CREATE TABLE IF NOT EXISTS rooms (
@@ -140,6 +141,7 @@ export function initDb(path?: string): void {
   // Migrate existing tables — ALTER TABLE for columns added after initial schema
   try { _db.exec('ALTER TABLE agents ADD COLUMN agent_type TEXT NOT NULL DEFAULT \'unknown\''); } catch { /* column already exists */ }
   try { _db.exec('ALTER TABLE tasks ADD COLUMN context TEXT'); } catch { /* column already exists */ }
+  try { _db.exec('ALTER TABLE agents ADD COLUMN status TEXT'); } catch { /* column already exists */ }
 
   // Migrate token_usage: dedupe to one row per agent (fix unbounded growth)
   try {
