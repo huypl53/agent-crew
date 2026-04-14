@@ -1,3 +1,4 @@
+import { join } from 'path';
 import { initDb } from '../state/db.ts';
 import { handleApi } from './api.ts';
 import { wsOpen, wsClose, startWsPoller, stopWsPoller } from './ws.ts';
@@ -41,12 +42,17 @@ export function startServer(opts: ServeOptions = {}): ReturnType<typeof Bun.serv
         return handleApi(req);
       }
 
-      // Static: Phase B will write its Vite build to crew/dist/web/
-      // For now serve a placeholder. When dist/web/index.html exists, serve it.
-      const distPath = new URL('../../dist/web/index.html', import.meta.url).pathname;
-      const distFile = Bun.file(distPath);
-      return distFile.exists().then(exists => {
-        if (exists) return new Response(distFile);
+      // Static file serving from crew/dist/web/
+      // Bun.file derives Content-Type from file extension (JS, CSS, etc.)
+      // Paths that don't resolve to a file fall back to index.html for SPA client-routing.
+      const distDir = new URL('../../dist/web/', import.meta.url).pathname;
+      const cleaned = url.pathname === '/' ? '/index.html' : url.pathname;
+      if (cleaned.includes('..')) return new Response('Forbidden', { status: 400 });
+      const file = Bun.file(join(distDir, cleaned));
+      return file.exists().then(async exists => {
+        if (exists) return new Response(file);
+        const index = Bun.file(join(distDir, 'index.html'));
+        if (await index.exists()) return new Response(index);
         return new Response(STATIC_PLACEHOLDER, { headers: { 'Content-Type': 'text/html' } });
       });
     },

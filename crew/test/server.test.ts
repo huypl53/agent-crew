@@ -1,5 +1,6 @@
 import { describe, expect, test, beforeAll, afterAll } from 'bun:test';
-import { mkdirSync, rmSync } from 'fs';
+import { mkdirSync, rmSync, readdirSync, writeFileSync } from 'fs';
+import { join } from 'path';
 import { initDb, closeDb } from '../src/state/db.ts';
 import { addAgent } from '../src/state/index.ts';
 import { startServer, stopServer } from '../src/server/index.ts';
@@ -270,14 +271,57 @@ describe('unknown routes', () => {
   });
 });
 
-// ── Static placeholder ───────────────────────────────────────────────────────
+// ── Static file serving ──────────────────────────────────────────────────────
 
-describe('GET /', () => {
-  test('returns HTML placeholder when no dist/web/index.html', async () => {
+describe('static serving', () => {
+  test('GET / returns HTML (placeholder or SPA index.html)', async () => {
     const res = await fetch(`${base}/`);
     expect(res.status).toBe(200);
+    const ct = res.headers.get('content-type') ?? '';
+    expect(ct).toContain('text/html');
     const text = await res.text();
     expect(text).toContain('Crew');
+  });
+
+  test('GET /assets/<js> returns application/javascript with correct content when dist built', async () => {
+    // Find the built JS asset (hashed filename) — skip if not built
+    const distAssets = new URL('../dist/web/assets/', import.meta.url).pathname;
+    let jsFile: string | undefined;
+    try { jsFile = readdirSync(distAssets).find(f => f.endsWith('.js')); } catch {}
+    if (!jsFile) { console.log('Skipping: dist/web/assets not built'); return; }
+
+    const res = await fetch(`${base}/assets/${jsFile}`);
+    expect(res.status).toBe(200);
+    const ct = res.headers.get('content-type') ?? '';
+    expect(ct).toMatch(/javascript/);
+    // Must not be the HTML index
+    const text = await res.text();
+    expect(text).not.toContain('<html');
+  });
+
+  test('GET /fake-spa-route falls back to index.html when dist is built', async () => {
+    const distIndex = new URL('../dist/web/index.html', import.meta.url).pathname;
+    const hasIndex = await Bun.file(distIndex).exists();
+    if (!hasIndex) { console.log('Skipping: dist/web/index.html not built'); return; }
+
+    const res = await fetch(`${base}/some/nested/spa-route`);
+    expect(res.status).toBe(200);
+    const ct = res.headers.get('content-type') ?? '';
+    expect(ct).toContain('text/html');
+    const text = await res.text();
+    expect(text).toContain('<div id="root">');
+  });
+
+  test('path traversal attempt returns 400', async () => {
+    const res = await fetch(`${base}/..%2F..%2Fetc%2Fpasswd`);
+    expect(res.status).toBe(400);
+  });
+
+  test('GET /nonexistent-file.txt falls back to index.html or placeholder', async () => {
+    const res = await fetch(`${base}/nonexistent-file.txt`);
+    expect(res.status).toBe(200);
+    const ct = res.headers.get('content-type') ?? '';
+    expect(ct).toContain('text/html');
   });
 });
 
