@@ -913,3 +913,83 @@ const cost = pricing
 - `src/dashboard/components/HeaderStats.tsx` — Cost summary in header
 - `src/dashboard/components/TreePanel.tsx` — Inline per-agent cost
 - `src/dashboard/hooks/useStateReader.ts` — Reads `token_usage` table into dashboard state
+
+## Server Layer (Browser Dashboard)
+
+Added in v0.4.0. Bun-native HTTP + WebSocket server that exposes the same state/tools layer over the network for a web UI.
+
+### Entry point
+
+`crew serve [--port N] [--host H]` → starts `src/server/index.ts` via `Bun.serve()`.
+
+Default: `127.0.0.1:3456`. Configurable via `CREW_SERVE_PORT` / `CREW_SERVE_HOST` env vars or CLI flags.
+
+### Files
+
+- `src/server/index.ts` — `Bun.serve()` entry. Routes:
+  - `/ws` → WebSocket upgrade
+  - `/api/*` → REST handlers
+  - `/` → static SPA (from `dist/web/`) or placeholder if not built
+- `src/server/api.ts` — 13 REST endpoints. Thin wrappers over `src/state/` and `src/state/db-write.ts`. No business logic lives here.
+- `src/server/ws.ts` — WebSocket broadcast. Maintains a `Set<ServerWebSocket>` of connected clients. A 500ms `setInterval` polls `change_log` version numbers; on any scope bump it queries the delta and broadcasts JSON events to all clients.
+
+### REST API
+
+| Method | Path | Action |
+|--------|------|--------|
+| GET | `/api/rooms` | List all rooms |
+| GET | `/api/rooms/:name/members` | Room member list |
+| GET | `/api/rooms/:name/messages?limit=&offset=` | Paginated messages |
+| POST | `/api/rooms` | Create room `{name, topic}` |
+| DELETE | `/api/rooms/:name?confirm=true` | Delete room |
+| GET | `/api/agents` | All agents + DB status |
+| GET | `/api/agents/:name` | Single agent |
+| POST | `/api/agents/:name/update` | Update persona/capabilities |
+| DELETE | `/api/agents/:name?confirm=true` | Delete agent |
+| GET | `/api/tasks?room=&status=` | Filtered task list |
+| GET | `/api/tasks/:id` | Task details |
+| POST | `/api/messages` | Send message (uses `handleSendMessage` — preserves delivery guards) |
+| GET | `/api/check` | Version snapshot (change_log) |
+
+### WebSocket Protocol
+
+Connect: `ws://host:port/ws`
+
+Server-sent events (JSON):
+```json
+{ "type": "message",      "room": "...", "message": {...} }
+{ "type": "task-update",  "taskId": 42,  "status": "completed" }
+{ "type": "agent-status", "name": "...", "status": "busy|idle|dead" }
+{ "type": "room-change",  "room": "...", "kind": "created|deleted|topic-changed" }
+```
+
+Clients send nothing over WS — reads and actions use REST.
+
+### Frontend (Vite/React/Tailwind)
+
+Source: `src/web/`. Build output: `dist/web/` (gitignored).
+
+Build: `cd crew && bun run build:web`
+
+Components:
+- `App.tsx` — 3-column layout shell, WebSocket connection lifecycle
+- `RoomsSidebar.tsx` — room list, create/delete, selection
+- `MessageFeed.tsx` — threaded message list with `useMessageTree` hook
+- `Composer.tsx` — text input, to/kind/mode controls, reply-target indicator
+- `AgentInspector.tsx` — agent details panel
+- `AgentEditModal.tsx` — persona/capabilities edit
+- `RoomModal.tsx` — create room / delete confirm
+
+Hooks:
+- `useApi.ts` — typed `apiFetch` wrapper
+- `useWebSocket.ts` — connects to `/ws`, dispatches events
+- `useMessages.ts` — fetches + merges live WS message events
+- `useMessageTree.ts` — groups messages into reply threads
+
+### Key Design Decisions
+
+- **No new runtime deps**: Bun native HTTP+WS only. No Express, ws, socket.io.
+- **Thin API layer**: handlers call existing state/tool functions directly. The MCP server and REST server share the same state module — no duplication.
+- **change_log polling** at 500ms is cheap (single `SELECT` on a tiny table). WebSocket push avoids polling from the browser.
+- **Local-only default** (`127.0.0.1`): no auth for MVP. Set `--host 0.0.0.0` for LAN access; document that this is unauthenticated.
+- **Static path**: server checks for `dist/web/index.html` at startup. If absent (pre-build), serves a text placeholder so the API is still usable.
