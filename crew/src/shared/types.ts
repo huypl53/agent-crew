@@ -23,6 +23,14 @@ export interface Room {
 
 export type MessageKind = 'task' | 'completion' | 'question' | 'error' | 'status' | 'chat' | 'note';
 
+/** Internal status update event kinds used for push-based notifications. */
+export type StatusUpdateKind =
+  | 'worker_started'    // Worker began processing a task
+  | 'worker_completed'  // Worker finished a task
+  | 'worker_blocked'    // Worker needs help
+  | 'worker_heartbeat'  // Worker is alive but busy
+  | 'ack_received';     // Delivery confirmed
+
 export interface Message {
   message_id: string;
   from: string;

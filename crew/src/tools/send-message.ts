@@ -1,7 +1,8 @@
 import { ok, err } from '../shared/types.ts';
 import type { ToolResult } from '../shared/types.ts';
-import { getAgent, getRoom } from '../state/index.ts';
+import { getAgent, getRoom, getRoomMembers } from '../state/index.ts';
 import { deliverMessage } from '../delivery/index.ts';
+import { getQueue } from '../delivery/pane-queue.ts';
 
 interface SendMessageParams {
   room: string;
@@ -11,10 +12,12 @@ interface SendMessageParams {
   name: string; // sender identity
   kind?: string; // MessageKind — defaults to 'chat'
   reply_to?: number;
+  /** Sender's tmux pane ID for push-based status updates. Falls back to TMUX_PANE env var. */
+  sender_pane?: string;
 }
 
 export async function handleSendMessage(params: SendMessageParams): Promise<ToolResult> {
-  const { room, text, to, mode = 'push', name, kind, reply_to } = params;
+  const { room, text, to, mode = 'push', name, kind, reply_to, sender_pane } = params;
 
   if (!room || !text || !name) {
     return err('Missing required params: room, text, name');
@@ -50,6 +53,26 @@ export async function handleSendMessage(params: SendMessageParams): Promise<Tool
   }
 
   const results = await deliverMessage(name, room, text, to ?? null, mode, kind as any, reply_to);
+
+  // Push-based status update: when a worker sends a completion, immediately push
+  // a structured status notification to all leaders in the room. This supplements
+  // the auto-notify in deliverMessage (which uses a plain text format) with a
+  // machine-readable status line that leaders can act on without polling.
+  // NOTE: pane-discovery (Phase 1) will enhance this with sender pane verification
+  // once feat/sender-id is merged. For now we resolve the pane from params or env.
+  if (kind === 'completion' && sender.role === 'worker') {
+    const resolvedPane = sender_pane ?? process.env.TMUX_PANE ?? sender.tmux_target;
+    const members = getRoomMembers(room);
+    const leaders = members.filter(m => m.role === 'leader' && m.name !== name && m.tmux_target);
+    if (leaders.length > 0) {
+      const statusLine = `[status@${room}]: ${name} worker_completed pane=${resolvedPane ?? 'unknown'}`;
+      for (const leader of leaders) {
+        getQueue(leader.tmux_target!, leader.role)
+          .enqueue({ type: 'paste', text: statusLine })
+          .catch(() => {}); // best-effort: don't fail the completion send on push error
+      }
+    }
+  }
 
   if (results.length === 1) {
     return ok({
