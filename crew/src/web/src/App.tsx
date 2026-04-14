@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import RoomsSidebar from './components/RoomsSidebar.tsx';
 import MessageFeed from './components/MessageFeed.tsx';
+import KindFilter from './components/KindFilter.tsx';
 import AgentInspector from './components/AgentInspector.tsx';
 import HeaderStats from './components/HeaderStats.tsx';
 import NavBar from './components/NavBar.tsx';
@@ -13,6 +14,8 @@ import { useMessages } from './hooks/useMessages.ts';
 import type { Agent, Message, Room } from './types.ts';
 import type { View } from './components/NavBar.tsx';
 
+const ALL_KINDS = ['task', 'completion', 'error', 'question', 'status', 'chat'];
+
 type RoomModalState = { mode: 'create' } | { mode: 'delete-confirm'; room: Room };
 
 export default function App() {
@@ -24,6 +27,15 @@ export default function App() {
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [roomModal, setRoomModal] = useState<RoomModalState | null>(null);
   const [agentEditTarget, setAgentEditTarget] = useState<Agent | null>(null);
+  const [enabledKinds, setEnabledKinds] = useState<Set<string>>(new Set(ALL_KINDS));
+
+  const toggleKind = (kind: string) => {
+    setEnabledKinds(prev => {
+      const next = new Set(prev);
+      next.has(kind) ? next.delete(kind) : next.add(kind);
+      return next;
+    });
+  };
 
   return (
     <div className="h-screen flex flex-col bg-slate-900 text-slate-100 overflow-hidden">
@@ -42,8 +54,10 @@ export default function App() {
             <header className="px-4 py-2 border-b border-slate-700 text-sm text-slate-400 flex-shrink-0">
               {selectedRoom ? <span className="text-slate-200 font-medium">#{selectedRoom}</span> : 'Crew Dashboard'}
             </header>
+            <KindFilter enabledKinds={enabledKinds} onToggle={toggleKind} />
             <MessageFeed
               messages={messages}
+              enabledKinds={enabledKinds}
               loading={loading}
               error={error}
               room={selectedRoom}
