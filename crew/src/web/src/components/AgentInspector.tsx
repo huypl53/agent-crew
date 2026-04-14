@@ -9,9 +9,10 @@ const STATUS_COLORS: Record<string, string> = {
 
 interface Props {
   room: string | null;
+  onEditAgent?: (agent: Agent) => void;
 }
 
-export default function AgentInspector({ room }: Props) {
+export default function AgentInspector({ room, onEditAgent }: Props) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selected, setSelected] = useState<Agent | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +98,14 @@ export default function AgentInspector({ room }: Props) {
             <div className="text-slate-500 uppercase tracking-widest text-xs mb-1">Rooms</div>
             <div className="text-slate-400">{selected.rooms.join(', ')}</div>
           </div>
+          {onEditAgent && (
+            <button
+              onClick={() => onEditAgent(selected)}
+              className="mt-2 px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs text-slate-300 w-full"
+            >
+              Edit
+            </button>
+          )}
         </div>
       )}
       {!selected && (
