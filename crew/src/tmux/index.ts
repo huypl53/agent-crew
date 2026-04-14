@@ -130,3 +130,24 @@ export async function paneExists(target: string): Promise<boolean> {
   const result = await run('list-panes', '-t', target, '-F', '#{pane_id}');
   return result.success;
 }
+
+// Processes that indicate a live AI agent (Claude Code / Codex / bun / node)
+const AGENT_PROC_RE = /^(node|bun|claude|codex)$/i;
+
+/** Returns the foreground command name running in a pane, or null if unreachable. */
+export async function getPaneCurrentCommand(target: string): Promise<string | null> {
+  const result = await run('display-message', '-t', target, '-p', '#{pane_current_command}');
+  if (!result.success) return null;
+  const cmd = result.stdout.trim();
+  return cmd || null;
+}
+
+/**
+ * Returns true when the pane is running a known agent process (node/bun/claude/codex).
+ * Returns false for plain shells (zsh, bash, sh, fish) or unreachable panes.
+ */
+export async function paneCommandLooksAlive(target: string): Promise<boolean> {
+  const cmd = await getPaneCurrentCommand(target);
+  if (!cmd) return false;
+  return AGENT_PROC_RE.test(cmd);
+}

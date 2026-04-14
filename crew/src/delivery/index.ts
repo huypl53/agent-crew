@@ -1,4 +1,5 @@
-import { addMessage, getAgent, getRoomMembers, createTask } from '../state/index.ts';
+import { addMessage, getAgent, getRoomMembers, createTask, markAgentStale } from '../state/index.ts';
+import { paneCommandLooksAlive } from '../tmux/index.ts';
 import { getQueue } from './pane-queue.ts';
 import type { Message, MessageKind } from '../shared/types.ts';
 
@@ -49,6 +50,22 @@ export async function deliverMessage(
     if (mode === 'push') {
       const agent = getAgent(to);
       if (agent) {
+        // For known agent types, verify the pane is still running an agent process
+        // before delivery. A plain shell means the worker restarted without refreshing
+        // its registration — pasting there would inject text into the wrong terminal.
+        if (agent.agent_type === 'claude-code' || agent.agent_type === 'codex') {
+          if (!await paneCommandLooksAlive(agent.tmux_target)) {
+            markAgentStale(agent.name);
+            results.push({
+              message_id: msg.message_id,
+              delivered: false,
+              queued: true,
+              error: `stale-target: pane ${agent.tmux_target} is not running an agent process`,
+              task_id: taskId,
+            });
+            continue;
+          }
+        }
         try {
           await getQueue(agent.tmux_target).enqueue({ type: 'paste', text: fullText });
           results.push({ message_id: msg.message_id, delivered: true, queued: true, task_id: taskId });
