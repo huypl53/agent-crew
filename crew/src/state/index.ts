@@ -404,6 +404,29 @@ export function cleanupDeadAgentTasks(agentName: string): void {
   );
 }
 
+/**
+ * Cancel all queued/sent tasks for an agent. Used when clearing a worker's
+ * session so their context wipe doesn't leave orphaned work in the queue.
+ * Returns the number of tasks cancelled. Does not touch active/terminal tasks.
+ */
+export function cancelQueuedTasksForAgent(agentName: string, triggeredBy?: string): number {
+  const db = getDb();
+  const ts = now();
+  const rows = db.query(
+    `SELECT id, status FROM tasks WHERE assigned_to = ? AND status IN ('sent', 'queued')`,
+  ).all(agentName) as Array<{ id: number; status: TaskStatus }>;
+  if (rows.length === 0) return 0;
+  db.run(
+    `UPDATE tasks SET status = 'cancelled', note = 'worker session cleared', updated_at = ?
+     WHERE assigned_to = ? AND status IN ('sent', 'queued')`,
+    [ts, agentName],
+  );
+  for (const row of rows) {
+    recordTaskEvent(row.id, row.status, 'cancelled', triggeredBy ?? null);
+  }
+  return rows.length;
+}
+
 export interface SearchTasksParams {
   keyword?: string;
   room?: string;
