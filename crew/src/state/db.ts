@@ -75,7 +75,7 @@ const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS token_usage (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    agent_name  TEXT NOT NULL,
+    agent_name  TEXT NOT NULL UNIQUE,
     session_id  TEXT,
     model       TEXT,
     input_tokens INTEGER NOT NULL DEFAULT 0,
@@ -139,6 +139,35 @@ export function initDb(path?: string): void {
 
   // Migrate existing tables — ALTER TABLE for columns added after initial schema
   try { _db.exec('ALTER TABLE agents ADD COLUMN agent_type TEXT NOT NULL DEFAULT \'unknown\''); } catch { /* column already exists */ }
+
+  // Migrate token_usage: dedupe to one row per agent (fix unbounded growth)
+  try {
+    const hasUnique = (_db.query(
+      "SELECT COUNT(*) as cnt FROM pragma_index_list('token_usage') WHERE origin='u'"
+    ).get() as any)?.cnt > 0;
+    if (!hasUnique) {
+      _db.exec(`
+        CREATE TABLE IF NOT EXISTS token_usage_new (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          agent_name    TEXT NOT NULL UNIQUE,
+          session_id    TEXT,
+          model         TEXT,
+          input_tokens  INTEGER NOT NULL DEFAULT 0,
+          output_tokens INTEGER NOT NULL DEFAULT 0,
+          cost_usd      REAL,
+          source        TEXT NOT NULL DEFAULT 'statusline',
+          recorded_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT OR IGNORE INTO token_usage_new (agent_name, session_id, model, input_tokens, output_tokens, cost_usd, source, recorded_at)
+          SELECT agent_name, session_id, model, input_tokens, output_tokens, cost_usd, source, recorded_at
+          FROM token_usage t1
+          WHERE recorded_at = (SELECT MAX(recorded_at) FROM token_usage t2 WHERE t2.agent_name = t1.agent_name);
+        DROP TABLE token_usage;
+        ALTER TABLE token_usage_new RENAME TO token_usage;
+        CREATE INDEX IF NOT EXISTS idx_token_usage_agent ON token_usage(agent_name, recorded_at);
+      `);
+    }
+  } catch { /* brand-new DB or already migrated */ }
 
   // Insert default pricing
   const DEFAULT_PRICING = [

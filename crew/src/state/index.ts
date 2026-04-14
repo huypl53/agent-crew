@@ -493,10 +493,19 @@ export function getAllTaskEvents(): TaskEvent[] {
 
 export function recordTokenUsage(entry: Omit<TokenUsage, 'id' | 'recorded_at'>): void {
   const db = getDb();
-  const ts = now();
   db.run(
-    'INSERT INTO token_usage (agent_name, session_id, model, input_tokens, output_tokens, cost_usd, source, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [entry.agent_name, entry.session_id, entry.model, entry.input_tokens, entry.output_tokens, entry.cost_usd, entry.source, ts],
+    `INSERT INTO token_usage (agent_name, session_id, model, input_tokens, output_tokens, cost_usd, source, recorded_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT(agent_name) DO UPDATE SET
+       session_id=excluded.session_id,
+       model=excluded.model,
+       input_tokens=excluded.input_tokens,
+       output_tokens=excluded.output_tokens,
+       cost_usd=excluded.cost_usd,
+       source=excluded.source,
+       recorded_at=CURRENT_TIMESTAMP`,
+    [entry.agent_name, entry.session_id ?? null, entry.model ?? null,
+     entry.input_tokens, entry.output_tokens, entry.cost_usd ?? null, entry.source],
   );
 }
 
