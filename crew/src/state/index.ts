@@ -596,6 +596,23 @@ export function getLatestTokenUsage(agentName: string): TokenUsage | null {
   return (db.query('SELECT * FROM token_usage WHERE agent_name = ? ORDER BY recorded_at DESC LIMIT 1').get(agentName) as TokenUsage) ?? null;
 }
 
+export function getAgentMessageCounts(name: string): { sent: number; received: number } {
+  const db = getDb();
+  const sent = (db.query('SELECT COUNT(*) as cnt FROM messages WHERE "from" = ?').get(name) as any)?.cnt ?? 0;
+  const received = (db.query('SELECT COUNT(*) as cnt FROM messages WHERE "to" = ?').get(name) as any)?.cnt ?? 0;
+  return { sent, received };
+}
+
+export function getAgentTaskStats(name: string): { done: number; active: number; queued: number; error: number } {
+  const db = getDb();
+  const rows = db.query('SELECT status, COUNT(*) as cnt FROM tasks WHERE assigned_to = ? GROUP BY status').all(name) as { status: string; cnt: number }[];
+  const counts = { done: 0, active: 0, queued: 0, error: 0 };
+  for (const row of rows) {
+    if (row.status in counts) (counts as any)[row.status] = row.cnt;
+  }
+  return counts;
+}
+
 export function getTotalCost(): number {
   const db = getDb();
   const row = db.query('SELECT SUM(cost_usd) as total FROM token_usage').get() as any;

@@ -3,6 +3,9 @@ import {
   getAllAgents, getAgent, getAgentDbStatus,
   searchTasks, getTaskDetails,
   getChangeVersions,
+  getLatestTokenUsage,
+  getAgentMessageCounts,
+  getAgentTaskStats,
 } from '../state/index.ts';
 import {
   dbCreateRoom, dbDeleteRoom, dbSetTopic,
@@ -92,7 +95,46 @@ export async function handleApi(req: Request): Promise<Response> {
     const name = decodeURIComponent(agentGetMatch[1]!);
     const agent = getAgent(name);
     if (!agent) return err('Agent not found', 404);
-    return json({ ...agent, status: getAgentDbStatus(name) ?? 'unknown' });
+    let token_usage: Record<string, unknown> | null = null;
+    try { token_usage = getLatestTokenUsage(name) as Record<string, unknown> | null; } catch { /* table may not exist */ }
+    const message_stats = getAgentMessageCounts(name);
+    const task_stats = getAgentTaskStats(name);
+    return json({ ...agent, status: getAgentDbStatus(name) ?? 'unknown', token_usage, message_stats, task_stats });
+  }
+
+  // GET /api/stats — aggregate counters for HeaderStats
+  if (method === 'GET' && path === '/stats') {
+    const agents = getAllAgents().map(a => ({ ...a, status: getAgentDbStatus(a.name) ?? 'unknown' }));
+    const tasks = searchTasks({});
+    let total_cost: number | null = null;
+    let total_input_tokens = 0;
+    let total_output_tokens = 0;
+    try {
+      for (const a of agents) {
+        const tu = getLatestTokenUsage(a.name);
+        if (tu) {
+          total_cost = (total_cost ?? 0) + (tu.cost_usd ?? 0);
+          total_input_tokens += tu.input_tokens ?? 0;
+          total_output_tokens += tu.output_tokens ?? 0;
+        }
+      }
+    } catch { /* token_usage table missing */ }
+    return json({
+      agents: {
+        busy: agents.filter(a => a.status === 'busy').length,
+        idle: agents.filter(a => a.status === 'idle').length,
+        dead: agents.filter(a => a.status === 'dead').length,
+        total: agents.length,
+      },
+      tasks: {
+        done: tasks.filter(t => t.status === 'done').length,
+        active: tasks.filter(t => t.status === 'active').length,
+        queued: tasks.filter(t => t.status === 'queued').length,
+        error: tasks.filter(t => t.status === 'error').length,
+        total: tasks.length,
+      },
+      cost: { total_usd: total_cost, total_input_tokens, total_output_tokens },
+    });
   }
 
   // POST /api/agents/:name/update
