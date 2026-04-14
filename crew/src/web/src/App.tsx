@@ -6,6 +6,7 @@ import AgentInspector from './components/AgentInspector.tsx';
 import HeaderStats from './components/HeaderStats.tsx';
 import NavBar from './components/NavBar.tsx';
 import TaskBoard from './components/TaskBoard.tsx';
+import TimelineView from './components/TimelineView.tsx';
 import Composer from './components/Composer.tsx';
 import RoomModal from './components/RoomModal.tsx';
 import AgentEditModal from './components/AgentEditModal.tsx';
@@ -78,11 +79,8 @@ export default function App() {
       )}
 
       {currentView === 'timeline' && (
-        <div className="flex-1 flex items-center justify-center text-slate-500">
-          <div className="text-center">
-            <div className="text-lg font-medium text-slate-400">Timeline</div>
-            <div className="text-sm mt-1">Coming soon — Gantt-style task lifecycle view</div>
-          </div>
+        <div className="flex-1 flex overflow-hidden">
+          <TimelineView />
         </div>
       )}
 

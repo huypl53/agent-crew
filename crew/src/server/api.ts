@@ -1,7 +1,7 @@
 import {
   getAllRooms, getRoom, getRoomMembers, getRoomMessages,
   getAllAgents, getAgent, getAgentDbStatus,
-  searchTasks, getTaskEvents,
+  searchTasks, getTaskEvents, getAllTaskEvents,
   getChangeVersions,
   getLatestTokenUsage,
   getAgentMessageCounts,
@@ -181,6 +181,15 @@ export async function handleApi(req: Request): Promise<Response> {
       params.push(limit);
       const rows = db.query(sql).all(...params);
       return json(rows);
+    } catch {
+      return json([]);
+    }
+  }
+
+  // GET /api/tasks/events — all task events for timeline (readonly-safe)
+  if (method === 'GET' && path === '/tasks/events') {
+    try {
+      return json(getAllTaskEvents());
     } catch {
       return json([]);
     }
