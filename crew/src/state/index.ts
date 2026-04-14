@@ -1,5 +1,5 @@
 import type { Agent, AgentRole, Room, Message, MessageKind, Task, TaskStatus, TaskEvent, TokenUsage, PricingEntry } from '../shared/types.ts';
-import { isPaneDead } from '../tmux/index.ts';
+import { isPaneDead, paneCommandLooksAlive } from '../tmux/index.ts';
 import { getDb, initDb, closeDb, getDbPath } from './db.ts';
 
 // Re-export for callers
@@ -296,13 +296,27 @@ export async function refreshAgent(name: string, newPane: string): Promise<Agent
 
 // --- Liveness ---
 
+/** Error-out tasks and remove an agent from the registry when its pane is stale. */
+export function markAgentStale(agentName: string): void {
+  cleanupDeadAgentTasks(agentName);
+  removeAgentFully(agentName);
+}
+
 export async function validateLiveness(): Promise<string[]> {
   const dead: string[] = [];
   for (const agent of getAllAgents()) {
     if (await isPaneDead(agent.tmux_target)) {
-      cleanupDeadAgentTasks(agent.name);
-      removeAgentFully(agent.name);
+      markAgentStale(agent.name);
       dead.push(agent.name);
+      continue;
+    }
+    // For known agent types, also verify the pane is still running an agent process.
+    // Skip 'unknown' agents (e.g. CLI-registered or test panes) to avoid false evictions.
+    if (agent.agent_type === 'claude-code' || agent.agent_type === 'codex') {
+      if (!await paneCommandLooksAlive(agent.tmux_target)) {
+        markAgentStale(agent.name);
+        dead.push(agent.name);
+      }
     }
   }
   return dead;
