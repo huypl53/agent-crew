@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import RoomsSidebar from './components/RoomsSidebar.tsx';
 import MessageFeed from './components/MessageFeed.tsx';
 import KindFilter from './components/KindFilter.tsx';
@@ -10,6 +10,7 @@ import TimelineView from './components/TimelineView.tsx';
 import Composer from './components/Composer.tsx';
 import RoomModal from './components/RoomModal.tsx';
 import AgentEditModal from './components/AgentEditModal.tsx';
+import KeyboardShortcuts from './components/KeyboardShortcuts.tsx';
 import { useWebSocket } from './hooks/useWebSocket.ts';
 import { useMessages } from './hooks/useMessages.ts';
 import type { Agent, Message, Room } from './types.ts';
@@ -29,6 +30,7 @@ export default function App() {
   const [roomModal, setRoomModal] = useState<RoomModalState | null>(null);
   const [agentEditTarget, setAgentEditTarget] = useState<Agent | null>(null);
   const [enabledKinds, setEnabledKinds] = useState<Set<string>>(new Set(ALL_KINDS));
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
 
   const toggleKind = (kind: string) => {
     setEnabledKinds(prev => {
@@ -37,6 +39,20 @@ export default function App() {
       return next;
     });
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setShowKeyboardShortcuts(true);
+      }
+      if (e.key === 'Escape' && showKeyboardShortcuts) {
+        setShowKeyboardShortcuts(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showKeyboardShortcuts]);
 
   return (
     <div className="h-screen flex flex-col bg-slate-900 text-slate-100 overflow-hidden">
@@ -84,6 +100,17 @@ export default function App() {
         </div>
       )}
 
+      {currentView === 'trace' && (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="px-4 py-2 border-b border-slate-700 text-sm text-slate-400 flex-shrink-0">
+            Crew
+          </div>
+          <div className="text-xs text-slate-500 px-4 py-1 italic">
+            Trace view coming soon (Phase 02)
+          </div>
+        </div>
+      )}
+
       {roomModal && (
         <RoomModal
           mode={roomModal.mode}
@@ -98,6 +125,9 @@ export default function App() {
           onClose={() => setAgentEditTarget(null)}
           onSuccess={() => setAgentEditTarget(null)}
         />
+      )}
+      {showKeyboardShortcuts && (
+        <KeyboardShortcuts onClose={() => setShowKeyboardShortcuts(false)} />
       )}
     </div>
   );
