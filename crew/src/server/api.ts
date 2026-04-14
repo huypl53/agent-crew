@@ -1,12 +1,13 @@
 import {
   getAllRooms, getRoom, getRoomMembers, getRoomMessages,
   getAllAgents, getAgent, getAgentDbStatus,
-  searchTasks, getTaskDetails,
+  getTaskEvents,
   getChangeVersions,
   getLatestTokenUsage,
   getAgentMessageCounts,
   getAgentTaskStats,
 } from '../state/index.ts';
+import { getDb } from '../state/db.ts';
 import {
   dbCreateRoom, dbDeleteRoom, dbSetTopic,
   dbUpdateAgentPersona, dbUpdateAgentCapabilities, dbDeleteAgent,
@@ -165,22 +166,40 @@ export async function handleApi(req: Request): Promise<Response> {
     return json({ ok: true, removed_from_rooms: result.removed_from_rooms });
   }
 
-  // GET /api/tasks?room=&status=
+  // GET /api/tasks?room=&status=&limit=
   if (method === 'GET' && path === '/tasks') {
-    const room = url.searchParams.get('room') ?? undefined;
-    const status = url.searchParams.get('status') ?? undefined;
-    const limit = parseIntParam(url.searchParams.get('limit'));
-    const tasks = searchTasks({ room, status: status as any, limit });
-    return json(tasks);
+    try {
+      const db = getDb();
+      let sql = 'SELECT id, room, assigned_to, created_by, summary, status, created_at, updated_at FROM tasks WHERE 1=1';
+      const params: unknown[] = [];
+      const room = url.searchParams.get('room');
+      const status = url.searchParams.get('status');
+      const limit = parseIntParam(url.searchParams.get('limit')) ?? 200;
+      if (room) { sql += ' AND room = ?'; params.push(room); }
+      if (status) { sql += ' AND status = ?'; params.push(status); }
+      sql += ' ORDER BY id DESC LIMIT ?';
+      params.push(limit);
+      const rows = db.query(sql).all(...params);
+      return json(rows);
+    } catch {
+      return json([]);
+    }
   }
 
   // GET /api/tasks/:id
   const taskMatch = path.match(/^\/tasks\/(\d+)$/);
   if (method === 'GET' && taskMatch) {
-    const id = parseInt(taskMatch[1]!, 10);
-    const task = getTaskDetails(id);
-    if (!task) return err('Task not found', 404);
-    return json(task);
+    try {
+      const db = getDb();
+      const id = parseInt(taskMatch[1]!, 10);
+      const task = db.query('SELECT * FROM tasks WHERE id = ?').get(id);
+      if (!task) return err('Task not found', 404);
+      let events: unknown[] = [];
+      try { events = getTaskEvents(id); } catch {}
+      return json({ ...(task as object), events });
+    } catch {
+      return err('Task not found', 404);
+    }
   }
 
   // POST /api/messages
