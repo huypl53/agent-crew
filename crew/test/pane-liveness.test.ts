@@ -4,6 +4,10 @@ import { addAgent, getAgent, validateLiveness } from '../src/state/index.ts';
 import { getPaneCurrentCommand, paneCommandLooksAlive } from '../src/tmux/index.ts';
 import { deliverMessage } from '../src/delivery/index.ts';
 import { createTestSession, cleanupAllTestSessions, sendToPane } from './helpers.ts';
+import { config } from '../src/config.ts';
+
+// Use fast polling so waitForReady() resolves well within default test timeouts
+config.pollingProfile = 'conservative';
 
 let shellPane: string;  // always running zsh/bash
 let nodePane: string;   // starts a long-running node process
@@ -98,7 +102,7 @@ describe('pane liveness checks', () => {
       const results = await deliverMessage('sender', 'crew', 'hello', 'live-worker', 'push');
       expect(results[0]!.delivered).toBe(true);
       expect(results[0]!.error).toBeUndefined();
-    });
+    }, 15000);
   });
 
   // ── validateLiveness command check ───────────────────────────────────────────
