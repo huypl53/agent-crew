@@ -15,6 +15,20 @@ if (parsed.command === 'help' || parsed.flags.help) {
   process.exit(0);
 }
 
+// 'wait-idle' polls tmux directly — no DB needed
+if (parsed.command === 'wait-idle') {
+  const { handleWaitIdle } = await import('./tools/wait-idle.ts');
+  await handleWaitIdle({
+    target: String(parsed.flags.target ?? parsed.positional[0] ?? ''),
+    stable_count: parsed.flags['stable-count'] ? parseInt(String(parsed.flags['stable-count']), 10) : undefined,
+    idle_seconds: parsed.flags['idle-seconds'] ? parseInt(String(parsed.flags['idle-seconds']), 10) : undefined,
+    poll_interval: parsed.flags['poll-interval'] ? parseInt(String(parsed.flags['poll-interval']), 10) : undefined,
+    timeout: parsed.flags.timeout ? parseInt(String(parsed.flags.timeout), 10) : undefined,
+    lines: parsed.flags.lines ? parseInt(String(parsed.flags.lines), 10) : undefined,
+  });
+  process.exit(0);
+}
+
 // 'serve' is handled before initDb() since startServer() calls initDb() itself
 if (parsed.command === 'serve') {
   const { startServer } = await import('./server/index.ts');

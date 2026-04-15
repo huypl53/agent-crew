@@ -34,6 +34,8 @@ Commands:
   search-tasks [--room <r>] [--keyword <k>] [--status <s>] Search tasks
   create-room --room <name> --name <self> [--topic <t>]   Create a new room
   delete-room --room <name> --confirm --name <self>       Delete room (removes members + messages)
+  wait-idle  --target <pane> [--timeout <ms>]             Wait until pane is idle (stable content)
+             [--stable-count N] [--idle-seconds N]        exit 0 = idle, exit 2 = timed out
   serve      [--port N] [--host H]                        Start browser dashboard server (default port 3456)
 
 Flags:
