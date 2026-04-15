@@ -1,6 +1,10 @@
-import { describe, expect, test, beforeEach, afterAll } from 'bun:test';
-import { createTestSession, destroyTestSession, cleanupAllTestSessions, captureFromPane } from './helpers.ts';
-import { PaneQueue, getQueue } from '../src/delivery/pane-queue.ts';
+import { describe, expect, test, beforeEach, afterAll, setDefaultTimeout } from 'bun:test';
+import { createTestSession, cleanupAllTestSessions, captureFromPane } from './helpers.ts';
+import { getQueue } from '../src/delivery/pane-queue.ts';
+
+// PaneQueue tests involve real tmux delivery: waitForReady (~1s) + paste settle (500ms) + Enter retry.
+// Default 5000ms is too tight; bump to 15000ms for this file.
+setDefaultTimeout(15000);
 
 let testPane: string;
 const SESSION = 'pane-queue-test';
