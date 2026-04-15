@@ -235,6 +235,29 @@ Leaders and bosses store the last-seen version per scope and only call expensive
 
 `check_changes` itself is a single-row SQLite read with no tmux interaction — negligible cost compared to `get_status` (which runs `tmux capture-pane`) or `read_messages` (which scans the messages table). During quiet periods (no activity), all versions stay constant and full-data polls are skipped entirely.
 
+### Wait-for-Idle Pattern
+
+For leaders that need to confirm a worker's pane has settled (e.g. after sending a task via Bash), use `crew wait-idle` instead of manually polling `crew status` in a sleep loop:
+
+```
+# Leader workflow — zero-poll task dispatch
+crew send --room crew --text "Do X" --name leader --to worker-1 --kind task
+crew wait-idle --target %5 --timeout 120000
+crew read --name leader --room crew --kinds completion,error
+```
+
+`wait-idle` blocks until the pane content stops changing for `--idle-seconds` (default 5) across `--stable-count` (default 3) consecutive polls. Exit codes:
+- `0` — pane is idle, leader can proceed
+- `2` — timed out; pane never settled within `--timeout` ms
+
+This replaces polling patterns like:
+```
+# Old — burns tokens every 5s indefinitely
+while true; do crew status worker-1; sleep 5; done
+```
+
+The wait loop runs inside `crew wait-idle`, not in the leader's context window, so no tokens are consumed while waiting.
+
 ## Liveness Sweep
 
 The MCP server runs a periodic liveness check every 30 seconds. When an agent's tmux pane is detected as dead, the server automatically:
