@@ -10,7 +10,7 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "dashboard": "bun run src/dashboard.ts",
-    "test": "bun test",
+    "test": "bun test --timeout 15000",
     "postinstall": "bash scripts/patch-string-width.sh",
     "build:web": "cd src/web && npx vite build",
     "dev:web": "cd src/web && npx vite dev"

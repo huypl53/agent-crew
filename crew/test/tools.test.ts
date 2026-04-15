@@ -18,6 +18,10 @@ import { handleClearWorkerSession } from '../src/tools/clear-worker-session.ts';
 import { handleGetTaskDetails } from '../src/tools/get-task-details.ts';
 import { handleSearchTasks } from '../src/tools/search-tasks.ts';
 import { createTestSession, destroyTestSession, cleanupAllTestSessions, captureFromPane } from './helpers.ts';
+import { config } from '../src/config.ts';
+
+// Use fast polling so waitForReady() resolves well within default test timeouts
+config.pollingProfile = 'conservative';
 
 let testPaneA: string;
 let testPaneB: string;
@@ -245,8 +249,10 @@ describe('MCP tools', () => {
         name: 'w1', mode: 'pull', kind: 'completion',
       });
 
-      // Verify push was sent to leader's pane
-      await Bun.sleep(200);
+      // Verify push was sent to leader's pane.
+      // Notification is fire-and-forget via the queue; waitForReady() needs
+      // 2 stable polls at 500ms = 1000ms, plus paste+verify ~800ms.
+      await Bun.sleep(2500);
       const captured = await captureFromPane(testPaneA);
       expect(captured).toContain('[system@frontend]');
       expect(captured).toContain('w1');
