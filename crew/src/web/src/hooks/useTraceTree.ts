@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Agent, Message, Room, Task, TraceNode, TraceNodeStatus } from '../types.ts';
 
+// Extended Task shape from DB (includes message_id not in the frontend Task type)
 type RawTask = Task & { message_id: number | null };
 
 interface TracePayload {
@@ -31,6 +32,7 @@ function parseTs(s: string | null | undefined): number | null {
   return isNaN(ms) ? null : Math.floor(ms / 1000);
 }
 
+/** Walk reply_to chain upward; return the root message id */
 function findRoot(id: number, parentOf: Map<number, number>): number {
   let cur = id;
   for (let i = 0; i < 100; i++) {
@@ -44,18 +46,21 @@ function findRoot(id: number, parentOf: Map<number, number>): number {
 function buildTree(payload: TracePayload): TraceNode {
   const { rooms, agents, tasks, messages } = payload;
 
+  // message_id → task
   const taskByRoot = new Map<number, RawTask>();
   for (const t of tasks) {
     if (t.message_id != null) taskByRoot.set(t.message_id, t);
   }
 
+  // reply_to parent map (msgId → replyTo)
   const parentOf = new Map<number, number>();
   for (const m of messages) {
     if (m.reply_to != null) parentOf.set(Number(m.message_id), m.reply_to);
   }
 
-  const msgsByTask = new Map<number, Message[]>();
-  const msgsByAgent = new Map<string, Message[]>();
+  // assign each message to a task (via root) or fall back to agent by sender
+  const msgsByTask = new Map<number, Message[]>();   // task.id → messages
+  const msgsByAgent = new Map<string, Message[]>();  // agent.name → unassigned messages
 
   for (const msg of messages) {
     const rootId = findRoot(Number(msg.message_id), parentOf);
@@ -70,6 +75,9 @@ function buildTree(payload: TracePayload): TraceNode {
       msgsByAgent.set(msg.from, arr);
     }
   }
+
+  // task.id → task node (memoised to avoid duplication across rooms)
+  const agentSet = new Map<string, Agent>(agents.map(a => [a.name, a]));
 
   function makeMessageNode(msg: Message): TraceNode {
     return {
@@ -93,6 +101,7 @@ function buildTree(payload: TracePayload): TraceNode {
     const updatedMs = Date.parse(task.updated_at);
     const durationMs = !isNaN(createdMs) && !isNaN(updatedMs) ? updatedMs - createdMs : null;
     const msgs = (msgsByTask.get(task.id) ?? []).map(makeMessageNode);
+    // Aggregate tokens from children (messages) - currently all null but structured for future
     const tokensIn = msgs.reduce((sum, m) => sum + (m.tokensIn ?? 0), 0) || null;
     const tokensOut = msgs.reduce((sum, m) => sum + (m.tokensOut ?? 0), 0) || null;
     const cost = msgs.reduce((sum, m) => sum + (m.cost ?? 0), 0) || null;
@@ -116,10 +125,12 @@ function buildTree(payload: TracePayload): TraceNode {
     const agentTasks = tasks
       .filter(t => t.assigned_to === agent.name && t.room === roomName)
       .map(makeTaskNode);
+    // append unassigned messages for this agent in this room
     const unassigned = (msgsByAgent.get(agent.name) ?? [])
       .filter(m => m.room === roomName)
       .map(makeMessageNode);
     const allChildren = [...agentTasks, ...unassigned];
+    // Aggregate tokens: start with agent.token_usage if available, then add children sums
     const agentTokensIn = agent.token_usage?.input_tokens ?? null;
     const agentTokensOut = agent.token_usage?.output_tokens ?? null;
     const agentCost = agent.token_usage?.cost_usd ?? null;
@@ -195,25 +206,10 @@ export function useTraceTree(): { tree: TraceNode | null; loading: boolean; erro
   useEffect(() => {
     mountedRef.current = true;
     const load = () => {
-      Promise.all([
-        fetch('/api/rooms').then(r => r.json()).catch(() => []),
-        fetch('/api/agents').then(r => r.json()).catch(() => []),
-        fetch('/api/tasks?limit=500').then(r => r.json()).catch(() => []),
-        fetch('/api/rooms/crew/messages?limit=500').then(r => r.json()).catch(() => []),
-      ])
-        .then(([rooms, agents, tasks, messages]) => {
-          if (mountedRef.current) {
-            setPayload({ rooms, agents, tasks, messages });
-            setLoading(false);
-            setError(null);
-          }
-        })
-        .catch(e => {
-          if (mountedRef.current) {
-            setError(String(e));
-            setLoading(false);
-          }
-        });
+      fetch('/api/trace')
+        .then(r => r.json() as Promise<TracePayload>)
+        .then(data => { if (mountedRef.current) { setPayload(data); setLoading(false); setError(null); } })
+        .catch(e => { if (mountedRef.current) { setError(String(e)); setLoading(false); } });
     };
     load();
     const id = setInterval(load, 10000);

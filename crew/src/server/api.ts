@@ -234,5 +234,34 @@ export async function handleApi(req: Request): Promise<Response> {
     return json(versions);
   }
 
+  // GET /api/trace — aggregate payload for trace view (rooms + agents + tasks + recent messages)
+  if (method === 'GET' && path === '/trace') {
+    try {
+      const db = getDb();
+      const rooms = getAllRooms();
+      const agents = getAllAgents().map(a => ({ ...a, status: getAgentDbStatus(a.name) ?? 'unknown' }));
+      const tasks = db.query('SELECT * FROM tasks ORDER BY id DESC LIMIT 500').all();
+      let messages: unknown[] = [];
+      try {
+        const rows = db.query('SELECT * FROM messages ORDER BY id DESC LIMIT 500').all() as Record<string, unknown>[];
+        messages = rows.map(r => ({
+          message_id: String(r['id']),
+          from: String(r['sender'] ?? ''),
+          to: (r['recipient'] as string | null) ?? null,
+          room: String(r['room'] ?? ''),
+          text: String(r['text'] ?? ''),
+          kind: String(r['kind'] ?? 'chat'),
+          mode: (r['mode'] as 'push' | 'pull') ?? 'push',
+          timestamp: String(r['timestamp'] ?? ''),
+          sequence: Number(r['id']),
+          reply_to: (r['reply_to'] as number | null) ?? null,
+        }));
+      } catch { /* messages table may not exist */ }
+      return json({ rooms, agents, tasks, messages });
+    } catch (e) {
+      return err(String(e));
+    }
+  }
+
   return err('Not found', 404);
 }
