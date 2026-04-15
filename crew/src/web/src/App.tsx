@@ -7,6 +7,7 @@ import HeaderStats from './components/HeaderStats.tsx';
 import NavBar from './components/NavBar.tsx';
 import TaskBoard from './components/TaskBoard.tsx';
 import TimelineView from './components/TimelineView.tsx';
+import TraceView from './components/TraceView.tsx';
 import Composer from './components/Composer.tsx';
 import RoomModal from './components/RoomModal.tsx';
 import AgentEditModal from './components/AgentEditModal.tsx';
@@ -81,6 +82,12 @@ export default function App() {
       {currentView === 'timeline' && (
         <div className="flex-1 flex overflow-hidden">
           <TimelineView />
+        </div>
+      )}
+
+      {currentView === 'trace' && (
+        <div className="flex-1 flex overflow-hidden">
+          <TraceView />
         </div>
       )}
 

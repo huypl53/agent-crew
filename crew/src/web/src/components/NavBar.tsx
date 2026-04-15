@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type View = 'dashboard' | 'tasks' | 'timeline';
+export type View = 'dashboard' | 'tasks' | 'timeline' | 'trace';
 
 interface NavBarProps {
   currentView: View;
@@ -11,6 +11,7 @@ const TABS: { id: View; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'tasks', label: 'Tasks' },
   { id: 'timeline', label: 'Timeline' },
+  { id: 'trace', label: 'Trace' },
 ];
 
 export default function NavBar({ currentView, onViewChange }: NavBarProps) {
