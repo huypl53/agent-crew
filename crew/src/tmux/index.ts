@@ -3,9 +3,19 @@ import { logServer } from '../shared/server-log.ts';
 
 const SPAWN_TIMEOUT = 5000;
 
+/**
+ * Get tmux socket args if CREW_TMUX_SOCKET is set.
+ * Used by tests to run against an isolated socket (e.g., `crew-uat-edge`).
+ */
+function getSocketArgs(): string[] {
+  const socket = process.env.CREW_TMUX_SOCKET;
+  return socket ? ['-L', socket] : [];
+}
+
 async function run(...args: string[]): Promise<{ stdout: string; stderr: string; success: boolean }> {
   try {
-    const proc = Bun.spawn(['tmux', ...args], {
+    const socketArgs = getSocketArgs();
+    const proc = Bun.spawn(['tmux', ...socketArgs, ...args], {
       stdout: 'pipe',
       stderr: 'pipe',
     });
@@ -48,8 +58,10 @@ export async function sendKeys(target: string, text: string): Promise<{ delivere
   // the paste completes then submits cleanly.
   const bufferName = `_crew_${target.replace('%', '')}`;
   try {
-    // Load text into a named tmux buffer via stdin (safe for arbitrary content)
-    const loadProc = Bun.spawn(['tmux', 'load-buffer', '-b', bufferName, '-'], {
+    // Load text into a named tmux buffer via stdin (safe for arbitrary content).
+    // Must use the same socket as paste-buffer so both commands share the same server.
+    const socketArgs = getSocketArgs();
+    const loadProc = Bun.spawn(['tmux', ...socketArgs, 'load-buffer', '-b', bufferName, '-'], {
       stdin: Buffer.from(text),
       stdout: 'pipe',
       stderr: 'pipe',
@@ -71,10 +83,27 @@ export async function sendKeys(target: string, text: string): Promise<{ delivere
     // Let the terminal app finish processing the bracketed paste
     await Bun.sleep(PASTE_SETTLE_MS);
 
+    // Capture pane content before Enter so we can detect whether it landed
+    const contentBefore = await capturePaneLines(target, 20);
+
     // Submit
     const enterResult = await run('send-keys', '-t', target, 'Enter');
     if (!enterResult.success) {
       return { delivered: false, error: enterResult.stderr || 'send-keys Enter failed' };
+    }
+
+    // Verify Enter landed — retry up to 3 times with backoff
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await Bun.sleep(300);
+      const contentAfter = await capturePaneLines(target, 20);
+      if (contentAfter !== contentBefore) {
+        break; // Enter was processed, content changed
+      }
+      if (attempt < 2) {
+        // Backoff: 500ms on attempt 0, 1000ms on attempt 1
+        await Bun.sleep(500 * (attempt + 1));
+        await run('send-keys', '-t', target, 'Enter'); // Retry Enter
+      }
     }
 
     return { delivered: true };
@@ -112,6 +141,12 @@ export async function sendClear(target: string): Promise<{ delivered: boolean; e
     logServer('ERROR', `Ctrl-L delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`);
     return { delivered: false, error: 'Ctrl-L delivery failed' };
   }
+}
+
+/** Internal helper: captures the last N lines of a pane for content-diff checks. */
+async function capturePaneLines(target: string, lines: number): Promise<string> {
+  const result = await run('capture-pane', '-t', target, '-p', '-S', `-${lines}`);
+  return result.stdout || '';
 }
 
 export async function capturePane(target: string): Promise<string | null> {

@@ -2,6 +2,7 @@ import { ok, err } from '../shared/types.ts';
 import type { ToolResult } from '../shared/types.ts';
 import { getAgent, getRoom } from '../state/index.ts';
 import { deliverMessage } from '../delivery/index.ts';
+import { config } from '../config.ts';
 
 interface SendMessageParams {
   room: string;
@@ -27,6 +28,20 @@ export async function handleSendMessage(params: SendMessageParams): Promise<Tool
 
   if (!sender.rooms.includes(room)) {
     return err(`Sender "${name}" is not a member of room "${room}"`);
+  }
+
+  // Sender verification: compare claimed sender's registered pane against the
+  // tmux pane that originated this call (available via $TMUX_PANE in the process env).
+  if (config.senderVerification !== 'off') {
+    // $TMUX_PANE is set by tmux in any shell/process running inside a pane (%N format).
+    const callerPane = process.env.TMUX_PANE ?? null;
+    if (callerPane && sender.tmux_target && callerPane !== sender.tmux_target) {
+      const msg = `Sender mismatch: claimed "${name}" (pane ${sender.tmux_target}) but caller is pane ${callerPane}`;
+      if (config.senderVerification === 'enforce') {
+        return err(msg);
+      }
+      console.warn(`[sender-verification] ${msg}`);
+    }
   }
 
   const r = getRoom(room);
