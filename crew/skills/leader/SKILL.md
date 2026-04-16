@@ -32,12 +32,14 @@ Repeat this cycle continuously:
 1. Check for boss directives     → crew read --name <self> --room company
 2. Break work into worker tasks  → think, plan (no coding!)
 3. Assign task to idle worker    → crew send --kind task
-4. Wait + poll worker status     → crew status <worker> every 10-30s
-5. Worker goes idle → read msgs  → crew read --name <self> --room <project>
+4. Wait for push notification    → workers auto-notify on completion/error
+5. Read full message             → crew read --name <self> --room <project>
 6. Review result, give feedback  → crew send if rework needed
 7. Report milestone to boss      → crew send --room company --kind completion
 8. Go to step 1
 ```
+
+**DO NOT poll in a loop with sleep.** Workers push notifications to your pane automatically. Only poll `crew status` as a fallback every 30-60s if you haven't received a push notification.
 
 ## Task Assignment
 
@@ -97,19 +99,30 @@ Since you cannot look at the code yourself, your task descriptions must be self-
 
 Include: what file, what to do, what the expected behavior is, and any constraints.
 
-## Polling Pattern
+## Push Notifications (Primary)
 
-Check on your workers regularly:
+Workers automatically push notifications to your pane when they send `completion`, `error`, or `question` messages:
 
-1. **Poll status** every 10-30 seconds:
+```
+[system@frontend]: builder-1 completed: "Login component done"
+```
+
+**This is your primary signal.** When you see a push notification, read the full message via `crew read`.
+
+## Polling (Fallback Only)
+
+Only poll as a fallback — every 30-60 seconds if no push notification received:
+
+1. **Check status** (fallback):
    ```bash
    crew status worker-name
    ```
-2. **Read messages** when a worker goes idle:
+2. **Read messages** when worker goes idle:
    ```bash
    crew read --name your-name --room your-room
    ```
-3. A worker going from busy to idle means they finished (or hit an error) — always read messages to find out which
+
+**DO NOT sleep/poll in a tight loop.** Push notifications are reliable — trust them.
 
 ## Check for Changes
 
@@ -121,14 +134,6 @@ crew check --name your-name
 
 Returns `messages:N tasks:N agents:N` — compare version numbers to detect activity without fetching full message list.
 
-## Completion Detection
-
-A task is complete when:
-1. Worker status changes from busy → idle (`crew status`)
-2. Worker sends a pull message reporting completion (`crew read`)
-
-Always call `crew read` when you see a worker go idle — they may have reported completion, asked a question, or hit an error.
-
 ## Reviewing Worker Output
 
 When a worker reports completion:
@@ -139,15 +144,14 @@ When a worker reports completion:
 
 **You review by reading worker reports, NOT by opening files yourself.**
 
-## Auto-Notifications
+## Completion Detection
 
-When a worker sends a `completion`, `error`, or `question` message, you'll automatically receive a brief push notification in your pane:
-
+A task is complete when you receive a push notification:
 ```
 [system@frontend]: builder-1 completed: "Login component done"
 ```
 
-Read the full message via `crew read` for details.
+Read the full message via `crew read` for details. If no push after 60s, poll `crew status` as fallback.
 
 ## Room Topic
 
@@ -172,9 +176,10 @@ crew send --room company --to boss-name --text "Frontend auth system complete. A
 ## Key Principles
 
 1. **NEVER write code** — you are a manager, not a developer
-2. Always poll workers — don't assume they're working; verify
-3. Always read messages — idle can mean done, stuck, or errored
-4. One task per worker — don't overload
-5. Escalate early — if something is off, tell the boss
-6. Be specific in task assignments — vague tasks produce vague results
-7. Review by reading reports, not by touching code
+2. **Trust push notifications** — don't poll in a loop; wait for worker notifications
+3. **Poll only as fallback** — every 30-60s if no push received
+4. Always read messages — push notification = time to `crew read`
+5. One task per worker — don't overload
+6. Escalate early — if something is off, tell the boss
+7. Be specific in task assignments — vague tasks produce vague results
+8. Review by reading reports, not by touching code
