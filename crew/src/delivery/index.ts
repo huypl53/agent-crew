@@ -72,7 +72,7 @@ export async function deliverMessage(
           }
         }
         try {
-          await getQueue(agent.tmux_target, agent.role).enqueue({ type: 'paste', text: fullText });
+          await getQueue(agent.tmux_target!, { role: agent.role }).enqueue({ type: 'paste', text: fullText });
           results.push({ message_id: msg.message_id, delivered: true, queued: true, task_id: taskId });
         } catch (e) {
           results.push({
@@ -102,7 +102,7 @@ export async function deliverMessage(
       const notifyText = `[system@${room}]: ${senderName} ${kind}: "${summary}"`;
 
       for (const leader of leaders) {
-        getQueue(leader.tmux_target, leader.role).enqueue({ type: 'paste', text: notifyText }).catch(() => {});
+        getQueue(leader.tmux_target!, { role: leader.role }).enqueue({ type: 'paste', text: notifyText }).catch(() => {});
       }
     }
   }
