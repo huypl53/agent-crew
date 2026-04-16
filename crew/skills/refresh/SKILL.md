@@ -6,43 +6,23 @@ arguments: --name <your-name>
 
 # Refresh
 
-Re-register your crew agent without leaving and rejoining rooms. Use this after resuming a session.
-
-## Usage
-
-```
-refresh --name <name>
-```
-
-**Example:**
-```
-refresh --name builder-1
-```
-
-## What This Does
-
-1. Calls the `refresh` MCP tool with your name
-2. Your tmux pane is auto-detected from `$TMUX_PANE`
-3. Updates your pane registration in the database — all room memberships are preserved
-4. If your agent was registered under the old JSON state, it migrates you to SQLite automatically
+Re-register without leaving rooms. Use after session resume.
 
 ## When To Use
 
-- After resuming a suspended session
-- After your session reconnects
-- When the dashboard doesn't show you but you know you registered before
-- Any time your tmux pane ID changed but you want to keep your rooms
+- Session resumed/reconnected
+- Dashboard doesn't show you but you registered before
+- Tmux pane ID changed but you want to keep room memberships
 
 ## Instructions
 
-Parse the user's arguments and call the `refresh` tool:
+1. Parse arguments: `--name <name>`
+2. Run via Bash:
+   ```
+   crew refresh --name <name>
+   ```
+3. Tmux pane auto-detected from `$TMUX_PANE`
 
-```
-Arguments: --name <name>
+**On success:** Confirm refresh with rooms list and pane ID.
 
-Call: refresh({ name: "<name>" })
-```
-
-On success, confirm: "Refreshed <name> — rooms: <rooms>, pane: <target>"
-
-On error, show the error message. If agent not found, suggest using `join-room` instead.
+**On error:** If agent not found, suggest `crew:join-room` instead.

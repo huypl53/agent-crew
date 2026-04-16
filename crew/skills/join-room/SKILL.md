@@ -8,43 +8,27 @@ arguments: <room> --role <boss|leader|worker> --name <your-name>
 
 Register yourself in a crew coordination room.
 
-## Usage
-
-```
-join-room <room> --role <role> --name <name>
-```
-
-**Example:**
-```
-join-room frontend --role worker --name builder-1
-```
-
-## What This Does
-
-1. Calls the `join_room` MCP tool with your room, role, and name
-2. Your tmux pane is auto-detected from `$TMUX_PANE`
-3. On success, you're registered and other agents can discover you via `list_rooms` / `list_members`
-
-## After Joining
-
-Based on your role, follow these coordination patterns:
-
-**Boss:** Monitor the company room for leader reports. Use `list_rooms` + `list_members` for situational awareness. Send strategic direction via push messages to leaders.
-
-**Leader:** Poll workers with `get_status` every 10-30s. Assign tasks via push to workers. Read completion reports via `read_messages`. Escalate to boss in the company room.
-
-**Worker:** Watch for `[name@room]:` push messages from your leader — these are task commands. Report completion via `send_message(mode: "pull")`. Ask for help via pull messages to your leader.
-
 ## Instructions
 
-Parse the user's arguments and call the `join_room` tool:
+1. Parse arguments: `<room> --role <role> --name <name>`
+2. Run via Bash:
+   ```
+   crew join --room <room> --role <role> --name <name>
+   ```
+3. Tmux pane auto-detected from `$TMUX_PANE`
 
-```
-Arguments: <room> --role <role> --name <name>
+**On success:** Confirm registration and pane ID, then proceed to step 4.
 
-Call: join_room({ room: "<room>", role: "<role>", name: "<name>" })
-```
+**On error:** Show error message and stop.
 
-On success, confirm: "Registered as <name> (<role>) in room <room>. Tmux pane: <target>"
+## 4. Activate Role Behavior (REQUIRED)
 
-On error, show the error message from the tool response.
+Immediately invoke the skill matching your role:
+
+| Role | Skill | Behavior |
+|------|-------|----------|
+| boss | `crew:boss` | Manage leaders, never write code |
+| leader | `crew:leader` | Coordinate workers, never write code |
+| worker | `crew:worker` | Execute tasks, report status |
+
+Use the Skill tool to invoke. Follow that skill's work loop for the remainder of the session.
