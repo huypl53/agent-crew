@@ -20,16 +20,19 @@ export function handleDeleteRoom(params: DeleteRoomParams): ToolResult {
   if (!confirm) {
     const members = getRoomMembers(room);
     const db = getDb();
-    const { count } = db.query('SELECT COUNT(*) as count FROM messages WHERE room = ?').get(room) as { count: number };
+    const { count: msgCount } = db.query('SELECT COUNT(*) as count FROM messages WHERE room = ?').get(room) as { count: number };
+    const { count: taskCount } = db.query('SELECT COUNT(*) as count FROM tasks WHERE room = ?').get(room) as { count: number };
     return err(
-      `Use --confirm to delete room "${room}" (${members.length} members, ${count} messages will be removed)`,
+      `Use --confirm to delete room "${room}" (${members.length} members, ${msgCount} messages, ${taskCount} tasks will be removed)`,
     );
   }
 
   const db = getDb();
   const memberNames = getRoomMembers(room).map(a => a.name);
-  const { count } = db.query('SELECT COUNT(*) as count FROM messages WHERE room = ?').get(room) as { count: number };
+  const { count: msgCount } = db.query('SELECT COUNT(*) as count FROM messages WHERE room = ?').get(room) as { count: number };
+  const { count: taskCount } = db.query('SELECT COUNT(*) as count FROM tasks WHERE room = ?').get(room) as { count: number };
 
+  db.run('DELETE FROM tasks WHERE room = ?', [room]);
   db.run('DELETE FROM members WHERE room = ?', [room]);
   db.run('DELETE FROM cursors WHERE room = ?', [room]);
   db.run('DELETE FROM messages WHERE room = ?', [room]);
@@ -44,5 +47,5 @@ export function handleDeleteRoom(params: DeleteRoomParams): ToolResult {
     }
   }
 
-  return ok({ deleted: true, room, removed_members: memberNames, messages_deleted: count });
+  return ok({ deleted: true, room, removed_members: memberNames, messages_deleted: msgCount, tasks_deleted: taskCount });
 }
