@@ -23,7 +23,8 @@ describe('pane liveness checks', () => {
     nodePane = node.pane;
     // Start a long-running node process so pane_current_command becomes 'node'
     await sendToPane(nodePane, 'node -e "setInterval(() => {}, 99999)"');
-    await Bun.sleep(400);
+    // Wait for node to start — 400ms often isn't enough on slower machines
+    await Bun.sleep(1500);
   });
 
   afterAll(async () => {
