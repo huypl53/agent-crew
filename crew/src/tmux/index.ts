@@ -156,14 +156,73 @@ export async function capturePane(target: string): Promise<string | null> {
 }
 
 export async function isPaneDead(target: string): Promise<boolean> {
-  const result = await run('list-panes', '-t', target, '-F', '#{pane_dead}');
-  if (!result.success) return true; // pane/session doesn't exist = dead
-  return result.stdout.trim() === '1';
+  // display-message accepts bare pane IDs (%N) unlike list-panes which expects a window target
+  const result = await run('display-message', '-t', target, '-p', '#{pane_dead}');
+  if (!result.success) return true; // pane doesn't exist = treat as dead
+  // Empty output means pane doesn't exist (tmux returns exit 0 but no output)
+  const output = result.stdout.trim();
+  if (output === '') return true;
+  return output === '1';
+}
+
+/** Try to find a pane by ID across all known tmux sockets. Used as a fallback in paneExists. */
+async function findPaneInAnySocket(target: string): Promise<boolean> {
+  // Scan all tmux socket files under the standard tmux socket directories.
+  // Tmux puts sockets in /private/tmp/tmux-UID/ (macOS) or /tmp/tmux-UID/ (Linux).
+  const uid = typeof process.getuid === 'function' ? process.getuid() : 0;
+  const candidates = [
+    `/private/tmp/tmux-${uid}`,
+    `/tmp/tmux-${uid}`,
+    ...(process.env.XDG_RUNTIME_DIR ? [`${process.env.XDG_RUNTIME_DIR}/tmux`] : []),
+  ];
+
+  for (const dir of candidates) {
+    let names: string[];
+    try {
+      const ls = Bun.spawn(['ls', dir], { stdout: 'pipe', stderr: 'pipe' });
+      await ls.exited;
+      names = (await new Response(ls.stdout).text()).trim().split('\n').filter(Boolean);
+    } catch {
+      continue;
+    }
+
+    for (const name of names) {
+      const sockPath = `${dir}/${name}`;
+      try {
+        const proc = Bun.spawn(['tmux', '-S', sockPath, 'display-message', '-t', target, '-p', '#{pane_id}'], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        const timeout = setTimeout(() => proc.kill(), 1000);
+        const exitCode = await proc.exited;
+        clearTimeout(timeout);
+        const stdout = (await new Response(proc.stdout).text()).trim();
+        if (exitCode === 0 && stdout !== '') return true;
+      } catch {
+        // skip unreachable socket
+      }
+    }
+  }
+  return false;
 }
 
 export async function paneExists(target: string): Promise<boolean> {
-  const result = await run('list-panes', '-t', target, '-F', '#{pane_id}');
-  return result.success;
+  // If we're running inside the target pane itself, trust it exists.
+  // This handles macOS sandbox restrictions where subprocess can't connect to tmux socket
+  // but the agent IS running in the pane (e.g., Codex CLI with "Operation not permitted").
+  const currentPane = process.env.TMUX_PANE;
+  if (currentPane && currentPane === target) {
+    return true;
+  }
+
+  // display-message accepts bare pane IDs (%N) unlike list-panes which expects a window target
+  const result = await run('display-message', '-t', target, '-p', '#{pane_id}');
+  if (result.success && result.stdout.trim() !== '') return true;
+
+  // First check failed — the configured socket (CREW_TMUX_SOCKET or $TMUX's server)
+  // may not be the one where this pane lives. Scan all tmux sockets on the machine to
+  // handle agents that inherited a stale/wrong socket from a test environment.
+  return findPaneInAnySocket(target);
 }
 
 // Processes that indicate a live AI agent (Claude Code / Codex / bun / node)

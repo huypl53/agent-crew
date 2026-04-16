@@ -1,6 +1,7 @@
 import { ok, err } from '../shared/types.ts';
 import type { ToolResult, AgentRole } from '../shared/types.ts';
 import { addAgent, getAgent, getAllAgents, isNameTakenInRoom, removeAgentFully } from '../state/index.ts';
+import { getDb } from '../state/db.ts';
 import { paneExists } from '../tmux/index.ts';
 import { logServer } from '../shared/server-log.ts';
 
@@ -120,6 +121,20 @@ export async function handleJoinRoom(params: JoinRoomParams): Promise<ToolResult
 
   const agentType = await detectAgentType(target);
   const agent = addAgent(name, role as AgentRole, room, target, agentType);
+
+  // Inject room topic into agent pane — failure must NOT fail the join
+  try {
+    const roomRow = getDb().query<{ topic: string | null }, [string]>(
+      'SELECT topic FROM rooms WHERE name = ?'
+    ).get(room);
+    if (roomRow?.topic) {
+      const { getQueue } = await import('../delivery/pane-queue.ts');
+      await getQueue(target, { role: role as AgentRole })
+        .enqueue({ type: 'paste', text: `Room topic: ${roomRow.topic}` });
+    }
+  } catch (e) {
+    logServer('WARN', `topic inject failed for ${name} in ${room}: ${e instanceof Error ? e.message : String(e)}`);
+  }
 
   return ok({
     agent_id: agent.agent_id,
