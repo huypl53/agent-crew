@@ -64,9 +64,45 @@ cd ~/.crew/crew && bun link
 git clone https://github.com/huypl53/agent-crew.git ~/.crew
 cd ~/.crew/crew && bun install && bun link
 
-# Plugin (skills)
-ln -s ~/.crew/crew ~/.codex/.tmp/plugins/plugins/crew
+# Personal Codex plugin root (recommended)
+mkdir -p ~/.codex/plugins ~/.agents/plugins
+
+# Expose the plugin at a stable local path
+ln -sfn ~/.crew/crew ~/.codex/plugins/crew
+
+# Register a local marketplace for Codex
+cat > ~/.agents/plugins/marketplace.json <<'JSON'
+{
+  "name": "local-crew-plugins",
+  "interface": { "displayName": "Local Crew Plugins" },
+  "plugins": [
+    {
+      "name": "crew",
+      "source": {
+        "source": "local",
+        "path": "./.codex/plugins/crew"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
+JSON
+
+# Register marketplace root (once)
+codex marketplace add ~
 ```
+
+Then install the plugin in Codex (required):
+
+1. Start `codex`
+2. Run `/plugins`
+3. Open marketplace `Local Crew Plugins`
+4. Select `Crew` and choose `Install plugin`
+5. Start a new thread (or restart Codex)
 
 Skills: `crew:boss`, `crew:join-room`, `crew:leader`, `crew:worker`, `crew:refresh`.
 
@@ -75,6 +111,11 @@ Skills: `crew:boss`, `crew:join-room`, `crew:leader`, `crew:worker`, `crew:refre
 ```bash
 cd ~/.crew/crew && bun unlink
 claude plugins uninstall crew@crew-plugins
+
+# Optional Codex cleanup
+rm -f ~/.codex/plugins/crew
+# Then remove "crew" from ~/.agents/plugins/marketplace.json
+# And remove [plugins."crew@local-crew-plugins"] from ~/.codex/config.toml
 ```
 
 ## Usage
