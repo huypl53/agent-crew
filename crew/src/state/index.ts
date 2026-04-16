@@ -56,6 +56,10 @@ export function getAgentDbStatus(name: string): 'busy' | 'idle' | null {
   return s === 'busy' || s === 'idle' ? s : null;
 }
 
+export function setAgentStatus(name: string, status: 'busy' | 'idle'): void {
+  getDb().run('UPDATE agents SET status = ? WHERE name = ?', [status, name]);
+}
+
 export function getAgent(name: string): Agent | undefined {
   const db = getDb();
   const row = db.query('SELECT * FROM agents WHERE name = ?').get(name) as Record<string, unknown> | null;
