@@ -1,6 +1,7 @@
 import { addMessage, getAgent, getRoomMembers, createTask, markAgentStale } from '../state/index.ts';
-import { paneCommandLooksAlive } from '../tmux/index.ts';
+import { paneExists, paneCommandLooksAlive } from '../tmux/index.ts';
 import { getQueue } from './pane-queue.ts';
+import { dbClearAgentPane } from '../state/db-write.ts';
 import type { Message, MessageKind } from '../shared/types.ts';
 
 const NOTIFY_KINDS: MessageKind[] = ['completion', 'error', 'question'];
@@ -53,6 +54,18 @@ export async function deliverMessage(
       if (agent) {
         if (!agent.tmux_target) {
           results.push({ message_id: msg.message_id, delivered: false, queued: true, error: 'pull-only agent: no tmux pane', task_id: taskId });
+          continue;
+        }
+        // Check if pane exists before attempting delivery
+        if (!await paneExists(agent.tmux_target)) {
+          dbClearAgentPane(agent.name, agent.tmux_target);
+          results.push({
+            message_id: msg.message_id,
+            delivered: false,
+            queued: true,
+            error: `Agent pane ${agent.tmux_target} no longer exists. Agent may need to rejoin.`,
+            task_id: taskId,
+          });
           continue;
         }
         // For known agent types, verify the pane is still running an agent process

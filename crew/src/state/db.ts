@@ -10,7 +10,8 @@ const SCHEMA = `
   PRAGMA busy_timeout=5000;
 
   CREATE TABLE IF NOT EXISTS agents (
-    name          TEXT PRIMARY KEY,
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT NOT NULL,
     role          TEXT NOT NULL,
     pane          TEXT,
     agent_type    TEXT NOT NULL DEFAULT 'unknown',
@@ -21,6 +22,8 @@ const SCHEMA = `
     capabilities  TEXT
   );
 
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_pane ON agents(pane) WHERE pane IS NOT NULL;
+
   CREATE TABLE IF NOT EXISTS rooms (
     name       TEXT PRIMARY KEY,
     topic      TEXT,
@@ -29,7 +32,7 @@ const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS members (
     room      TEXT NOT NULL REFERENCES rooms(name) ON DELETE CASCADE,
-    agent     TEXT NOT NULL REFERENCES agents(name) ON DELETE CASCADE,
+    agent     TEXT NOT NULL,
     joined_at TEXT NOT NULL,
     PRIMARY KEY (room, agent)
   );
@@ -124,6 +127,47 @@ const SCHEMA = `
 
   CREATE TRIGGER IF NOT EXISTS trg_agents_delete AFTER DELETE ON agents
   BEGIN UPDATE change_log SET version = version + 1, updated_at = datetime('now') WHERE scope = 'agents'; END;
+
+  CREATE TABLE IF NOT EXISTS agent_templates (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT NOT NULL,
+    role         TEXT NOT NULL DEFAULT 'worker',
+    persona      TEXT,
+    capabilities TEXT,
+    created_at   TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS room_templates (
+    room        TEXT NOT NULL REFERENCES rooms(name) ON DELETE CASCADE,
+    template_id INTEGER NOT NULL REFERENCES agent_templates(id) ON DELETE CASCADE,
+    PRIMARY KEY (room, template_id)
+  );
+
+  CREATE TRIGGER IF NOT EXISTS trg_templates_ins AFTER INSERT ON agent_templates
+  BEGIN UPDATE change_log SET version=version+1, updated_at=datetime('now') WHERE scope='templates'; END;
+
+  CREATE TRIGGER IF NOT EXISTS trg_templates_upd AFTER UPDATE ON agent_templates
+  BEGIN UPDATE change_log SET version=version+1, updated_at=datetime('now') WHERE scope='templates'; END;
+
+  CREATE TRIGGER IF NOT EXISTS trg_templates_del AFTER DELETE ON agent_templates
+  BEGIN UPDATE change_log SET version=version+1, updated_at=datetime('now') WHERE scope='templates'; END;
+
+  CREATE TABLE IF NOT EXISTS room_template_definitions (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    name               TEXT NOT NULL UNIQUE,
+    topic              TEXT,
+    agent_template_ids TEXT NOT NULL DEFAULT '[]',
+    created_at         TEXT NOT NULL
+  );
+
+  CREATE TRIGGER IF NOT EXISTS trg_room_tpl_ins AFTER INSERT ON room_template_definitions
+  BEGIN UPDATE change_log SET version=version+1, updated_at=datetime('now') WHERE scope='room-templates'; END;
+
+  CREATE TRIGGER IF NOT EXISTS trg_room_tpl_upd AFTER UPDATE ON room_template_definitions
+  BEGIN UPDATE change_log SET version=version+1, updated_at=datetime('now') WHERE scope='room-templates'; END;
+
+  CREATE TRIGGER IF NOT EXISTS trg_room_tpl_del AFTER DELETE ON room_template_definitions
+  BEGIN UPDATE change_log SET version=version+1, updated_at=datetime('now') WHERE scope='room-templates'; END;
 `;
 
 export function getDbPath(): string {
@@ -146,19 +190,22 @@ export function initDb(path?: string): void {
   try { _db.exec('ALTER TABLE tasks ADD COLUMN context TEXT'); } catch { /* column already exists */ }
   try { _db.exec('ALTER TABLE agents ADD COLUMN status TEXT'); } catch { /* column already exists */ }
 
-  // Migrate agents: remove NOT NULL from pane (pull-only agents) + add persona/capabilities
+  // Migrate agents: add id column (name was previously PRIMARY KEY, now id is)
   {
-    const cols = _db.query('PRAGMA table_info(agents)').all() as Array<{ name: string; notnull: number }>;
+    const cols = _db.query('PRAGMA table_info(agents)').all() as Array<{ name: string; pk: number; notnull: number }>;
+    const hasIdCol = cols.some(c => c.name === 'id');
+    const nameIsPK = cols.find(c => c.name === 'name')?.pk === 1;
     const paneNotNull = cols.find(c => c.name === 'pane')?.notnull === 1;
     const hasPersona = cols.some(c => c.name === 'persona');
     const hasCapabilities = cols.some(c => c.name === 'capabilities');
 
-    if (paneNotNull) {
-      // Rebuild table: make pane nullable, add new columns in one pass
+    // Need full rebuild if: name is still PK (old schema) OR pane is NOT NULL (older schema)
+    if (nameIsPK || paneNotNull || !hasIdCol) {
       _db.exec(`
         PRAGMA foreign_keys=OFF;
-        CREATE TABLE agents_v2 (
-          name          TEXT PRIMARY KEY,
+        CREATE TABLE agents_v3 (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          name          TEXT NOT NULL,
           role          TEXT NOT NULL,
           pane          TEXT,
           agent_type    TEXT NOT NULL DEFAULT 'unknown',
@@ -168,10 +215,14 @@ export function initDb(path?: string): void {
           persona       TEXT,
           capabilities  TEXT
         );
-        INSERT INTO agents_v2 (name, role, pane, agent_type, registered_at, last_activity, status)
-          SELECT name, role, pane, agent_type, registered_at, last_activity, status FROM agents;
+        INSERT INTO agents_v3 (name, role, pane, agent_type, registered_at, last_activity, status, persona, capabilities)
+          SELECT name, role, pane, agent_type, registered_at, last_activity, status,
+                 ${hasPersona ? 'persona' : 'NULL'},
+                 ${hasCapabilities ? 'capabilities' : 'NULL'}
+          FROM agents;
         DROP TABLE agents;
-        ALTER TABLE agents_v2 RENAME TO agents;
+        ALTER TABLE agents_v3 RENAME TO agents;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_pane ON agents(pane) WHERE pane IS NOT NULL;
         PRAGMA foreign_keys=ON;
       `);
       // Recreate triggers dropped with the old table
@@ -183,6 +234,21 @@ export function initDb(path?: string): void {
         CREATE TRIGGER IF NOT EXISTS trg_agents_delete AFTER DELETE ON agents
         BEGIN UPDATE change_log SET version = version + 1, updated_at = datetime('now') WHERE scope = 'agents'; END;
       `);
+      // Remove FK constraint from members (name is no longer unique)
+      const membersCols = _db.query('PRAGMA table_info(members)').all() as Array<{ name: string }>;
+      if (membersCols.length > 0) {
+        _db.exec(`
+          CREATE TABLE IF NOT EXISTS members_v2 (
+            room      TEXT NOT NULL REFERENCES rooms(name) ON DELETE CASCADE,
+            agent     TEXT NOT NULL,
+            joined_at TEXT NOT NULL,
+            PRIMARY KEY (room, agent)
+          );
+          INSERT OR IGNORE INTO members_v2 SELECT * FROM members;
+          DROP TABLE members;
+          ALTER TABLE members_v2 RENAME TO members;
+        `);
+      }
     } else {
       if (!hasPersona) try { _db.exec('ALTER TABLE agents ADD COLUMN persona TEXT'); } catch { /* exists */ }
       if (!hasCapabilities) try { _db.exec('ALTER TABLE agents ADD COLUMN capabilities TEXT'); } catch { /* exists */ }
@@ -238,11 +304,32 @@ export function initDb(path?: string): void {
     insertPricing.run(model, inp, out);
   }
 
+  // Migrate: ensure agent_templates and room_templates exist on older DBs
+  _db.exec(`CREATE TABLE IF NOT EXISTS agent_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'worker', persona TEXT, capabilities TEXT, created_at TEXT NOT NULL
+  )`);
+  _db.exec(`CREATE TABLE IF NOT EXISTS room_templates (
+    room TEXT NOT NULL REFERENCES rooms(name) ON DELETE CASCADE,
+    template_id INTEGER NOT NULL REFERENCES agent_templates(id) ON DELETE CASCADE,
+    PRIMARY KEY (room, template_id)
+  )`);
+  try { _db.exec("INSERT OR IGNORE INTO change_log (scope,version,updated_at) VALUES ('templates',0,datetime('now'))"); } catch { /* exists */ }
+
+  // Migrate: ensure room_template_definitions exists on older DBs
+  _db.exec(`CREATE TABLE IF NOT EXISTS room_template_definitions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
+    topic TEXT, agent_template_ids TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL
+  )`);
+  try { _db.exec("INSERT OR IGNORE INTO change_log (scope,version,updated_at) VALUES ('room-templates',0,datetime('now'))"); } catch { /* exists */ }
+
   // Initialize change_log with scopes
   _db.exec(`
     INSERT OR IGNORE INTO change_log (scope, version, updated_at) VALUES ('messages', 0, datetime('now'));
     INSERT OR IGNORE INTO change_log (scope, version, updated_at) VALUES ('tasks', 0, datetime('now'));
     INSERT OR IGNORE INTO change_log (scope, version, updated_at) VALUES ('agents', 0, datetime('now'));
+    INSERT OR IGNORE INTO change_log (scope, version, updated_at) VALUES ('templates', 0, datetime('now'));
+    INSERT OR IGNORE INTO change_log (scope, version, updated_at) VALUES ('room-templates', 0, datetime('now'));
   `);
 }
 

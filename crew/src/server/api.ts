@@ -6,11 +6,15 @@ import {
   getLatestTokenUsage,
   getAgentMessageCounts,
   getAgentTaskStats,
+  getAllTemplates, getRoomTemplateNames, getAllRoomTemplates,
 } from '../state/index.ts';
 import { getDb } from '../state/db.ts';
 import {
   dbCreateRoom, dbDeleteRoom, dbSetTopic,
   dbUpdateAgentPersona, dbUpdateAgentCapabilities, dbDeleteAgent,
+  dbCreateTemplate, dbUpdateTemplate, dbDeleteTemplate,
+  dbCreateRoomTemplate, dbUpdateRoomTemplate, dbDeleteRoomTemplate,
+  dbSetRoomTemplates,
 } from '../state/db-write.ts';
 import { handleSendMessage } from '../tools/send-message.ts';
 
@@ -38,7 +42,17 @@ export async function handleApi(req: Request): Promise<Response> {
 
   // GET /api/rooms
   if (method === 'GET' && path === '/rooms') {
-    return json(getAllRooms());
+    const rooms = getAllRooms().map(r => ({ ...r, template_names: getRoomTemplateNames(r.name) }));
+    return json(rooms);
+  }
+
+  // GET /api/rooms/:name (single room with template_names)
+  const singleRoomMatch = path.match(/^\/rooms\/([^/]+)$/);
+  if (method === 'GET' && singleRoomMatch) {
+    const name = decodeURIComponent(singleRoomMatch[1]!);
+    const room = getRoom(name);
+    if (!room) return err('Room not found', 404);
+    return json({ ...room, template_names: getRoomTemplateNames(name) });
   }
 
   // GET /api/rooms/:name/members
@@ -66,12 +80,12 @@ export async function handleApi(req: Request): Promise<Response> {
   if (method === 'POST' && path === '/rooms') {
     const body = await req.json().catch(() => null);
     if (!body?.name) return err('Missing name');
-    const result = dbCreateRoom(body.name, body.topic);
+    const result = dbCreateRoom(body.name, body.topic, Array.isArray(body.templateIds) ? body.templateIds : undefined);
     if (result.error) return err(result.error);
     return json({ ok: true, name: body.name }, 201);
   }
 
-  // DELETE /api/rooms/:name
+  // DELETE /api/rooms/:name   PATCH /api/rooms/:name
   const roomDeleteMatch = path.match(/^\/rooms\/([^/]+)$/);
   if (method === 'DELETE' && roomDeleteMatch) {
     if (url.searchParams.get('confirm') !== 'true') return err('Pass ?confirm=true to delete');
@@ -79,6 +93,23 @@ export async function handleApi(req: Request): Promise<Response> {
     const result = dbDeleteRoom(name);
     if (result.error) return err(result.error);
     return json({ ok: true });
+  }
+  if (method === 'PATCH' && roomDeleteMatch) {
+    const name = decodeURIComponent(roomDeleteMatch[1]!);
+    const body = await req.json().catch(() => null);
+    if (!body?.topic) return err('Missing topic');
+    const r = dbSetTopic(name, body.topic);
+    return r.error ? err(r.error) : json({ ok: true });
+  }
+
+  // PATCH /api/rooms/:name/templates — update room's cast (agent templates)
+  const roomTemplatesMatch = path.match(/^\/rooms\/([^/]+)\/templates$/);
+  if (method === 'PATCH' && roomTemplatesMatch) {
+    const name = decodeURIComponent(roomTemplatesMatch[1]!);
+    const body = await req.json().catch(() => null);
+    if (!body || !Array.isArray(body.templateIds)) return err('Missing templateIds array');
+    const r = dbSetRoomTemplates(name, body.templateIds);
+    return r.error ? err(r.error) : json({ ok: true });
   }
 
   // GET /api/agents
@@ -261,6 +292,86 @@ export async function handleApi(req: Request): Promise<Response> {
     } catch (e) {
       return err(String(e));
     }
+  }
+
+  // GET /api/templates
+  if (method === 'GET' && path === '/templates') return json(getAllTemplates());
+
+  // POST /api/templates
+  if (method === 'POST' && path === '/templates') {
+    const body = await req.json().catch(() => null);
+    if (!body?.name || !body?.role) return err('Missing name or role');
+    const r = dbCreateTemplate(body.name, body.role, body.persona, body.capabilities);
+    return r.error ? err(r.error) : json({ ok: true }, 201);
+  }
+
+  // PATCH /api/templates/:id   DELETE /api/templates/:id
+  const tplMatch = path.match(/^\/templates\/(\d+)$/);
+  if (method === 'PATCH' && tplMatch) {
+    const id = parseInt(tplMatch[1]!, 10);
+    const body = await req.json().catch(() => null);
+    if (!body) return err('Missing body');
+    for (const f of ['name', 'role', 'persona', 'capabilities'] as const) {
+      if (body[f] !== undefined) {
+        const r = dbUpdateTemplate(id, f, String(body[f]));
+        if (r.error) return err(r.error);
+      }
+    }
+    return json({ ok: true });
+  }
+  if (method === 'DELETE' && tplMatch) {
+    const id = parseInt(tplMatch[1]!, 10);
+    const r = dbDeleteTemplate(id);
+    return r.error ? err(r.error) : json({ ok: true });
+  }
+
+  // POST /api/agents/:name/send-input
+  const sendInputMatch = path.match(/^\/agents\/([^/]+)\/send-input$/);
+  if (method === 'POST' && sendInputMatch) {
+    const name = decodeURIComponent(sendInputMatch[1]!);
+    const agent = getAgent(name);
+    if (!agent) return err('Agent not found', 404);
+    if (!agent.tmux_target) return err('Agent has no pane', 400);
+    const body = await req.json().catch(() => null);
+    if (!body?.text) return err('Missing text');
+    const { getQueue } = await import('../delivery/pane-queue.ts');
+    await getQueue(agent.tmux_target).enqueue({ type: 'paste', text: String(body.text) });
+    return json({ ok: true });
+  }
+
+  // --- Room Templates CRUD ---
+
+  // GET /api/room-templates
+  if (method === 'GET' && path === '/room-templates') return json(getAllRoomTemplates());
+
+  // POST /api/room-templates
+  if (method === 'POST' && path === '/room-templates') {
+    const body = await req.json().catch(() => null);
+    if (!body?.name) return err('Missing name');
+    const ids = Array.isArray(body.agentTemplateIds) ? body.agentTemplateIds : [];
+    const r = dbCreateRoomTemplate(body.name, body.topic ?? null, ids);
+    return r.error ? err(r.error) : json({ ok: true }, 201);
+  }
+
+  // PATCH/DELETE /api/room-templates/:id
+  const roomTplMatch = path.match(/^\/room-templates\/(\d+)$/);
+  if (method === 'PATCH' && roomTplMatch) {
+    const id = parseInt(roomTplMatch[1]!, 10);
+    const body = await req.json().catch(() => null);
+    if (!body) return err('Missing body');
+    for (const f of ['name', 'topic', 'agent_template_ids'] as const) {
+      if (body[f] !== undefined) {
+        const val = f === 'agent_template_ids' ? JSON.stringify(body[f]) : (body[f] ?? '');
+        const r = dbUpdateRoomTemplate(id, f, String(val));
+        if (r.error) return err(r.error);
+      }
+    }
+    return json({ ok: true });
+  }
+  if (method === 'DELETE' && roomTplMatch) {
+    const id = parseInt(roomTplMatch[1]!, 10);
+    const r = dbDeleteRoomTemplate(id);
+    return r.error ? err(r.error) : json({ ok: true });
   }
 
   return err('Not found', 404);

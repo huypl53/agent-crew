@@ -3,6 +3,24 @@ export interface Room {
   members: string[];
   topic?: string;
   created_at: string;
+  template_names?: string[];
+}
+
+export interface AgentTemplate {
+  id: number;
+  name: string;
+  role: 'boss' | 'leader' | 'worker';
+  persona?: string;
+  capabilities?: string;
+  created_at: string;
+}
+
+export interface RoomTemplate {
+  id: number;
+  name: string;
+  topic: string | null;
+  agent_template_ids: number[];
+  created_at: string;
 }
 
 export interface TokenUsage {
@@ -76,7 +94,7 @@ export interface TaskEvent {
 }
 
 export interface WsEvent {
-  type: 'message' | 'task-update' | 'agent-status' | 'room-change';
+  type: 'message' | 'task-update' | 'agent-status' | 'room-change' | 'template-change' | 'room-template-change';
   [key: string]: unknown;
 }
 

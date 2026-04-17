@@ -1,7 +1,8 @@
-import { sendKeys, sendEscape, sendClear, capturePane } from '../tmux/index.ts';
+import { sendKeys, sendEscape, sendClear, capturePane, paneExists } from '../tmux/index.ts';
 import { matchStatusLine } from '../shared/status-patterns.ts';
 import { config } from '../config.ts';
 import type { AgentRole } from '../shared/types.ts';
+import { logServer } from '../shared/server-log.ts';
 
 export type QueueItem =
   | { type: 'paste'; text: string }
@@ -148,6 +149,12 @@ export class PaneQueue {
   }
 
   private async deliver(item: QueueItem): Promise<void> {
+    // Check if pane still exists before delivery
+    if (!await paneExists(this.target)) {
+      logServer('WARN', `pane-queue: pane ${this.target} is dead, skipping delivery`);
+      throw new Error(`pane ${this.target} no longer exists`);
+    }
+
     switch (item.type) {
       case 'paste': {
         const r = await sendKeys(this.target, item.text);

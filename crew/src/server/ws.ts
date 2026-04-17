@@ -1,7 +1,7 @@
 import type { ServerWebSocket } from 'bun';
 import { getChangeVersions, getAllMessages, getAllAgents, getAllRooms, getTasksForAgent, searchTasks } from '../state/index.ts';
 
-const POLL_SCOPES = ['messages', 'agents', 'tasks', 'rooms'];
+const POLL_SCOPES = ['messages', 'agents', 'tasks', 'rooms', 'templates', 'room-templates'];
 
 const clients = new Set<ServerWebSocket<unknown>>();
 let lastVersions: Record<string, number> = {};
@@ -49,6 +49,10 @@ function broadcastChanges(): void {
       for (const room of getAllRooms()) {
         broadcast({ type: 'room-change', room: room.name, kind: 'topic-changed' });
       }
+    } else if (scope === 'templates') {
+      broadcast({ type: 'template-change' });
+    } else if (scope === 'room-templates') {
+      broadcast({ type: 'room-template-change' });
     }
     lastVersions[scope] = current;
   }

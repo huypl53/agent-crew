@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { useTraceTree } from '../hooks/useTraceTree.ts';
 import type { TraceNode } from '../hooks/useTraceTree.ts';
 import TraceDetailPanel from './TraceDetailPanel.tsx';
+import TraceTimeline from './TraceTimeline.tsx';
 
 // ── Status dot colour ────────────────────────────────────────────────────
 const STATUS_DOT: Record<string, string> = {
@@ -36,7 +37,7 @@ function fmtDuration(ms: number | null): string {
 }
 
 // ── Flatten tree to rows for rendering ───────────────────────────────────
-interface FlatRow { node: TraceNode; depth: number; hasChildren: boolean; maxSiblingMs: number }
+export interface FlatRow { node: TraceNode; depth: number; hasChildren: boolean; maxSiblingMs: number }
 
 function flatten(node: TraceNode, depth: number, expandedIds: Set<string>, siblingMaxMs: number): FlatRow[] {
   const row: FlatRow = { node, depth, hasChildren: node.children.length > 0, maxSiblingMs: siblingMaxMs };
@@ -134,13 +135,34 @@ function TraceRow({ row, selected, expanded, onToggle, onSelect }: RowProps) {
   );
 }
 
+// ── Collect min/max timestamps from all tree nodes ────────────────────────
+function collectTimeBounds(node: TraceNode): { min: number; max: number } {
+  let min = Infinity, max = -Infinity;
+  function walk(n: TraceNode) {
+    if (n.timestamp != null) {
+      if (n.timestamp < min) min = n.timestamp;
+      const end = n.timestamp + (n.durationMs != null ? n.durationMs / 1000 : 0);
+      if (end > max) max = end;
+    }
+    for (const c of n.children) walk(c);
+  }
+  walk(node);
+  if (min === Infinity) { const now = Math.floor(Date.now() / 1000); return { min: now - 3600, max: now }; }
+  // Add 5% padding
+  const range = max - min || 1;
+  return { min: min - range * 0.05, max: max + range * 0.05 };
+}
+
+type ZoomRange = 'all' | '1h' | '15m';
+
 // ── Main component ────────────────────────────────────────────────────────
 export default function TraceView() {
-  const { root, loading, error } = useTraceTree();
+  const { tree: root, loading, error } = useTraceTree();
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() =>
     root ? defaultExpanded(root) : new Set()
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [zoomRange, setZoomRange] = useState<ZoomRange>('all');
   const treeRef = useRef<HTMLDivElement>(null);
 
   const allIds = useMemo(() => root ? collectIds(root) : new Set<string>(), [root]);
@@ -155,6 +177,17 @@ export default function TraceView() {
     () => rows.find(r => r.node.id === selectedId)?.node ?? null,
     [rows, selectedId]
   );
+
+  // Compute time bounds with zoom
+  const timeBounds = useMemo(() => {
+    if (!root) return { min: 0, max: 1 };
+    const full = collectTimeBounds(root);
+    if (zoomRange === 'all') return full;
+    const now = Math.floor(Date.now() / 1000);
+    const windowSec = zoomRange === '1h' ? 3600 : 900;
+    const min = Math.max(full.min, now - windowSec);
+    return { min, max: now };
+  }, [root, zoomRange]);
 
   const toggle = useCallback((id: string) => {
     setExpandedIds(prev => {
@@ -180,16 +213,28 @@ export default function TraceView() {
         <span>{counts.task ?? 0} tasks</span>
         <span>·</span>
         <span>{counts.message ?? 0} messages</span>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex gap-2 items-center">
+          {/* Zoom controls */}
+          <div className="flex gap-1 mr-3 border border-slate-700 rounded overflow-hidden">
+            {(['all', '15m', '1h'] as ZoomRange[]).map(z => (
+              <button
+                key={z}
+                onClick={() => setZoomRange(z)}
+                className={`px-2 py-0.5 text-xs ${zoomRange === z ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+              >
+                {z === 'all' ? 'All' : z}
+              </button>
+            ))}
+          </div>
           <button onClick={expandAll}   className="px-2 py-0.5 rounded hover:text-slate-200">Expand all</button>
           <button onClick={collapseAll} className="px-2 py-0.5 rounded hover:text-slate-200">Collapse all</button>
         </div>
       </div>
 
-      {/* 60/40 split */}
+      {/* 40/60 split: tree | timeline */}
       <div className="flex flex-1 overflow-hidden">
-        {/* LEFT — span tree */}
-        <div ref={treeRef} className="w-3/5 overflow-y-auto border-r border-slate-700" role="tree">
+        {/* LEFT — tree (40%) */}
+        <div ref={treeRef} className="w-2/5 overflow-y-auto border-r border-slate-700" role="tree">
           {rows.map(row => (
             <TraceRow
               key={row.node.id}
@@ -202,9 +247,14 @@ export default function TraceView() {
           ))}
         </div>
 
-        {/* RIGHT — detail panel */}
-        <div className="w-2/5 overflow-hidden flex flex-col">
-          <TraceDetailPanel node={selectedNode} />
+        {/* RIGHT — timeline (60%) */}
+        <div className="w-3/5 overflow-hidden flex flex-col">
+          <TraceTimeline
+            rows={rows}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            timeBounds={timeBounds}
+          />
         </div>
       </div>
     </div>

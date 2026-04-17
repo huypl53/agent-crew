@@ -21,6 +21,23 @@ export interface Room {
   created_at: string;
 }
 
+export interface AgentTemplate {
+  id: number;
+  name: string;
+  role: AgentRole;
+  persona?: string;
+  capabilities?: string;
+  created_at: string;
+}
+
+export interface RoomTemplate {
+  id: number;
+  name: string;
+  topic: string | null;
+  agent_template_ids: number[];
+  created_at: string;
+}
+
 export type MessageKind = 'task' | 'completion' | 'question' | 'error' | 'status' | 'chat' | 'note';
 
 export interface Message {

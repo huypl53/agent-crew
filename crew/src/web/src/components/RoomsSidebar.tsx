@@ -7,9 +7,12 @@ interface Props {
   onSelect: (room: string) => void;
   onCreateRoom: () => void;
   onDeleteRoom: (room: Room) => void;
+  onEditTopic: (room: Room) => void;
+  onEditCast: (room: Room) => void;
+  onCloneRoom?: (room: Room) => void;
 }
 
-export default function RoomsSidebar({ selectedRoom, onSelect, onCreateRoom, onDeleteRoom }: Props) {
+export default function RoomsSidebar({ selectedRoom, onSelect, onCreateRoom, onDeleteRoom, onEditTopic, onEditCast, onCloneRoom }: Props) {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,16 +46,48 @@ export default function RoomsSidebar({ selectedRoom, onSelect, onCreateRoom, onD
               onClick={() => onSelect(room.name)}
               className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-700 transition-colors ${selectedRoom === room.name ? 'bg-slate-700 text-white font-medium' : 'text-slate-300'}`}
             >
-              <div className="truncate pr-5">#{room.name}</div>
+              {/* Room name — extra right padding to clear icon buttons */}
+              <div className="truncate pr-24 font-medium">#{room.name}</div>
               <div className="text-xs text-slate-500 truncate">
                 {room.members.length} member{room.members.length !== 1 ? 's' : ''}
-                {room.topic ? ` · ${room.topic}` : ''}
               </div>
+              {room.topic && (
+                <p className="text-xs text-slate-500 truncate">{room.topic}</p>
+              )}
+              {!!room.template_names?.length && (
+                <p className="text-xs text-slate-600 italic truncate">{room.template_names.join(', ')}</p>
+              )}
+            </button>
+
+            {/* Clone as template — visible on hover */}
+            {onCloneRoom && (
+              <button
+                onClick={e => { e.stopPropagation(); onCloneRoom(room); }}
+                title="Clone as template"
+                className="absolute right-20 top-2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-blue-400 text-xs transition-opacity"
+              >
+                📋
+              </button>
+            )}
+            {/* Edit topic — visible on hover, positioned left of delete */}
+            <button
+              onClick={e => { e.stopPropagation(); onEditTopic(room); }}
+              title="Edit topic"
+              className="absolute right-8 top-2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-slate-200 text-xs transition-opacity"
+            >
+              ✎
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); onEditCast(room); }}
+              title="Edit cast"
+              className="absolute right-14 top-2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-blue-400 text-xs transition-opacity"
+            >
+              👥
             </button>
             <button
               onClick={e => { e.stopPropagation(); onDeleteRoom(room); }}
               title="Delete room"
-              className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 text-xs transition-opacity"
+              className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 text-xs transition-opacity"
             >
               🗑
             </button>

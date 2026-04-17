@@ -346,7 +346,8 @@ describe('state module', () => {
 
     test('validateLiveness removes agents with dead tmux panes', async () => {
       // Register an agent with a fake (dead) tmux pane
-      addAgent('ghost-agent', 'worker', '%99999', 'crew');
+      // Args: name, role, room, tmuxTarget
+      addAgent('ghost-agent', 'worker', 'crew', '%99999');
       const before = getAgent('ghost-agent');
       expect(before).toBeTruthy();
 
@@ -602,12 +603,12 @@ describe('state module', () => {
       addAgent('wk-01', 'worker', 'test-room', '%2');
     });
 
-    test('change_log table has 3 initial rows after initDb', () => {
+    test('change_log table has 5 initial rows after initDb', () => {
       const db = require('../src/state/db.ts').getDb();
       const rows = db.prepare('SELECT * FROM change_log').all() as { scope: string; version: number }[];
-      expect(rows.length).toBe(3);
+      expect(rows.length).toBe(5);
       const scopes = rows.map(r => r.scope).sort();
-      expect(scopes).toEqual(['agents', 'messages', 'tasks']);
+      expect(scopes).toEqual(['agents', 'messages', 'room-templates', 'tasks', 'templates']);
     });
 
     test('Inserting a message bumps messages version', () => {

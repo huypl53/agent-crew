@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import RoomsSidebar from './components/RoomsSidebar.tsx';
 import MessageFeed from './components/MessageFeed.tsx';
 import KindFilter from './components/KindFilter.tsx';
@@ -8,17 +8,23 @@ import NavBar from './components/NavBar.tsx';
 import TaskBoard from './components/TaskBoard.tsx';
 import TimelineView from './components/TimelineView.tsx';
 import TraceView from './components/TraceView.tsx';
+import TemplatesPanel from './components/TemplatesPanel.tsx';
 import Composer from './components/Composer.tsx';
 import RoomModal from './components/RoomModal.tsx';
 import AgentEditModal from './components/AgentEditModal.tsx';
 import { useWebSocket } from './hooks/useWebSocket.ts';
 import { useMessages } from './hooks/useMessages.ts';
-import type { Agent, Message, Room } from './types.ts';
+import { get, post } from './hooks/useApi.ts';
+import type { Agent, AgentTemplate, Message, Room } from './types.ts';
 import type { View } from './components/NavBar.tsx';
 
 const ALL_KINDS = ['task', 'completion', 'error', 'question', 'status', 'chat'];
 
-type RoomModalState = { mode: 'create' } | { mode: 'delete-confirm'; room: Room };
+type RoomModalState =
+  | { mode: 'create' }
+  | { mode: 'delete-confirm'; room: Room }
+  | { mode: 'edit-topic'; room: Room }
+  | { mode: 'edit-cast'; room: Room };
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -30,6 +36,17 @@ export default function App() {
   const [roomModal, setRoomModal] = useState<RoomModalState | null>(null);
   const [agentEditTarget, setAgentEditTarget] = useState<Agent | null>(null);
   const [enabledKinds, setEnabledKinds] = useState<Set<string>>(new Set(ALL_KINDS));
+  const [templates, setTemplates] = useState<AgentTemplate[]>([]);
+
+  // Fetch templates on mount and refresh on template-change WS event
+  useEffect(() => {
+    get<AgentTemplate[]>('/templates').then(setTemplates).catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    return subscribe('template-change', () => {
+      get<AgentTemplate[]>('/templates').then(setTemplates).catch(() => undefined);
+    });
+  }, [subscribe]);
 
   const toggleKind = (kind: string) => {
     setEnabledKinds(prev => {
@@ -37,6 +54,16 @@ export default function App() {
       next.has(kind) ? next.delete(kind) : next.add(kind);
       return next;
     });
+  };
+
+  const handleCloneRoom = async (room: Room) => {
+    const templateName = prompt(`Save room "${room.name}" as template. Enter template name:`);
+    if (!templateName?.trim()) return;
+    try {
+      await post('/room-templates', { name: templateName.trim(), topic: room.topic ?? null, agentTemplateIds: [] });
+    } catch (e) {
+      alert(`Failed to clone: ${(e as Error).message}`);
+    }
   };
 
   return (
@@ -51,6 +78,9 @@ export default function App() {
             onSelect={setSelectedRoom}
             onCreateRoom={() => setRoomModal({ mode: 'create' })}
             onDeleteRoom={room => setRoomModal({ mode: 'delete-confirm', room })}
+            onEditTopic={room => setRoomModal({ mode: 'edit-topic', room })}
+            onEditCast={room => setRoomModal({ mode: 'edit-cast', room })}
+            onCloneRoom={room => void handleCloneRoom(room)}
           />
           <main className="flex-1 flex flex-col min-w-0">
             <header className="px-4 py-2 border-b border-slate-700 text-sm text-slate-400 flex-shrink-0">
@@ -91,10 +121,17 @@ export default function App() {
         </div>
       )}
 
+      {currentView === 'templates' && (
+        <div className="flex-1 flex overflow-hidden">
+          <TemplatesPanel />
+        </div>
+      )}
+
       {roomModal && (
         <RoomModal
           mode={roomModal.mode}
-          room={roomModal.mode === 'delete-confirm' ? roomModal.room : undefined}
+          room={'room' in roomModal ? roomModal.room : undefined}
+          templates={templates}
           onClose={() => setRoomModal(null)}
           onSuccess={() => setRoomModal(null)}
         />

@@ -226,7 +226,8 @@ export async function paneExists(target: string): Promise<boolean> {
 }
 
 // Processes that indicate a live AI agent (Claude Code / Codex / bun / node)
-const AGENT_PROC_RE = /^(node|bun|claude|codex)$/i;
+// Use prefix match (no $) to handle architecture suffixes like "codex-aarch64-a"
+const AGENT_PROC_RE = /^(node|bun|claude|codex)/i;
 
 /** Returns the foreground command name running in a pane, or null if unreachable. */
 export async function getPaneCurrentCommand(target: string): Promise<string | null> {

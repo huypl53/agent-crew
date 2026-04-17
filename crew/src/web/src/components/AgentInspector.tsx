@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import type { Agent } from '../types.ts';
-import { get } from '../hooks/useApi.ts';
+import type { Agent, Room } from '../types.ts';
+import { get, post } from '../hooks/useApi.ts';
 
 const STATUS_COLORS: Record<string, string> = {
   busy: 'text-yellow-400', idle: 'text-green-400',
@@ -46,14 +46,45 @@ interface Props {
 
 export default function AgentInspector({ room, onEditAgent }: Props) {
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [roomInfo, setRoomInfo] = useState<Room | null>(null);
   const [selected, setSelected] = useState<Agent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statsOpen, setStatsOpen] = useState(true);
   const [costOpen, setCostOpen] = useState(true);
+  const [sendTarget, setSendTarget] = useState<string | null>(null);
+  const [sendText, setSendText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  // Reset send state when selected agent changes
+  useEffect(() => {
+    setSendTarget(null);
+    setSendText('');
+    setSendError(null);
+  }, [selected?.name]);
+
+  const handleSendInput = async () => {
+    if (!selected || !sendText.trim()) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      await post(`/agents/${encodeURIComponent(selected.name)}/send-input`, { text: sendText });
+      setSendText('');
+      setSendTarget(null);
+    } catch (e) {
+      setSendError((e as Error).message);
+    } finally {
+      setSending(false);
+    }
+  };
 
   useEffect(() => {
     setSelected(null);
+    setRoomInfo(null);
     if (!room) { setAgents([]); return; }
+    // Fetch room info (includes template_names)
+    get<Room>(`/rooms/${encodeURIComponent(room)}`).then(setRoomInfo).catch(() => undefined);
+    // Fetch members
     get<Agent[]>(`/rooms/${encodeURIComponent(room)}/members`)
       .then(setAgents)
       .catch(e => setError((e as Error).message));
@@ -98,8 +129,22 @@ export default function AgentInspector({ room, onEditAgent }: Props) {
             </button>
           </li>
         ))}
-        {agents.length === 0 && !error && (
+        {agents.length === 0 && !error && !roomInfo?.template_names?.length && (
           <li className="px-3 py-2 text-xs text-slate-500">No agents</li>
+        )}
+        {agents.length === 0 && !error && !!roomInfo?.template_names?.length && (
+          <>
+            <li className="px-3 py-1 text-[10px] uppercase tracking-widest text-slate-500 bg-slate-700/30">
+              Expected cast
+            </li>
+            {roomInfo.template_names.map(name => (
+              <li key={name} className="px-3 py-1.5 text-sm text-slate-500 italic">
+                <span className="text-xs mr-1 text-slate-600">○</span>
+                {name}
+                <span className="ml-1 text-[10px] text-slate-600">· not joined</span>
+              </li>
+            ))}
+          </>
         )}
       </ul>
 
@@ -199,6 +244,50 @@ export default function AgentInspector({ room, onEditAgent }: Props) {
             >
               Edit
             </button>
+          )}
+
+          {selected.tmux_target && (
+            <div className="mt-3 pt-3 border-t border-slate-700">
+              {sendTarget === selected.name ? (
+                <div className="space-y-2">
+                  <textarea
+                    autoFocus
+                    value={sendText}
+                    onChange={e => setSendText(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleSendInput();
+                      if (e.key === 'Escape') { setSendTarget(null); setSendText(''); }
+                    }}
+                    rows={3}
+                    placeholder="Text to send to agent pane…"
+                    className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-xs text-slate-200 resize-none focus:outline-none focus:border-slate-500"
+                  />
+                  {sendError && <p className="text-xs text-red-400">{sendError}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => void handleSendInput()}
+                      disabled={sending || !sendText.trim()}
+                      className="flex-1 px-2 py-1.5 bg-blue-700 hover:bg-blue-600 disabled:opacity-40 rounded text-xs text-white"
+                    >
+                      {sending ? 'Sending…' : 'Send (⌘↵)'}
+                    </button>
+                    <button
+                      onClick={() => { setSendTarget(null); setSendText(''); setSendError(null); }}
+                      className="px-2 py-1.5 text-xs text-slate-400 hover:text-slate-200 rounded"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setSendTarget(selected.name)}
+                  className="w-full px-2 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs text-slate-300 text-left"
+                >
+                  Send input to agent…
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
