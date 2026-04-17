@@ -106,6 +106,17 @@ Then install the plugin in Codex (required):
 
 Skills: `crew:boss`, `crew:join-room`, `crew:leader`, `crew:worker`, `crew:refresh`.
 
+#### Codex Sandbox Configuration (macOS)
+
+Codex's default sandbox blocks access to tmux sockets, preventing crew from delivering messages or detecting agent status. Add these settings to `~/.codex/config.toml`:
+
+```toml
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
+```
+
+Without this configuration, agents will show as "dead" and messages will remain queued instead of delivered.
+
 ### Uninstall
 
 ```bash

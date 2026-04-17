@@ -1,4 +1,4 @@
-import type { Agent, AgentRole, Room, Message, MessageKind, Task, TaskStatus, TaskEvent, TokenUsage, PricingEntry } from '../shared/types.ts';
+import type { Agent, AgentRole, AgentTemplate, RoomTemplate, Room, Message, MessageKind, Task, TaskStatus, TaskEvent, TokenUsage, PricingEntry } from '../shared/types.ts';
 import { isPaneDead, paneCommandLooksAlive } from '../tmux/index.ts';
 import { getDb, initDb, closeDb, getDbPath } from './db.ts';
 
@@ -11,7 +11,7 @@ function now(): string { return new Date().toISOString(); }
 
 function dbAgentToAgent(row: Record<string, unknown>, agentRooms: string[]): Agent {
   return {
-    agent_id: row.name as string,
+    agent_id: String(row.id),
     name: row.name as string,
     role: row.role as AgentRole,
     rooms: agentRooms,
@@ -51,18 +51,32 @@ function rowToMessage(row: Record<string, unknown>): Message {
 // --- Agent operations ---
 
 export function getAgentDbStatus(name: string): 'busy' | 'idle' | null {
-  const row = getDb().query('SELECT status FROM agents WHERE name = ?').get(name) as { status: string | null } | null;
+  // Get status from most recent agent with this name
+  const row = getDb().query('SELECT status FROM agents WHERE name = ? ORDER BY id DESC LIMIT 1').get(name) as { status: string | null } | null;
   const s = row?.status;
   return s === 'busy' || s === 'idle' ? s : null;
 }
 
 export function setAgentStatus(name: string, status: 'busy' | 'idle'): void {
-  getDb().run('UPDATE agents SET status = ? WHERE name = ?', [status, name]);
+  // Update status on most recent agent with this name
+  const agent = getDb().query('SELECT id FROM agents WHERE name = ? ORDER BY id DESC LIMIT 1').get(name) as { id: number } | null;
+  if (agent) {
+    getDb().run('UPDATE agents SET status = ? WHERE id = ?', [status, agent.id]);
+  }
+}
+
+/** Server-observed heartbeat: update last_activity when pane content changes. */
+export function touchAgentActivity(name: string): void {
+  getDb().run(
+    'UPDATE agents SET last_activity = ? WHERE name = ? AND id = (SELECT id FROM agents WHERE name = ? ORDER BY id DESC LIMIT 1)',
+    [new Date().toISOString(), name, name],
+  );
 }
 
 export function getAgent(name: string): Agent | undefined {
   const db = getDb();
-  const row = db.query('SELECT * FROM agents WHERE name = ?').get(name) as Record<string, unknown> | null;
+  // Return most recently registered agent with this name
+  const row = db.query('SELECT * FROM agents WHERE name = ? ORDER BY id DESC LIMIT 1').get(name) as Record<string, unknown> | null;
   if (!row) return undefined;
   const agentRooms = (db.query('SELECT room FROM members WHERE agent = ? ORDER BY joined_at').all(name) as { room: string }[]).map(r => r.room);
   return dbAgentToAgent(row, agentRooms);
@@ -89,15 +103,60 @@ export function addAgent(
   const db = getDb();
   const ts = now();
 
-  db.run(
-    `INSERT INTO agents (name, role, pane, agent_type, registered_at, persona, capabilities) VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(name) DO UPDATE SET
-       pane = excluded.pane,
-       agent_type = excluded.agent_type,
-       persona = COALESCE(excluded.persona, agents.persona),
-       capabilities = COALESCE(excluded.capabilities, agents.capabilities)`,
-    [name, role, tmuxTarget, agentType, ts, persona ?? null, capabilities ?? null],
-  );
+  if (tmuxTarget) {
+    // Check if pane is already taken by another agent
+    const existingByPane = db.query('SELECT id, name FROM agents WHERE pane = ?').get(tmuxTarget) as { id: number; name: string } | null;
+    if (existingByPane) {
+      // Update existing row: change name and other fields
+      db.run(
+        `UPDATE agents SET name = ?, role = ?, agent_type = ?,
+         persona = COALESCE(?, persona), capabilities = COALESCE(?, capabilities)
+         WHERE id = ?`,
+        [name, role, agentType, persona ?? null, capabilities ?? null, existingByPane.id],
+      );
+      // Update members if name changed
+      if (existingByPane.name !== name) {
+        db.run('UPDATE members SET agent = ? WHERE agent = ?', [name, existingByPane.name]);
+        db.run('UPDATE cursors SET agent = ? WHERE agent = ?', [name, existingByPane.name]);
+      }
+    } else {
+      // Check if there's an existing agent with this name — update their pane
+      const existingByName = db.query('SELECT id FROM agents WHERE name = ? ORDER BY id DESC LIMIT 1').get(name) as { id: number } | null;
+      if (existingByName) {
+        // Update existing agent's pane and other fields
+        db.run(
+          `UPDATE agents SET pane = ?, role = ?, agent_type = ?,
+           persona = COALESCE(?, persona), capabilities = COALESCE(?, capabilities)
+           WHERE id = ?`,
+          [tmuxTarget, role, agentType, persona ?? null, capabilities ?? null, existingByName.id],
+        );
+      } else {
+        // Insert new agent row
+        db.run(
+          `INSERT INTO agents (name, role, pane, agent_type, registered_at, persona, capabilities) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [name, role, tmuxTarget, agentType, ts, persona ?? null, capabilities ?? null],
+        );
+      }
+    }
+  } else {
+    // Pull-only agent (no pane) — check for existing agent with this name
+    const existingByName = db.query('SELECT id FROM agents WHERE name = ? AND pane IS NULL ORDER BY id DESC LIMIT 1').get(name) as { id: number } | null;
+    if (existingByName) {
+      // Update existing pull-only agent
+      db.run(
+        `UPDATE agents SET role = ?, agent_type = ?,
+         persona = COALESCE(?, persona), capabilities = COALESCE(?, capabilities)
+         WHERE id = ?`,
+        [role, agentType, persona ?? null, capabilities ?? null, existingByName.id],
+      );
+    } else {
+      // Insert new pull-only agent row
+      db.run(
+        `INSERT INTO agents (name, role, pane, agent_type, registered_at, persona, capabilities) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [name, role, null, agentType, ts, persona ?? null, capabilities ?? null],
+      );
+    }
+  }
 
   db.run(
     'INSERT OR IGNORE INTO rooms (name, created_at) VALUES (?, ?)',
@@ -140,8 +199,34 @@ export function removeAgentFully(name: string): void {
     const count = (db.query('SELECT COUNT(*) as c FROM members WHERE room = ?').get(room) as { c: number }).c;
     if (count === 0) db.run('DELETE FROM rooms WHERE name = ?', [room]);
   }
+  // Delete all agent rows with this name
   db.run('DELETE FROM agents WHERE name = ?', [name]);
   db.run('DELETE FROM cursors WHERE agent = ?', [name]);
+}
+
+/** Remove agent by database ID (for precise deletion) */
+export function removeAgentById(id: number): void {
+  const db = getDb();
+  const agent = db.query('SELECT name FROM agents WHERE id = ?').get(id) as { name: string } | null;
+  if (!agent) return;
+
+  const name = agent.name;
+  // Check if there are other agents with the same name
+  const otherAgents = (db.query('SELECT COUNT(*) as c FROM agents WHERE name = ? AND id != ?').get(name, id) as { c: number }).c;
+
+  if (otherAgents === 0) {
+    // This is the only agent with this name — clean up memberships
+    const agentRooms = (db.query('SELECT room FROM members WHERE agent = ?').all(name) as { room: string }[]).map(r => r.room);
+    db.run('DELETE FROM members WHERE agent = ?', [name]);
+    for (const room of agentRooms) {
+      const count = (db.query('SELECT COUNT(*) as c FROM members WHERE room = ?').get(room) as { c: number }).c;
+      if (count === 0) db.run('DELETE FROM rooms WHERE name = ?', [room]);
+    }
+    db.run('DELETE FROM cursors WHERE agent = ?', [name]);
+  }
+
+  // Delete the specific agent row
+  db.run('DELETE FROM agents WHERE id = ?', [id]);
 }
 
 // --- Room operations ---
@@ -295,10 +380,16 @@ export function getAllMessages(): Message[] {
 export async function refreshAgent(name: string, newPane: string): Promise<Agent | undefined> {
   const db = getDb();
 
-  // Fast path: agent exists in SQLite — update pane and return
-  const existing = db.query('SELECT * FROM agents WHERE name = ?').get(name) as Record<string, unknown> | null;
+  // Fast path: agent exists in SQLite — update pane for the most recent agent with this name
+  const existing = db.query('SELECT id FROM agents WHERE name = ? ORDER BY id DESC LIMIT 1').get(name) as { id: number } | null;
   if (existing) {
-    db.run('UPDATE agents SET pane = ? WHERE name = ?', [newPane, name]);
+    // Check if newPane is already taken by another agent
+    const paneOwner = db.query('SELECT id FROM agents WHERE pane = ?').get(newPane) as { id: number } | null;
+    if (paneOwner && paneOwner.id !== existing.id) {
+      // Evict the other agent from this pane
+      db.run('UPDATE agents SET pane = NULL WHERE id = ?', [paneOwner.id]);
+    }
+    db.run('UPDATE agents SET pane = ? WHERE id = ?', [newPane, existing.id]);
     return getAgent(name);
   }
 
@@ -321,10 +412,9 @@ export async function refreshAgent(name: string, newPane: string): Promise<Agent
   const rooms: string[] = Array.isArray(legacy.rooms) ? legacy.rooms : [];
   const ts = legacy.joined_at as string ?? new Date().toISOString();
 
-  // Insert agent
+  // Insert new agent row
   db.run(
-    `INSERT INTO agents (name, role, pane, registered_at) VALUES (?, ?, ?, ?)
-     ON CONFLICT(name) DO UPDATE SET pane = excluded.pane`,
+    `INSERT INTO agents (name, role, pane, agent_type, registered_at) VALUES (?, ?, ?, 'unknown', ?)`,
     [name, role, newPane, ts],
   );
 
@@ -657,6 +747,28 @@ export function getChangeVersions(scopes: string[]): Record<string, { version: n
     if (row) result[scope] = row;
   }
   return result;
+}
+
+// --- Template reads ---
+
+export function getAllTemplates(): AgentTemplate[] {
+  return getDb().query('SELECT * FROM agent_templates ORDER BY id').all() as AgentTemplate[];
+}
+
+export function getRoomTemplateNames(room: string): string[] {
+  return (getDb().query(
+    'SELECT t.name FROM agent_templates t JOIN room_templates rt ON rt.template_id=t.id WHERE rt.room=? ORDER BY t.id'
+  ).all(room) as { name: string }[]).map(r => r.name);
+}
+
+export function getAllRoomTemplates(): RoomTemplate[] {
+  const rows = getDb().query('SELECT * FROM room_template_definitions ORDER BY id').all() as Array<{
+    id: number; name: string; topic: string | null; agent_template_ids: string; created_at: string;
+  }>;
+  return rows.map(r => ({
+    ...r,
+    agent_template_ids: JSON.parse(r.agent_template_ids) as number[],
+  }));
 }
 
 // --- Test helpers ---

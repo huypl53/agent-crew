@@ -1,8 +1,8 @@
 import { ok, err } from '../shared/types.ts';
 import type { ToolResult, AgentStatus } from '../shared/types.ts';
-import { getAgent, getAgentDbStatus, setAgentStatus, getTasksForAgent } from '../state/index.ts';
-import { capturePane, isPaneDead } from '../tmux/index.ts';
-import { matchStatusLine } from '../shared/status-patterns.ts';
+import { getAgent, touchAgentActivity, getTasksForAgent } from '../state/index.ts';
+import { isPaneDead } from '../tmux/index.ts';
+import { getPaneStatus } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
 
 interface GetStatusParams {
@@ -46,27 +46,17 @@ export async function handleGetStatus(params: GetStatusParams): Promise<ToolResu
     });
   }
 
-  // Pane output is source of truth — DB status can go stale if agent finishes without sending a message
-  let output: string | null = null;
-  try {
-    output = await capturePane(agent.tmux_target);
-  } catch (e) {
-    logServer('ERROR', `capturePane failed for ${targetName} (pane ${agent.tmux_target}): ${e instanceof Error ? e.message : String(e)}`);
-  }
-
+  // Hash + PID based status — no DB fallback (DB status is unreliable, agents don't self-report)
   let status: AgentStatus;
-  if (output !== null) {
-    status = matchStatusLine(output);
-    // Sync DB if pane shows idle but DB says busy (stale recovery)
-    const dbStatus = getAgentDbStatus(targetName);
-    if (status === 'idle' && dbStatus === 'busy') {
-      logServer('INFO', `Stale status recovery: ${targetName} pane=idle, db=busy → syncing to idle`);
-      setAgentStatus(targetName, 'idle');
+  try {
+    const result = await getPaneStatus(agent.tmux_target);
+    status = result.status;
+    if (result.contentChanged) {
+      touchAgentActivity(targetName);
     }
-  } else {
-    // Pane capture failed — fall back to DB
-    const dbStatus = getAgentDbStatus(targetName);
-    status = dbStatus ?? 'unknown';
+  } catch (e) {
+    logServer('ERROR', `getPaneStatus failed for ${targetName} (pane ${agent.tmux_target}): ${e instanceof Error ? e.message : String(e)}`);
+    status = 'unknown';
   }
 
   return ok({

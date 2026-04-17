@@ -1,33 +1,34 @@
 import { describe, expect, test } from 'bun:test';
-import { matchStatusLine, IDLE_PATTERN, BUSY_PATTERN, COMPLETE_PATTERN } from '../src/shared/status-patterns.ts';
+import { matchStatusLine, CC_IDLE_PATTERN, CC_BUSY_PATTERN, CC_COMPLETE_PATTERN } from '../src/shared/status-patterns.ts';
 
 describe('status patterns', () => {
-  describe('IDLE_PATTERN', () => {
+  describe('CC_IDLE_PATTERN', () => {
     test('matches empty prompt', () => {
-      expect(IDLE_PATTERN.test('❯ ')).toBe(true);
-      expect(IDLE_PATTERN.test('❯')).toBe(true);
+      expect(CC_IDLE_PATTERN.test('❯ ')).toBe(true);
+      expect(CC_IDLE_PATTERN.test('❯')).toBe(true);
     });
     test('does not match prompt with content', () => {
-      expect(IDLE_PATTERN.test('❯ some command')).toBe(false);
+      expect(CC_IDLE_PATTERN.test('❯ some command')).toBe(false);
     });
   });
 
-  describe('BUSY_PATTERN', () => {
+  describe('CC_BUSY_PATTERN', () => {
     test('matches spinner patterns', () => {
-      expect(BUSY_PATTERN.test('· Contemplating… (3s)')).toBe(true);
-      expect(BUSY_PATTERN.test('* Wandering… (1s)')).toBe(true);
-      expect(BUSY_PATTERN.test('✶ Gitifying… (8s · ↑ 84 tokens)')).toBe(true);
-      expect(BUSY_PATTERN.test('✽ Gitifying… (1m 13s · ↓ 433 tokens)')).toBe(true);
+      expect(CC_BUSY_PATTERN.test('· Contemplating… (3s)')).toBe(true);
+      expect(CC_BUSY_PATTERN.test('* Wandering… (1s)')).toBe(true);
+      expect(CC_BUSY_PATTERN.test('✶ Gitifying… (8s · ↑ 84 tokens)')).toBe(true);
+      expect(CC_BUSY_PATTERN.test('✽ Gitifying… (1m 13s · ↓ 433 tokens)')).toBe(true);
+      expect(CC_BUSY_PATTERN.test('✳ Adding re-sync types… (7m 35s · ↑ 7.9k tokens)')).toBe(true);
     });
     test('does not match random text', () => {
-      expect(BUSY_PATTERN.test('hello world')).toBe(false);
+      expect(CC_BUSY_PATTERN.test('hello world')).toBe(false);
     });
   });
 
-  describe('COMPLETE_PATTERN', () => {
+  describe('CC_COMPLETE_PATTERN', () => {
     test('matches complete indicators', () => {
-      expect(COMPLETE_PATTERN.test('✻ Baked for 1m 2s')).toBe(true);
-      expect(COMPLETE_PATTERN.test('✻ Cooked for 54s')).toBe(true);
+      expect(CC_COMPLETE_PATTERN.test('✻ Baked for 1m 2s')).toBe(true);
+      expect(CC_COMPLETE_PATTERN.test('✻ Cooked for 54s')).toBe(true);
     });
   });
 
