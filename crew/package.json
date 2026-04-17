@@ -1,15 +1,13 @@
 {
   "name": "crew",
   "version": "0.2.0",
-  "module": "src/index.ts",
+  "module": "src/cli.ts",
   "type": "module",
   "private": true,
   "bin": {
     "crew": "src/cli.ts"
   },
   "scripts": {
-    "start": "bun run src/index.ts",
-    "dashboard": "bun run src/dashboard.ts",
     "test": "bun test --timeout 15000",
     "postinstall": "bash scripts/patch-string-width.sh",
     "build:web": "cd src/web && npx vite build",
@@ -29,7 +27,6 @@
   },
   "dependencies": {
     "@inkjs/ui": "^2.0.0",
-    "@modelcontextprotocol/sdk": "^1.29.0",
     "ink": "^6.8.0",
     "ink-text-input": "^6.0.0",
     "react": "^19.2.4",

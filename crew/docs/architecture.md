@@ -2,7 +2,7 @@
 
 ## Overview
 
-Crew is a CLI tool + TUI dashboard for AI coding agents (Claude Code, OpenAI Codex CLI). Agents register into rooms with roles (boss/leader/worker) and communicate via tmux. The CLI (`crew`) is the primary interface — an MCP server is no longer required. Skills reference CLI commands, not MCP tools.
+Crew is a CLI tool + web dashboard for AI coding agents (Claude Code, OpenAI Codex CLI). Agents register into rooms with roles (boss/leader/worker) and communicate via tmux. The CLI (`crew`) is the only interface. Skills reference CLI commands.
 
 ## Data Flow
 
@@ -17,9 +17,7 @@ Agent calls CLI command (crew <cmd>)
         delivery calls tmux.sendKeys() for each leader (auto-notify)
   → CLI formats and prints compact text output
 
-MCP server (src/index.ts) remains available as a legacy interface — calls the same src/tools/ handlers.
-
-Dashboard is a React+Ink app (separate process)
+Web dashboard (src/web/) is a React app served by src/server/
   → useStateReader polls PRAGMA data_version every 500ms (detects ALL DB changes)
   → useStateReader polls tmux capture-pane every 2s for status + pane output
   → useTree/useFeed/useStatus consume state and expose derived data to components
@@ -28,13 +26,13 @@ Dashboard is a React+Ink app (separate process)
 
 ## Module Boundaries
 
-- **src/tools/** — One handler per MCP tool. Imports from state/tmux/delivery. Never calls another tool.
+- **src/tools/** — One handler per CLI command. Imports from state/tmux/delivery. Never calls another tool.
 - **src/state/db.ts** — Database singleton: `initDb()`, `getDb()`, `closeDb()`. Owns schema DDL.
 - **src/state/index.ts** — All state operations as synchronous SQLite queries. No in-memory caching.
 - **src/tmux/** — Pure tmux CLI wrapper via Bun.spawn(). No business logic. Strips ANSI from capture-pane output. Uses `load-buffer` + `paste-buffer -dp` for message delivery (see "tmux Delivery" section below).
 - **src/delivery/** — Push (tmux paste-buffer) + pull (queue). Always queues first, then delivers.
-- **src/shared/** — Types, status regex patterns. Used by both MCP server and dashboard.
-- **src/dashboard/** — React+Ink TUI. Hooks (`useStateReader`, `useTree`, `useFeed`, `useStatus`) consume SQLite (read-only) + tmux. Components are pure renderers.
+- **src/shared/** — Types, status regex patterns. Used by CLI and web dashboard.
+- **src/web/** — React web dashboard. Consumes REST API from src/server/.
 - **skills/** — Pure markdown. No code execution.
 
 ## Dependency Graph (acyclic)
@@ -83,7 +81,7 @@ idx_messages_recipient ON messages(recipient, id)
 - **Synchronous API** — All state operations are sync (no flushAsync/syncFromDisk)
 - **Immediate consistency** — No stale in-memory cache; every read hits the DB
 - **Autoincrement ID** — Replaces both `message_id` and `sequence` fields
-- **Cursors persist** — Survive MCP server restarts (stored in `cursors` table)
+- **Cursors persist** — Survive process restarts (stored in `cursors` table)
 
 ### Schema Migrations
 

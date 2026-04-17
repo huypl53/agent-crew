@@ -28,7 +28,7 @@ Workers running on Haiku model complete coding tasks but fail to report back via
 
 - **Auto-acknowledge:** When a task is pushed to a pane, auto-mark it "active" server-side instead of relying on the worker to call `update_task`
 - **Completion detection:** If worker goes busy->idle and has an active task, auto-mark task as completed and notify the leader
-- **Queue cleanup tool:** `clear_worker_session` tool exists but needs MCP server restart to register. Once available, clear stale queues before assigning new tasks.
+- **Queue cleanup tool:** `clear_worker_session` is available via CLI (`crew clear-session`). Clear stale queues before assigning new tasks.
 
 ---
 
