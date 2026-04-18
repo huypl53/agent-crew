@@ -1,4 +1,4 @@
-import { addMessage, getAgent, getRoomMembers, createTask, markAgentStale } from '../state/index.ts';
+import { addMessage, getAgent, getRoom, getRoomMembers, createTask, markAgentStale } from '../state/index.ts';
 import { paneExists, paneCommandLooksAlive } from '../tmux/index.ts';
 import { getQueue } from './pane-queue.ts';
 import { dbClearAgentPane } from '../state/db-write.ts';
@@ -25,6 +25,7 @@ export async function deliverMessage(
 ): Promise<DeliveryResult[]> {
   const header = `[${senderName}@${room}]:`;
   const fullText = `${header} ${text}`;
+  const roomObj = getRoom(room);
 
   // Determine recipients
   let targets: string[];
@@ -32,7 +33,7 @@ export async function deliverMessage(
     targets = [targetName];
   } else {
     // Broadcast: all room members except sender
-    const members = getRoomMembers(room);
+    const members = roomObj ? getRoomMembers(roomObj.id) : [];
     targets = members.filter(m => m.name !== senderName).map(m => m.name);
   }
 
@@ -109,7 +110,7 @@ export async function deliverMessage(
   if (NOTIFY_KINDS.includes(kind)) {
     const sender = getAgent(senderName);
     if (sender?.role === 'worker') {
-      const members = getRoomMembers(room);
+      const members = roomObj ? getRoomMembers(roomObj.id) : [];
       const leaders = members.filter(m => m.role === 'leader' && m.name !== senderName);
       const summary = text.length > 80 ? text.slice(0, 77) + '...' : text;
       const notifyText = `[system@${room}]: ${senderName} ${kind}: "${summary}"`;

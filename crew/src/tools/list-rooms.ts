@@ -6,7 +6,7 @@ export async function handleListRooms(): Promise<ToolResult> {
   const allRooms = getAllRooms();
 
   const rooms = allRooms.map(room => {
-    const members = getRoomMembers(room.name);
+    const members = getRoomMembers(room.id);
     const roles = { boss: 0, leader: 0, worker: 0 };
     for (const m of members) {
       if (m.role in roles) {

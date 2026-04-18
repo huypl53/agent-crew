@@ -28,17 +28,19 @@ export function dbSetTopic(room: string, topic: string): { error?: string } {
   return error ? { error } : {};
 }
 
-export function dbCreateRoom(name: string, topic?: string, templateIds?: number[]): { error?: string } {
+export function dbCreateRoom(name: string, topic?: string, templateIds?: number[], path?: string): { error?: string } {
   const { error } = withDb(db => {
-    const exists = db.query('SELECT 1 FROM rooms WHERE name = ?').get(name);
+    const roomPath = path ?? `/virtual/${name}`;
+    const exists = db.query('SELECT 1 FROM rooms WHERE path = ?').get(roomPath);
     if (exists) throw new Error('Room already exists');
-    db.run(
-      'INSERT INTO rooms (name, topic, created_at) VALUES (?, ?, ?)',
-      [name, topic ?? null, new Date().toISOString()],
+    const result = db.run(
+      'INSERT INTO rooms (path, name, topic, created_at) VALUES (?, ?, ?, ?)',
+      [roomPath, name, topic ?? null, new Date().toISOString()],
     );
+    const roomId = Number(result.lastInsertRowid);
     if (templateIds && templateIds.length > 0) {
       for (const id of templateIds) {
-        db.run('INSERT OR IGNORE INTO room_templates (room, template_id) VALUES (?, ?)', [name, id]);
+        db.run('INSERT OR IGNORE INTO room_templates (room_id, template_id) VALUES (?, ?)', [roomId, id]);
       }
     }
   });
@@ -73,9 +75,7 @@ export function dbDeleteTemplate(id: number): { error?: string } {
 
 export function dbDeleteRoom(name: string): { error?: string } {
   const { error } = withDb(db => {
-    db.run('DELETE FROM messages WHERE room = ?', [name]);
-    db.run('DELETE FROM cursors WHERE room = ?', [name]);
-    db.run('DELETE FROM members WHERE room = ?', [name]);
+    // CASCADE on rooms handles agents, messages, tasks, cursors
     db.run('DELETE FROM rooms WHERE name = ?', [name]);
   });
   return error ? { error } : {};
@@ -150,11 +150,11 @@ export function dbDeleteRoomTemplate(id: number): { error?: string } {
 
 export function dbSetRoomTemplates(room: string, templateIds: number[]): { error?: string } {
   const { error } = withDb(db => {
-    const exists = db.query('SELECT 1 FROM rooms WHERE name = ?').get(room);
-    if (!exists) throw new Error('Room not found');
-    db.run('DELETE FROM room_templates WHERE room = ?', [room]);
+    const roomRow = db.query('SELECT id FROM rooms WHERE name = ? ORDER BY id LIMIT 1').get(room) as { id: number } | null;
+    if (!roomRow) throw new Error('Room not found');
+    db.run('DELETE FROM room_templates WHERE room_id = ?', [roomRow.id]);
     for (const id of templateIds) {
-      db.run('INSERT OR IGNORE INTO room_templates (room, template_id) VALUES (?, ?)', [room, id]);
+      db.run('INSERT OR IGNORE INTO room_templates (room_id, template_id) VALUES (?, ?)', [roomRow.id, id]);
     }
   });
   return error ? { error } : {};

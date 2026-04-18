@@ -18,12 +18,11 @@ export async function handleListMembers(params: ListMembersParams): Promise<Tool
     return err(`Room "${room}" does not exist`);
   }
 
-  const members = getRoomMembers(room).map(agent => ({
+  const members = getRoomMembers(r.id).map(agent => ({
     agent_id: agent.agent_id,
     name: agent.name,
     role: agent.role,
-    status: 'unknown', // Status resolved on-demand via get_status
-    joined_at: agent.joined_at,
+    status: 'unknown',
   }));
 
   return ok({ room, topic: r.topic ?? null, members });

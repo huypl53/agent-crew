@@ -61,7 +61,7 @@ export async function handleApi(req: Request): Promise<Response> {
     const name = decodeURIComponent(roomMembersMatch[1]!);
     const room = getRoom(name);
     if (!room) return err('Room not found', 404);
-    return json(getRoomMembers(name));
+    return json(getRoomMembers(room.id));
   }
 
   // GET /api/rooms/:name/messages?limit=&offset=
