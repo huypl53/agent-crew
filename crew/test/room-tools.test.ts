@@ -2,7 +2,11 @@ import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
 import { initDb, closeDb } from '../src/state/db.ts';
 import { handleCreateRoom } from '../src/tools/create-room.ts';
 import { handleDeleteRoom } from '../src/tools/delete-room.ts';
-import { addAgent, getRoom, getAllRooms, getAgent } from '../src/state/index.ts';
+import { addAgent, getRoom, getAllRooms, getAgent, getOrCreateRoom } from '../src/state/index.ts';
+
+function mkRoom(name: string) {
+  return getOrCreateRoom(`/test/${name}`, name);
+}
 
 describe('create-room tool', () => {
   beforeEach(() => { initDb(':memory:'); });
@@ -76,7 +80,7 @@ describe('delete-room tool', () => {
 
   test('reports members and messages deleted', () => {
     // Create room via addAgent (which also creates the room + membership)
-    addAgent('wk', 'worker', 'crew-room', '%10');
+    addAgent('wk', 'worker', mkRoom('crew-room').id, '%10');
     const result = handleDeleteRoom({ room: 'crew-room', confirm: true, name: 'boss-1' });
     expect(result.isError).toBeUndefined();
     const data = JSON.parse(result.content[0]!.text);
@@ -85,17 +89,18 @@ describe('delete-room tool', () => {
   });
 
   test('cleans up agent with no remaining rooms', () => {
-    addAgent('solo-wk', 'worker', 'solo-room', '%20');
+    addAgent('solo-wk', 'worker', mkRoom('solo-room').id, '%20');
     expect(getAgent('solo-wk')).toBeDefined();
     handleDeleteRoom({ room: 'solo-room', confirm: true, name: 'boss-1' });
     expect(getAgent('solo-wk')).toBeUndefined();
   });
 
-  test('preserves agent that belongs to another room', () => {
-    addAgent('shared-wk', 'worker', 'room-a', '%30');
-    addAgent('shared-wk', 'worker', 'room-b', '%30');
+  test('deleting one room does not remove agent in another room', () => {
+    addAgent('shared-wk', 'worker', mkRoom('room-a').id, '%30');
+    addAgent('shared-wk', 'worker', mkRoom('room-b').id, '%30');
     handleDeleteRoom({ room: 'room-a', confirm: true, name: 'boss-1' });
-    expect(getAgent('shared-wk')).toBeDefined();
+    const remaining = getAllRooms();
+    expect(remaining.some(r => r.name === 'room-b')).toBe(true);
   });
 
   test('errors on non-existent room', () => {

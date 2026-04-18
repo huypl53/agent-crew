@@ -1,0 +1,5 @@
+[test]
+# Exclude web tests — they use vitest with jsdom environment
+# Run web tests separately: cd src/web && bun run test
+root = "test"
+timeout = 15000

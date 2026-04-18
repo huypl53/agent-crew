@@ -1,15 +1,19 @@
 import { describe, expect, test, beforeEach, afterAll } from 'bun:test';
 import { initDb, closeDb } from '../src/state/db.ts';
-import { addAgent, clearState } from '../src/state/index.ts';
+import { addAgent, clearState, getOrCreateRoom } from '../src/state/index.ts';
 import { assertRole } from '../src/shared/role-guard.ts';
+
+function mkRoom(name: string) {
+  return getOrCreateRoom(`/test/${name}`, name);
+}
 
 describe('assertRole', () => {
   beforeEach(() => {
     initDb(':memory:');
     clearState();
-    addAgent('lead-1', 'leader', 'frontend', '%1');
-    addAgent('worker-1', 'worker', 'frontend', '%2');
-    addAgent('boss-1', 'boss', 'company', '%3');
+    addAgent('lead-1', 'leader', mkRoom('frontend').id, '%1');
+    addAgent('worker-1', 'worker', mkRoom('frontend').id, '%2');
+    addAgent('boss-1', 'boss', mkRoom('company').id, '%3');
   });
 
   afterAll(() => { closeDb(); });

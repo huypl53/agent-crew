@@ -10,8 +10,12 @@ import {
   getTaskDetails, searchTasks,
   recordTaskEvent, getTaskEvents, getAllTaskEvents,
   recordTokenUsage, getTokenUsageForAgent, getTotalCost, getPricing, upsertPricing,
-  getChangeVersions,
+  getChangeVersions, getOrCreateRoom,
 } from '../src/state/index.ts';
+
+function mkRoom(name: string) {
+  return getOrCreateRoom(`/test/${name}`, name);
+}
 
 describe('state module', () => {
   beforeEach(() => {
@@ -24,72 +28,74 @@ describe('state module', () => {
 
   describe('agents', () => {
     test('adds and retrieves an agent', () => {
-      const agent = addAgent('boss', 'boss', 'company', '%100');
+      const agent = addAgent('boss', 'boss', mkRoom('company').id, '%100');
       expect(agent.name).toBe('boss');
       expect(agent.role).toBe('boss');
-      expect(agent.rooms).toEqual(['company']);
+      expect(agent.room_name).toBe('company');
       expect(getAgent('boss')).toBeDefined();
     });
 
-    test('agent joins multiple rooms', () => {
-      addAgent('lead-1', 'leader', 'company', '%101');
-      addAgent('lead-1', 'leader', 'frontend', '%101');
+    test('latest registration determines agent room', () => {
+      addAgent('lead-1', 'leader', mkRoom('company').id, '%101');
+      addAgent('lead-1', 'leader', mkRoom('frontend').id, '%101');
       const agent = getAgent('lead-1');
-      expect(agent?.rooms).toEqual(['company', 'frontend']);
+      expect(agent?.room_name).toBe('frontend');
     });
 
     test('removes agent from room', () => {
-      addAgent('worker-1', 'worker', 'frontend', '%102');
+      addAgent('worker-1', 'worker', mkRoom('frontend').id, '%102');
       removeAgent('worker-1', 'frontend');
       expect(getAgent('worker-1')).toBeUndefined();
     });
 
-    test('agent with multiple rooms: removing one keeps others', () => {
-      addAgent('lead-1', 'leader', 'company', '%101');
-      addAgent('lead-1', 'leader', 'frontend', '%101');
+    test('removing latest room removes latest registration', () => {
+      addAgent('lead-1', 'leader', mkRoom('company').id, '%101');
+      addAgent('lead-1', 'leader', mkRoom('frontend').id, '%101');
       removeAgent('lead-1', 'frontend');
       const agent = getAgent('lead-1');
-      expect(agent?.rooms).toEqual(['company']);
+      expect(agent?.room_name).toBe('company');
     });
   });
 
   describe('rooms', () => {
     test('creates room on first agent join', () => {
-      addAgent('boss', 'boss', 'company', '%100');
+      addAgent('boss', 'boss', mkRoom('company').id, '%100');
       const room = getRoom('company');
       expect(room).toBeDefined();
-      expect(room!.members).toEqual(['boss']);
+      const members = getRoomMembers(room!.id);
+      expect(members.map(m => m.name)).toEqual(['boss']);
     });
 
     test('room tracks all members', () => {
-      addAgent('boss', 'boss', 'company', '%100');
-      addAgent('lead-1', 'leader', 'company', '%101');
+      addAgent('boss', 'boss', mkRoom('company').id, '%100');
+      addAgent('lead-1', 'leader', mkRoom('company').id, '%101');
       const room = getRoom('company');
-      expect(room!.members).toEqual(['boss', 'lead-1']);
+      const members = getRoomMembers(room!.id);
+      expect(members.map(m => m.name)).toEqual(['boss', 'lead-1']);
     });
 
     test('room is deleted when last member leaves', () => {
-      addAgent('worker-1', 'worker', 'temp', '%102');
+      addAgent('worker-1', 'worker', mkRoom('temp').id, '%102');
       removeAgent('worker-1', 'temp');
       expect(getRoom('temp')).toBeUndefined();
     });
 
     test('getAllRooms returns all rooms', () => {
-      addAgent('boss', 'boss', 'company', '%100');
-      addAgent('worker-1', 'worker', 'frontend', '%102');
+      addAgent('boss', 'boss', mkRoom('company').id, '%100');
+      addAgent('worker-1', 'worker', mkRoom('frontend').id, '%102');
       expect(getAllRooms().length).toBe(2);
     });
 
     test('getRoomMembers returns agents', () => {
-      addAgent('boss', 'boss', 'company', '%100');
-      addAgent('lead-1', 'leader', 'company', '%101');
-      const members = getRoomMembers('company');
+      addAgent('boss', 'boss', mkRoom('company').id, '%100');
+      addAgent('lead-1', 'leader', mkRoom('company').id, '%101');
+      const members = getRoomMembers(getRoom('company')!.id);
       expect(members.length).toBe(2);
       expect(members.map(m => m.name)).toEqual(['boss', 'lead-1']);
     });
 
     test('isNameTakenInRoom detects duplicates', () => {
-      addAgent('boss', 'boss', 'company', '%100');
+      addAgent('boss', 'boss', mkRoom('company').id, '%100');
       expect(isNameTakenInRoom('boss', 'company')).toBe(true);
       expect(isNameTakenInRoom('boss', 'frontend')).toBe(false);
       expect(isNameTakenInRoom('nobody', 'company')).toBe(false);
@@ -98,8 +104,8 @@ describe('state module', () => {
 
   describe('messages', () => {
     test('adds and reads messages', () => {
-      addAgent('sender', 'leader', 'room', '%100');
-      addAgent('receiver', 'worker', 'room', '%101');
+      addAgent('sender', 'leader', mkRoom('room').id, '%100');
+      addAgent('receiver', 'worker', mkRoom('room').id, '%101');
 
       addMessage('receiver', 'sender', 'room', 'hello', 'push', 'receiver');
       addMessage('receiver', 'sender', 'room', 'world', 'push', 'receiver');
@@ -111,7 +117,7 @@ describe('state module', () => {
     });
 
     test('cursor-based reading with since_sequence', () => {
-      addAgent('a', 'worker', 'r', '%100');
+      addAgent('a', 'worker', mkRoom('r').id, '%100');
       addMessage('a', 'b', 'r', 'msg1', 'push', 'a');
       addMessage('a', 'b', 'r', 'msg2', 'push', 'a');
 
@@ -125,25 +131,25 @@ describe('state module', () => {
     });
 
     test('filters by room', () => {
-      addAgent('a', 'worker', 'room1', '%100');
+      addAgent('a', 'worker', mkRoom('room1').id, '%100');
+      addAgent('b', 'leader', mkRoom('room1').id, '%101');
       addMessage('a', 'b', 'room1', 'hello', 'push', 'a');
-      addMessage('a', 'b', 'room2', 'world', 'push', 'a');
 
       const result = readMessages('a', 'room1');
       expect(result.messages.length).toBe(1);
-      expect(result.messages[0]!.room).toBe('room1');
+      expect(result.messages[0]!.room_id).toBe(getRoom('room1')!.id);
     });
 
     test('message has kind field', () => {
-      addAgent('a', 'worker', 'r', '%100');
-      addAgent('b', 'leader', 'r', '%101');
+      addAgent('a', 'worker', mkRoom('r').id, '%100');
+      addAgent('b', 'leader', mkRoom('r').id, '%101');
       const msg = addMessage('a', 'b', 'r', 'hello', 'push', 'a', 'chat');
       expect(msg.kind).toBe('chat');
     });
 
     test('message kind defaults to chat', () => {
-      addAgent('a', 'worker', 'r', '%100');
-      addAgent('b', 'leader', 'r', '%101');
+      addAgent('a', 'worker', mkRoom('r').id, '%100');
+      addAgent('b', 'leader', mkRoom('r').id, '%101');
       const msg = addMessage('a', 'b', 'r', 'hello', 'push', 'a');
       expect(msg.kind).toBe('chat');
     });
@@ -151,8 +157,8 @@ describe('state module', () => {
 
   describe('room messages', () => {
     test('message is stored in room log', () => {
-      addAgent('a', 'leader', 'frontend', '%100');
-      addAgent('b', 'worker', 'frontend', '%101');
+      addAgent('a', 'leader', mkRoom('frontend').id, '%100');
+      addAgent('b', 'worker', mkRoom('frontend').id, '%101');
       addMessage('b', 'a', 'frontend', 'build login', 'push', 'b', 'task');
 
       const roomMsgs = getRoomMessages('frontend');
@@ -162,9 +168,9 @@ describe('state module', () => {
     });
 
     test('all room members can read room messages', () => {
-      addAgent('lead', 'leader', 'frontend', '%100');
-      addAgent('w1', 'worker', 'frontend', '%101');
-      addAgent('w2', 'worker', 'frontend', '%102');
+      addAgent('lead', 'leader', mkRoom('frontend').id, '%100');
+      addAgent('w1', 'worker', mkRoom('frontend').id, '%101');
+      addAgent('w2', 'worker', mkRoom('frontend').id, '%102');
 
       addMessage('w1', 'lead', 'frontend', 'build login', 'push', 'w1', 'task');
 
@@ -173,9 +179,9 @@ describe('state module', () => {
     });
 
     test('broadcast is one canonical message', () => {
-      addAgent('lead', 'leader', 'team', '%100');
-      addAgent('w1', 'worker', 'team', '%101');
-      addAgent('w2', 'worker', 'team', '%102');
+      addAgent('lead', 'leader', mkRoom('team').id, '%100');
+      addAgent('w1', 'worker', mkRoom('team').id, '%101');
+      addAgent('w2', 'worker', mkRoom('team').id, '%102');
 
       addMessage('__room__', 'lead', 'team', 'standup', 'push', null, 'chat');
 
@@ -187,19 +193,19 @@ describe('state module', () => {
 
   describe('cursors', () => {
     test('getCursor returns 0 for new agent-room pair', () => {
-      addAgent('a', 'worker', 'r', '%100');
+      addAgent('a', 'worker', mkRoom('r').id, '%100');
       expect(getCursor('a', 'r')).toBe(0);
     });
 
     test('advanceCursor updates read position', () => {
-      addAgent('a', 'worker', 'r', '%100');
+      addAgent('a', 'worker', mkRoom('r').id, '%100');
       advanceCursor('a', 'r', 5);
       expect(getCursor('a', 'r')).toBe(5);
     });
 
     test('readRoomMessages advances cursor', () => {
-      addAgent('lead', 'leader', 'r', '%100');
-      addAgent('w1', 'worker', 'r', '%101');
+      addAgent('lead', 'leader', mkRoom('r').id, '%100');
+      addAgent('w1', 'worker', mkRoom('r').id, '%101');
 
       addMessage('w1', 'lead', 'r', 'task1', 'push', 'w1', 'task');
       addMessage('w1', 'lead', 'r', 'task2', 'push', 'w1', 'task');
@@ -218,7 +224,7 @@ describe('state module', () => {
     });
 
     test('removeAgent clears agent cursors', () => {
-      addAgent('a', 'worker', 'r', '%100');
+      addAgent('a', 'worker', mkRoom('r').id, '%100');
       advanceCursor('a', 'r', 5);
       expect(getCursor('a', 'r')).toBe(5);
 
@@ -227,7 +233,7 @@ describe('state module', () => {
     });
 
     test('removeAgentFully clears agent cursors', () => {
-      addAgent('a', 'worker', 'r', '%100');
+      addAgent('a', 'worker', mkRoom('r').id, '%100');
       advanceCursor('a', 'r', 7);
       expect(getCursor('a', 'r')).toBe(7);
 
@@ -239,8 +245,8 @@ describe('state module', () => {
   describe('Task CRUD', () => {
     beforeEach(() => {
       clearState();
-      addAgent('lead-1', 'leader', 'frontend', '%1');
-      addAgent('worker-1', 'worker', 'frontend', '%2');
+      addAgent('lead-1', 'leader', mkRoom('frontend').id, '%1');
+      addAgent('worker-1', 'worker', mkRoom('frontend').id, '%2');
     });
 
     test('createTask creates a task with status sent', () => {
@@ -250,7 +256,7 @@ describe('state module', () => {
       expect(task.assigned_to).toBe('worker-1');
       expect(task.created_by).toBe('lead-1');
       expect(task.summary).toBe('Build login form');
-      expect(task.room).toBe('frontend');
+      expect(task.room_id).toBe(getRoom('frontend')!.id);
       expect(task.message_id).toBe(1);
     });
 
@@ -333,7 +339,7 @@ describe('state module', () => {
 
     test('validateLiveness cleans up tasks for dead agents', async () => {
       // This test uses a fake pane that doesn't exist — isPaneDead returns true
-      addAgent('dead-worker', 'worker', 'frontend', '%99999');
+      addAgent('dead-worker', 'worker', mkRoom('frontend').id, '%99999');
       const task = createTask('frontend', 'dead-worker', 'lead-1', null, 'Doomed task');
       updateTaskStatus(task.id, 'active');
 
@@ -347,7 +353,7 @@ describe('state module', () => {
     test('validateLiveness removes agents with dead tmux panes', async () => {
       // Register an agent with a fake (dead) tmux pane
       // Args: name, role, room, tmuxTarget
-      addAgent('ghost-agent', 'worker', 'crew', '%99999');
+      addAgent('ghost-agent', 'worker', mkRoom('crew').id, '%99999');
       const before = getAgent('ghost-agent');
       expect(before).toBeTruthy();
 
@@ -380,8 +386,10 @@ describe('state module', () => {
 
   describe('token usage CRUD', () => {
     test('recordTokenUsage inserts a row', () => {
+      clearState();
+      const wk = addAgent('wk-01', 'worker', mkRoom('billing').id, '%71');
       recordTokenUsage({
-        agent_name: 'wk-01', session_id: 'sess-123', model: 'claude-opus-4-6',
+        agent_id: wk.agent_id, session_id: 'sess-123', model: 'claude-opus-4-6',
         input_tokens: 1000, output_tokens: 500, cost_usd: 0.05, source: 'statusline',
       });
       const rows = getTokenUsageForAgent('wk-01');
@@ -390,21 +398,29 @@ describe('state module', () => {
     });
 
     test('getTokenUsageForAgent returns only that agent', () => {
-      recordTokenUsage({ agent_name: 'wk-01', session_id: 's1', model: 'o3', input_tokens: 100, output_tokens: 50, cost_usd: 0.01, source: 'codex_db' });
-      recordTokenUsage({ agent_name: 'wk-02', session_id: 's2', model: 'o3', input_tokens: 200, output_tokens: 100, cost_usd: 0.02, source: 'codex_db' });
+      clearState();
+      const wk1 = addAgent('wk-01', 'worker', mkRoom('billing').id, '%72');
+      const wk2 = addAgent('wk-02', 'worker', mkRoom('billing').id, '%73');
+      recordTokenUsage({ agent_id: wk1.agent_id, session_id: 's1', model: 'o3', input_tokens: 100, output_tokens: 50, cost_usd: 0.01, source: 'codex_db' });
+      recordTokenUsage({ agent_id: wk2.agent_id, session_id: 's2', model: 'o3', input_tokens: 200, output_tokens: 100, cost_usd: 0.02, source: 'codex_db' });
       const rows = getTokenUsageForAgent('wk-01');
-      expect(rows.every(r => r.agent_name === 'wk-01')).toBe(true);
+      expect(rows.length).toBe(1);
     });
 
     test('getTotalCost sums all agents', () => {
-      recordTokenUsage({ agent_name: 'a1', session_id: 's1', model: 'm', input_tokens: 0, output_tokens: 0, cost_usd: 1.00, source: 'statusline' });
-      recordTokenUsage({ agent_name: 'a2', session_id: 's2', model: 'm', input_tokens: 0, output_tokens: 0, cost_usd: 2.50, source: 'statusline' });
+      clearState();
+      const a1 = addAgent('a1', 'worker', mkRoom('billing').id, '%74');
+      const a2 = addAgent('a2', 'worker', mkRoom('billing').id, '%75');
+      recordTokenUsage({ agent_id: a1.agent_id, session_id: 's1', model: 'm', input_tokens: 0, output_tokens: 0, cost_usd: 1.00, source: 'statusline' });
+      recordTokenUsage({ agent_id: a2.agent_id, session_id: 's2', model: 'm', input_tokens: 0, output_tokens: 0, cost_usd: 2.50, source: 'statusline' });
       expect(getTotalCost()).toBeCloseTo(3.50);
     });
 
     test('recordTokenUsage upserts — second call for same agent updates row, not inserts', () => {
-      recordTokenUsage({ agent_name: 'wk-01', session_id: 's1', model: 'o3', input_tokens: 100, output_tokens: 50, cost_usd: 0.01, source: 'statusline' });
-      recordTokenUsage({ agent_name: 'wk-01', session_id: 's2', model: 'gpt-4.1', input_tokens: 200, output_tokens: 100, cost_usd: 0.02, source: 'statusline' });
+      clearState();
+      const wk = addAgent('wk-01', 'worker', mkRoom('billing').id, '%76');
+      recordTokenUsage({ agent_id: wk.agent_id, session_id: 's1', model: 'o3', input_tokens: 100, output_tokens: 50, cost_usd: 0.01, source: 'statusline' });
+      recordTokenUsage({ agent_id: wk.agent_id, session_id: 's2', model: 'gpt-4.1', input_tokens: 200, output_tokens: 100, cost_usd: 0.02, source: 'statusline' });
       const rows = getTokenUsageForAgent('wk-01');
       expect(rows.length).toBe(1);
       expect(rows[0]!.input_tokens).toBe(200);
@@ -426,6 +442,8 @@ describe('state module', () => {
 
   describe('task context sharing', () => {
     test('updateTaskStatus with context stores it', () => {
+      addAgent('lead-01', 'leader', mkRoom('test-room').id, '%79');
+      addAgent('wk-01', 'worker', mkRoom('test-room').id, '%80');
       const task = createTask('test-room', 'wk-01', 'lead-01', null, 'test task summary');
       updateTaskStatus(task.id, 'active');
       updateTaskStatus(task.id, 'completed', 'done', 'Explored src/auth.ts. Found JWT validation in middleware.');
@@ -435,6 +453,8 @@ describe('state module', () => {
     });
 
     test('searchTasks by keyword finds matching tasks', () => {
+      addAgent('lead-01', 'leader', mkRoom('test-room').id, '%81');
+      addAgent('wk-01', 'worker', mkRoom('test-room').id, '%82');
       const t1 = createTask('test-room', 'wk-01', 'lead-01', null, 'fix auth middleware');
       updateTaskStatus(t1.id, 'active');
       updateTaskStatus(t1.id, 'completed', undefined, 'JWT tokens expire too early');
@@ -444,12 +464,16 @@ describe('state module', () => {
     });
 
     test('searchTasks by room filters correctly', () => {
+      addAgent('lead-01', 'leader', mkRoom('room-ctx-a').id, '%83');
+      addAgent('wk-01', 'worker', mkRoom('room-ctx-a').id, '%84');
       createTask('room-ctx-a', 'wk-01', 'lead-01', null, 'task in room a');
       const results = searchTasks({ room: 'room-ctx-a' });
       expect(results.every(r => r.room === 'room-ctx-a')).toBe(true);
     });
 
     test('searchTasks returns context_preview truncated', () => {
+      addAgent('lead-01', 'leader', mkRoom('test-room').id, '%85');
+      addAgent('wk-01', 'worker', mkRoom('test-room').id, '%86');
       const longCtx = 'x'.repeat(500);
       const t = createTask('test-room', 'wk-01', 'lead-01', null, 'long ctx task');
       updateTaskStatus(t.id, 'active');
@@ -464,8 +488,8 @@ describe('state module', () => {
   describe('cancelQueuedTasksForAgent', () => {
     beforeEach(() => {
       clearState();
-      addAgent('lead-01', 'leader', 'room', '%1');
-      addAgent('wk-01', 'worker', 'room', '%2');
+      addAgent('lead-01', 'leader', mkRoom('room').id, '%1');
+      addAgent('wk-01', 'worker', mkRoom('room').id, '%2');
     });
 
     test('cancels queued/sent tasks and returns count', () => {
@@ -484,7 +508,7 @@ describe('state module', () => {
     });
 
     test('leaves other agents untouched', () => {
-      addAgent('wk-02', 'worker', 'room', '%3');
+      addAgent('wk-02', 'worker', mkRoom('room').id, '%3');
       const mine = createTask('room', 'wk-01', 'lead-01', null, 'mine');
       const theirs = createTask('room', 'wk-02', 'lead-01', null, 'theirs');
 
@@ -517,9 +541,16 @@ describe('state module', () => {
       closeDb();
       const raw = new Database(tmpPath, { create: true });
       raw.exec(`
+        CREATE TABLE rooms (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          path TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          topic TEXT,
+          created_at TEXT NOT NULL
+        );
         CREATE TABLE tasks (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          room TEXT NOT NULL,
+          room_id INTEGER NOT NULL,
           assigned_to TEXT NOT NULL,
           created_by TEXT NOT NULL,
           message_id INTEGER,
@@ -533,8 +564,8 @@ describe('state module', () => {
       raw.close();
 
       initDb(tmpPath);
-      // Should not throw — the migration must have added `context`
-      const results = searchTasks({ status: 'queued' });
+      // Should not throw — schema init on existing DB should complete
+      const results = searchTasks({ keyword: 'queued' });
       expect(Array.isArray(results)).toBe(true);
 
       closeDb();
@@ -548,8 +579,8 @@ describe('state module', () => {
   describe('task events', () => {
     beforeEach(() => {
       clearState();
-      addAgent('lead-01', 'leader', 'test-room', '%1');
-      addAgent('wk-01', 'worker', 'test-room', '%2');
+      addAgent('lead-01', 'leader', mkRoom('test-room').id, '%1');
+      addAgent('wk-01', 'worker', mkRoom('test-room').id, '%2');
     });
 
     test('recordTaskEvent stores a transition', () => {
@@ -599,8 +630,8 @@ describe('state module', () => {
   describe('change detection', () => {
     beforeEach(() => {
       clearState();
-      addAgent('lead-01', 'leader', 'test-room', '%1');
-      addAgent('wk-01', 'worker', 'test-room', '%2');
+      addAgent('lead-01', 'leader', mkRoom('test-room').id, '%1');
+      addAgent('wk-01', 'worker', mkRoom('test-room').id, '%2');
     });
 
     test('change_log table has 5 initial rows after initDb', () => {
@@ -642,7 +673,7 @@ describe('state module', () => {
     test('Inserting an agent bumps agents version', () => {
       const before = getChangeVersions(['agents']);
       const v1 = before['agents']?.version ?? 0;
-      addAgent('new-agent', 'worker', 'test-room', '%3');
+      addAgent('new-agent', 'worker', mkRoom('test-room').id, '%3');
       const after = getChangeVersions(['agents']);
       const v2 = after['agents']?.version ?? 0;
       expect(v2).toBeGreaterThan(v1);

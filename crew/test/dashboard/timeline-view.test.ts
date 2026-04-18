@@ -71,7 +71,7 @@ function buildAgentTimelines(
     }
 
     if (segments.length > 0) {
-      result.push({ agentName: agent.name, roomName: agent.rooms[0] ?? 'unknown', segments });
+      result.push({ agentName: agent.name, roomName: agent.room_name ?? 'unknown', segments });
     }
   }
 
@@ -82,19 +82,26 @@ describe('TimelineView improvements', () => {
   const baseTime = new Date('2026-04-12T10:00:00Z').getTime();
 
   const mockAgent: Agent = {
-    agent_id: 'wk-01',
+    agent_id: 1,
+    room_id: 1,
+    room_path: '/test/crew',
+    room_name: 'crew',
     name: 'wk-01',
     role: 'worker',
-    rooms: ['crew'],
     tmux_target: '%1',
     agent_type: 'claude-code',
-    joined_at: '2026-04-12T10:00:00Z',
+    status: null,
+    persona: null,
+    capabilities: null,
   };
 
   const mockAgentMultiRoom: Agent = {
     ...mockAgent,
+    agent_id: 2,
+    room_id: 2,
+    room_path: '/test/project-a',
+    room_name: 'project-a',
     name: 'wk-02',
-    rooms: ['project-a', 'project-b'], // takes first
   };
 
   const timeRange = {
@@ -107,7 +114,7 @@ describe('TimelineView improvements', () => {
     it('should render a bar for a task without taskEvents using created_at to updated_at', () => {
       const task: Task = {
         id: 1,
-        room: 'crew',
+        room_id: 1,
         assigned_to: 'wk-01',
         created_by: 'lead-01',
         message_id: null,
@@ -130,7 +137,7 @@ describe('TimelineView improvements', () => {
       const sameTime = new Date(baseTime + 1000).toISOString();
       const task: Task = {
         id: 1,
-        room: 'crew',
+        room_id: 1,
         assigned_to: 'wk-01',
         created_by: 'lead-01',
         message_id: null,
@@ -147,10 +154,10 @@ describe('TimelineView improvements', () => {
   });
 
   describe('Room labels in agent rows', () => {
-    it('should include roomName from agent.rooms[0]', () => {
+    it('should include roomName from agent.room_name', () => {
       const task: Task = {
         id: 1,
-        room: 'crew',
+        room_id: 1,
         assigned_to: 'wk-01',
         created_by: 'lead-01',
         message_id: null,
@@ -165,10 +172,10 @@ describe('TimelineView improvements', () => {
       expect(timelines[0]!.roomName).toBe('crew');
     });
 
-    it('should use first room when agent has multiple rooms', () => {
+    it('should use agent room_name', () => {
       const task: Task = {
         id: 1,
-        room: 'project-a',
+        room_id: 2,
         assigned_to: 'wk-02',
         created_by: 'lead-01',
         message_id: null,
@@ -186,12 +193,12 @@ describe('TimelineView improvements', () => {
     it('should default to unknown if agent has no rooms', () => {
       const agentNoRooms: Agent = {
         ...mockAgent,
-        rooms: [],
+        room_name: 'unknown',
       };
 
       const task: Task = {
         id: 1,
-        room: 'crew',
+        room_id: 1,
         assigned_to: 'wk-01',
         created_by: 'lead-01',
         message_id: null,
@@ -216,7 +223,7 @@ describe('TimelineView improvements', () => {
     it('should return empty array when agent has no tasks', () => {
       const task: Task = {
         id: 1,
-        room: 'crew',
+        room_id: 1,
         assigned_to: 'other-agent', // not assigned to mockAgent
         created_by: 'lead-01',
         message_id: null,

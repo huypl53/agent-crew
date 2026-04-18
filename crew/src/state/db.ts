@@ -210,6 +210,12 @@ export function initDb(path?: string): void {
 
   _db.exec(SCHEMA);
 
+  // Additive column migrations (safe to run on existing DBs)
+  const taskCols = _db.query('PRAGMA table_info(tasks)').all() as Array<{ name: string }>;
+  if (!taskCols.some(c => c.name === 'context')) {
+    _db.exec('ALTER TABLE tasks ADD COLUMN context TEXT');
+  }
+
   const scopes = ['agents', 'messages', 'tasks', 'templates', 'room-templates'];
   for (const scope of scopes) {
     _db.run(

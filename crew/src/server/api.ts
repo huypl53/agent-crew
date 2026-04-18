@@ -42,7 +42,11 @@ export async function handleApi(req: Request): Promise<Response> {
 
   // GET /api/rooms
   if (method === 'GET' && path === '/rooms') {
-    const rooms = getAllRooms().map(r => ({ ...r, template_names: getRoomTemplateNames(r.name) }));
+    const rooms = getAllRooms().map(r => ({
+      ...r,
+      member_count: getRoomMembers(r.id).length,
+      template_names: getRoomTemplateNames(r.name),
+    }));
     return json(rooms);
   }
 

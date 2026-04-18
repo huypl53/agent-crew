@@ -2,7 +2,7 @@ import { describe, expect, test, beforeAll, afterAll } from 'bun:test';
 import { mkdirSync, rmSync, readdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { initDb, closeDb } from '../src/state/db.ts';
-import { addAgent } from '../src/state/index.ts';
+import { addAgent, getOrCreateRoom } from '../src/state/index.ts';
 import { startServer, stopServer } from '../src/server/index.ts';
 
 const TEST_STATE_DIR = `/tmp/crew-server-test-${process.pid}`;
@@ -12,6 +12,10 @@ let server: ReturnType<typeof startServer>;
 let base: string;
 let wsBase: string;
 
+function mkRoom(name: string) {
+  return getOrCreateRoom(`/test/${name}`, name);
+}
+
 beforeAll(() => {
   mkdirSync(TEST_STATE_DIR, { recursive: true });
   process.env.CREW_STATE_DIR = TEST_STATE_DIR;
@@ -19,8 +23,8 @@ beforeAll(() => {
   initDb(); // creates file at TEST_STATE_DIR/crew.db
 
   // Seed some data
-  addAgent('alice', 'leader', 'general', '%1', 'claude-code');
-  addAgent('bob', 'worker', 'general', '%2', 'claude-code');
+  addAgent('alice', 'leader', mkRoom('general').id, '%1', 'claude-code');
+  addAgent('bob', 'worker', mkRoom('general').id, '%2', 'claude-code');
 
   server = startServer({ port: PORT, host: '127.0.0.1' });
   base = `http://127.0.0.1:${PORT}`;
@@ -64,7 +68,7 @@ describe('GET /api/rooms', () => {
     expect(Array.isArray(body)).toBe(true);
     const room = body.find((r: any) => r.name === 'general');
     expect(room).toBeDefined();
-    expect(room.members).toContain('alice');
+    expect(room.member_count).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -201,7 +205,7 @@ describe('DELETE /api/agents/:name', () => {
   });
 
   test('deletes with ?confirm=true', async () => {
-    addAgent('to-delete-agent', 'worker', 'general', '%9');
+    addAgent('to-delete-agent', 'worker', mkRoom('general').id, '%9');
     const { status, body } = await del('/api/agents/to-delete-agent?confirm=true');
     expect(status).toBe(200);
     expect(body.ok).toBe(true);

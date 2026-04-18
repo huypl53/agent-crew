@@ -1,13 +1,17 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
 import { initDb, closeDb } from '../src/state/db.ts';
-import { addAgent, addMessage, getAgentDbStatus } from '../src/state/index.ts';
+import { addAgent, addMessage, getAgentDbStatus, getOrCreateRoom } from '../src/state/index.ts';
+
+function mkRoom(name: string) {
+  return getOrCreateRoom(`/test/${name}`, name);
+}
 
 describe('event-driven status', () => {
   beforeEach(() => {
     initDb(':memory:');
     // leader and worker registered in the same room
-    addAgent('leader', 'leader', 'test-room', '%10');
-    addAgent('worker', 'worker', 'test-room', '%11');
+    addAgent('leader', 'leader', mkRoom('test-room').id, '%10');
+    addAgent('worker', 'worker', mkRoom('test-room').id, '%11');
   });
 
   afterEach(() => {

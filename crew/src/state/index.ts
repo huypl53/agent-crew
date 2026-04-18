@@ -674,9 +674,9 @@ export function getAllTaskEvents(): TaskEvent[] {
 export function recordTokenUsage(entry: Omit<TokenUsage, 'id' | 'recorded_at'>): void {
   const db = getDb();
   db.run(
-    `INSERT INTO token_usage (agent_name, session_id, model, input_tokens, output_tokens, cost_usd, source, recorded_at)
+    `INSERT INTO token_usage (agent_id, session_id, model, input_tokens, output_tokens, cost_usd, source, recorded_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-     ON CONFLICT(agent_name) DO UPDATE SET
+     ON CONFLICT(agent_id) DO UPDATE SET
        session_id=excluded.session_id,
        model=excluded.model,
        input_tokens=excluded.input_tokens,
@@ -684,19 +684,29 @@ export function recordTokenUsage(entry: Omit<TokenUsage, 'id' | 'recorded_at'>):
        cost_usd=excluded.cost_usd,
        source=excluded.source,
        recorded_at=CURRENT_TIMESTAMP`,
-    [entry.agent_name, entry.session_id ?? null, entry.model ?? null,
+    [entry.agent_id, entry.session_id ?? null, entry.model ?? null,
      entry.input_tokens, entry.output_tokens, entry.cost_usd ?? null, entry.source],
   );
 }
 
 export function getTokenUsageForAgent(agentName: string): TokenUsage[] {
   const db = getDb();
-  return (db.query('SELECT * FROM token_usage WHERE agent_name = ? ORDER BY recorded_at DESC').all(agentName) as TokenUsage[]);
+  return (db.query(`
+    SELECT tu.* FROM token_usage tu
+    JOIN agents a ON a.id = tu.agent_id
+    WHERE a.name = ?
+    ORDER BY tu.recorded_at DESC
+  `).all(agentName) as TokenUsage[]);
 }
 
 export function getLatestTokenUsage(agentName: string): TokenUsage | null {
   const db = getDb();
-  return (db.query('SELECT * FROM token_usage WHERE agent_name = ? ORDER BY recorded_at DESC LIMIT 1').get(agentName) as TokenUsage) ?? null;
+  return (db.query(`
+    SELECT tu.* FROM token_usage tu
+    JOIN agents a ON a.id = tu.agent_id
+    WHERE a.name = ?
+    ORDER BY tu.recorded_at DESC LIMIT 1
+  `).get(agentName) as TokenUsage) ?? null;
 }
 
 export function getAgentMessageCounts(name: string): { sent: number; received: number } {
@@ -724,7 +734,11 @@ export function getTotalCost(): number {
 
 export function getAgentCost(agentName: string): number {
   const db = getDb();
-  const row = db.query('SELECT SUM(cost_usd) as total FROM token_usage WHERE agent_name = ?').get(agentName) as any;
+  const row = db.query(`
+    SELECT SUM(tu.cost_usd) as total FROM token_usage tu
+    JOIN agents a ON a.id = tu.agent_id
+    WHERE a.name = ?
+  `).get(agentName) as any;
   return row?.total ?? 0;
 }
 

@@ -20,9 +20,10 @@ export function handleCreateRoom(params: CreateRoomParams): ToolResult {
   const existing = db.query('SELECT 1 FROM rooms WHERE name = ?').get(room);
   if (existing) return err(`Room "${room}" already exists`);
 
+  const ts = new Date().toISOString();
   db.run(
-    'INSERT INTO rooms (name, topic, created_at) VALUES (?, ?, ?)',
-    [room, topic ?? null, new Date().toISOString()],
+    'INSERT INTO rooms (path, name, topic, created_at) VALUES (?, ?, ?, ?)',
+    [`/room/${room}`, room, topic ?? null, ts],
   );
 
   const created = getRoom(room)!;

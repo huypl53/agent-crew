@@ -35,12 +35,11 @@ describe('pull-only join', () => {
     expect(agent!.tmux_target).toBeNull();
   });
 
-  test('pull-only agent can join multiple rooms', async () => {
+  test('pull-only join tracks latest room registration', async () => {
     await handleJoinRoom({ room: 'room-a', role: 'worker', name: 'pull-multi' });
     await handleJoinRoom({ room: 'room-b', role: 'worker', name: 'pull-multi' });
     const agent = getAgent('pull-multi');
-    expect(agent?.rooms).toContain('room-a');
-    expect(agent?.rooms).toContain('room-b');
+    expect(agent?.room_name).toBe('room-b');
     expect(agent?.tmux_target).toBeNull();
   });
 
