@@ -225,6 +225,13 @@ export async function paneExists(target: string): Promise<boolean> {
   return findPaneInAnySocket(target);
 }
 
+export async function getPaneCwd(paneId: string): Promise<string | null> {
+  const result = Bun.spawnSync(['tmux', 'display-message', '-p', '-t', paneId, '#{pane_current_path}']);
+  if (result.exitCode !== 0) return null;
+  const cwd = result.stdout.toString().trim();
+  return cwd || null;
+}
+
 // Processes that indicate a live AI agent (Claude Code / Codex / bun / node)
 // Use prefix match (no $) to handle architecture suffixes like "codex-aarch64-a"
 const AGENT_PROC_RE = /^(node|bun|claude|codex)/i;
