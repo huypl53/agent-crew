@@ -17,7 +17,7 @@ import { handleReassignTask } from '../src/tools/reassign-task.ts';
 import { handleClearWorkerSession } from '../src/tools/clear-worker-session.ts';
 import { handleGetTaskDetails } from '../src/tools/get-task-details.ts';
 import { handleSearchTasks } from '../src/tools/search-tasks.ts';
-import { createTestSession, destroyTestSession, cleanupAllTestSessions, captureFromPane } from './helpers.ts';
+import { createTestSession, destroyTestSession, cleanupAllTestSessions, captureFromPane, getCallerTestTag } from './helpers.ts';
 import { config } from '../src/config.ts';
 
 // Use fast polling so waitForReady() resolves well within default test timeouts
@@ -49,7 +49,7 @@ describe('MCP tools', () => {
 
   afterAll(async () => {
     config.senderVerification = originalSenderVerification;
-    await cleanupAllTestSessions();
+    await cleanupAllTestSessions(getCallerTestTag());
     closeDb();
   });
 
