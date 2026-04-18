@@ -157,7 +157,7 @@ function buildTree(payload: TracePayload): TraceNode {
   }
 
   const roomNodes: TraceNode[] = rooms.map(room => {
-    const roomAgents = agents.filter(a => a.rooms.includes(room.name));
+    const roomAgents = agents.filter(a => a.room_name === room.name);
     const agentNodes = roomAgents.map(a => makeAgentNode(a, room.name));
     const tokensIn = agentNodes.reduce((sum, a) => sum + (a.tokensIn ?? 0), 0) || null;
     const tokensOut = agentNodes.reduce((sum, a) => sum + (a.tokensOut ?? 0), 0) || null;

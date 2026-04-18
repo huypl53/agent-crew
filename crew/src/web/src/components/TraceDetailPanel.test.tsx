@@ -56,7 +56,7 @@ describe('TraceDetailPanel', () => {
         kind: 'agent',
         label: 'wk-04',
         status: 'busy',
-        meta: { role: 'worker', rooms: ['crew-agent'] } as any,
+        meta: { role: 'worker', room_name: 'crew-agent' } as any,
       })} />
     );
     expect(screen.getByText('wk-04')).toBeInTheDocument();

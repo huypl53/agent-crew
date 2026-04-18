@@ -37,7 +37,9 @@ export interface Agent {
   agent_id: string;
   name: string;
   role: 'boss' | 'leader' | 'worker';
-  rooms: string[];
+  room_id: number;
+  room_name: string;
+  room_path: string;
   tmux_target: string | null;
   agent_type: 'claude-code' | 'codex' | 'unknown';
   joined_at: string;

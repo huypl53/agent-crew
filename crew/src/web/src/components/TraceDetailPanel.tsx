@@ -79,7 +79,7 @@ function AgentPanel({ node }: { node: TraceNode }) {
       <Field label="Status"><StatusPill status={node.status} /></Field>
       {agent.role && <Field label="Role">{agent.role}</Field>}
       {agent.tmux_target && <Field label="Pane"><span className="font-mono text-[10px]">{agent.tmux_target}</span></Field>}
-      {agent.rooms?.length ? <Field label="Rooms">{agent.rooms.join(', ')}</Field> : null}
+      {agent.room_name ? <Field label="Room">{agent.room_name}</Field> : null}
       {ts && (
         <Field label="Tasks">
           <span className="text-green-400">{ts.done}</span> done ·{' '}
