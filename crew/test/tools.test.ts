@@ -86,7 +86,7 @@ describe('MCP tools', () => {
       expect(data.room).toBe('company');
     });
 
-    test('rejects duplicate name in same room', async () => {
+    test('adds suffix for duplicate name in same room with different pane', async () => {
       await handleJoinRoom({
         room: 'company',
         role: 'boss',
@@ -99,7 +99,9 @@ describe('MCP tools', () => {
         name: 'boss-1',
         tmux_target: testPaneB,
       });
-      expect(result.isError).toBe(true);
+      expect(result.isError).toBeUndefined();
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.name).toMatch(/^boss-1-[a-z0-9]{4}$/);
     });
 
     test('allows same agent in multiple rooms', async () => {

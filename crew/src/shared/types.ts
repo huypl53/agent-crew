@@ -111,6 +111,21 @@ export function err(error: string): ToolResult {
   };
 }
 
+/* ── Random name generation ─────────────────────────────── */
+
+const NAME_CHARSET = 'abcdefghijklmnopqrstuvwxyz0123456789';
+
+export function randomSuffix(length = 4): string {
+  let s = '';
+  for (let i = 0; i < length; i++)
+    s += NAME_CHARSET[Math.floor(Math.random() * NAME_CHARSET.length)];
+  return s;
+}
+
+export function generateRandomName(): string {
+  return `agent-${randomSuffix()}`;
+}
+
 /* ── Token tracking ─────────────────────────────────────── */
 
 export interface TokenUsage {

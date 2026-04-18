@@ -1,7 +1,7 @@
 import { normalizePath } from '../shared/path-utils.ts';
 import { logServer } from '../shared/server-log.ts';
 import type { AgentRole, ToolResult } from '../shared/types.ts';
-import { err, ok } from '../shared/types.ts';
+import { err, generateRandomName, ok, randomSuffix } from '../shared/types.ts';
 import {
   addAgent,
   getAgentByRoomAndName,
@@ -16,7 +16,7 @@ const VALID_ROLES: AgentRole[] = ['boss', 'leader', 'worker'];
 interface JoinRoomParams {
   room: string;
   role: string;
-  name: string;
+  name?: string;
   tmux_target?: string;
 }
 
@@ -93,10 +93,10 @@ export async function detectAgentType(
 export async function handleJoinRoom(
   params: JoinRoomParams,
 ): Promise<ToolResult> {
-  const { room, role, name, tmux_target } = params;
+  const { room, role, tmux_target } = params;
 
-  if (!room || !role || !name) {
-    return err('Missing required params: room, role, name');
+  if (!room || !role) {
+    return err('Missing required params: room, role');
   }
 
   if (!VALID_ROLES.includes(role as AgentRole)) {
@@ -126,26 +126,31 @@ export async function handleJoinRoom(
   }
 
   const normalizedPath = normalizePath(cwd);
-  const roomObj = getOrCreateRoom(normalizedPath, room);
 
+  // Generate random name if not provided
+  let name = params.name?.trim() || generateRandomName();
+
+  // Remove any stale agents using the same pane but different name
   for (const agent of getAllAgents()) {
     if (agent.tmux_target === target && agent.name !== name) {
       removeAgentFully(agent.name);
     }
   }
 
+  const roomObj = getOrCreateRoom(normalizedPath, room);
+
+  // Resolve name collisions
   const existing = getAgentByRoomAndName(roomObj.id, name);
-  if (
-    existing &&
-    existing.tmux_target &&
-    target &&
-    existing.tmux_target !== target
-  ) {
-    const oldPaneAlive = await paneExists(existing.tmux_target);
-    if (oldPaneAlive) {
-      return err(
-        `Name "${name}" is already taken in room "${roomObj.name}" by a live agent (pane ${existing.tmux_target})`,
-      );
+  if (existing && existing.tmux_target && target) {
+    if (existing.tmux_target === target) {
+      // Same pane — rejoin: update in-place (addAgent handles this)
+    } else {
+      // Different pane — check if old agent is alive
+      const oldPaneAlive = await paneExists(existing.tmux_target);
+      if (oldPaneAlive) {
+        // Add suffix so new agent can still join
+        name = `${name}-${randomSuffix()}`;
+      }
     }
   }
 
