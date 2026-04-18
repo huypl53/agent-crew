@@ -41,14 +41,22 @@ export async function handleClearWorkerSession(params: ClearWorkerSessionParams)
   const cancelled = cancelQueuedTasksForAgent(worker_name, name);
 
   // Step 2: Send /clear to the worker's pane
-  await getQueue(worker.tmux_target).enqueue({ type: 'paste', text: '/clear' });
+  try {
+    await getQueue(worker.tmux_target).enqueue({ type: 'paste', text: '/clear' });
+  } catch (e) {
+    return err(e instanceof Error ? e.message : String(e));
+  }
 
   // Step 3: Wait 2 seconds for CC to process /clear
   await new Promise(resolve => setTimeout(resolve, 2000));
 
   // Step 4: Send crew:refresh command to re-register the worker
   const refreshText = `/crew:refresh --name ${worker_name}`;
-  await getQueue(worker.tmux_target).enqueue({ type: 'paste', text: refreshText });
+  try {
+    await getQueue(worker.tmux_target).enqueue({ type: 'paste', text: refreshText });
+  } catch (e) {
+    return err(e instanceof Error ? e.message : String(e));
+  }
 
   return ok({
     cleared: true,
