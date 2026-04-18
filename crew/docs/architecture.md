@@ -65,15 +65,37 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 
-agents   (name PK, role, pane, registered_at, last_activity)
-rooms    (name PK, topic, created_at)
-members  (room FK, agent FK, joined_at) — junction table
-messages (id AUTOINCREMENT, sender, room, recipient, text, kind, mode, timestamp)
-cursors  (agent, room, last_seq) — per-agent read position
+-- Room = project directory. path is the filesystem path (unique key).
+rooms    (id AUTOINCREMENT PK, path TEXT UNIQUE, name TEXT, topic, created_at)
 
-idx_messages_room      ON messages(room, id)
+-- Agent identity is scoped to a room. (room_id, name) is the composite unique key.
+-- An agent can only work in ONE room at a time (the project it's running in).
+-- pane is ephemeral (updated on re-registration, null for pull-only agents).
+agents   (id AUTOINCREMENT PK, room_id FK→rooms, name, role, pane, agent_type, registered_at, last_activity, status, persona, capabilities)
+         UNIQUE(room_id, name)
+         UNIQUE INDEX on pane WHERE pane IS NOT NULL
+
+-- Messages reference rooms and agents by integer IDs (FK with CASCADE delete).
+messages (id AUTOINCREMENT PK, room_id FK→rooms, sender, recipient, text, kind, mode, timestamp, reply_to FK→messages)
+cursors  (agent_id PK FK→agents, last_seq) — per-agent read position
+
+-- Token tracking: one row per agent, updated in-place.
+token_usage (id PK, agent_id UNIQUE FK→agents, session_id, model, input_tokens, output_tokens, cost_usd, source, recorded_at)
+
+-- Tasks are room-scoped.
+tasks    (id PK, room_id FK→rooms, assigned_to, created_by, message_id, summary, status, note, context, created_at, updated_at)
+
+idx_messages_room      ON messages(room_id, id)
 idx_messages_recipient ON messages(recipient, id)
+idx_agents_room        ON agents(room_id)
+idx_tasks_room         ON tasks(room_id, status)
 ```
+
+**Key identity invariants:**
+- Room identity = filesystem path (resolved via `realpathSync`, fallback `resolve`). Two rooms with the same path are the same room.
+- Agent identity = `(room_id, name)`. The same name can exist in different rooms.
+- Pane is ephemeral: lost on restart, updated on re-registration. Not part of identity.
+- Deleting a room cascades: removes all agents, messages, tasks, cursors in that room.
 
 ### Key Properties
 
@@ -93,7 +115,12 @@ idx_messages_recipient ON messages(recipient, id)
 
 **Gotcha:** If the dashboard's `readAll()` query references a column that doesn't exist and there's no fallback, the query fails silently (caught by try/catch), returns empty results, and the tree shows rooms with member counts but no agent nodes underneath — mimicking a "collapsed" appearance. Always add a fallback query when selecting optional columns.
 
-**Known migration columns:** `agents.agent_type` (added after initial schema).
+**Known migration columns:**
+- `agents.agent_type` (added after initial schema)
+- `agents.persona`, `agents.capabilities` (Phase 1 schema)
+- `tasks.context` (additive ALTER TABLE in `initDb`)
+
+**Legacy schema detection:** On startup, `initDb()` checks if the `rooms` table has a `path` column. If not (pre-room-scoped schema), all tables are dropped and recreated from scratch.
 
 ### Dashboard Resilience Patterns
 
@@ -120,8 +147,8 @@ sqlite3 /tmp/crew/state/crew.db '.schema agents'
 
 Room is the canonical message store:
 
-- All messages are stored in the `messages` table with a `room` column
-- Cursors in `cursors` table track per-agent read position per room
+- All messages are stored in the `messages` table with a `room_id` FK column
+- Cursors in `cursors` table track per-agent read position (keyed by `agent_id`)
 - No separate inbox storage — `readMessages` queries by `recipient` column
 
 ### Message Kind
@@ -150,11 +177,12 @@ This is a tmux push only (no DB entry). Leaders receive the notification in thei
 ### Cursor-Based Room Reads
 
 `readRoomMessages(agentName, room, kinds?, limit?)`:
-1. Gets cursor position for agent+room (0 if never read)
-2. Queries messages table for `room = ? AND id > cursor`
-3. Optionally filters by `kinds` array
-4. Advances cursor to max id seen
-5. Returns `{ messages, next_sequence }`
+1. Resolves room name → `room_id` via `getRoom(room)`
+2. Gets cursor position for `agent_id` (0 if never read)
+3. Queries messages table for `room_id = ? AND id > cursor`
+4. Optionally filters by `kinds` array
+5. Advances cursor to max id seen
+6. Returns `{ messages, next_sequence }`
 
 Calling `read_messages` with `room` param uses this path. Calling without `room` queries by `recipient` column.
 
@@ -162,9 +190,9 @@ Calling `read_messages` with `room` param uses this path. Calling without `room`
 
 ### Cursor Cleanup
 
-Agent read cursors are cleaned up when an agent departs:
-- `removeAgent(name, room)` — deletes cursors if agent has no remaining rooms
-- `removeAgentFully(name)` — deletes all cursors for agent
+Agent read cursors are cleaned up via CASCADE when an agent is deleted:
+- `DELETE FROM agents WHERE id = ?` → cursors table cascades automatically
+- `removeAgentFully(name)` — looks up agent by name, deletes agent row (cascade handles cursors)
 
 ### Foreign Key Cascades
 
