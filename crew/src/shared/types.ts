@@ -2,22 +2,24 @@ export type AgentRole = 'boss' | 'leader' | 'worker';
 export type AgentStatus = 'idle' | 'busy' | 'dead' | 'unknown';
 
 export interface Agent {
-  agent_id: string;
+  agent_id: number;
+  room_id: number;
+  room_path: string;
+  room_name: string;
   name: string;
   role: AgentRole;
-  rooms: string[];
   tmux_target: string | null;
   agent_type: 'claude-code' | 'codex' | 'unknown';
-  joined_at: string;
-  last_activity?: string;
-  persona?: string;
-  capabilities?: string;
+  status: string | null;
+  persona: string | null;
+  capabilities: string | null;
 }
 
 export interface Room {
+  id: number;
+  path: string;
   name: string;
-  members: string[];
-  topic?: string;
+  topic: string | null;
   created_at: string;
 }
 
@@ -43,7 +45,7 @@ export type MessageKind = 'task' | 'completion' | 'question' | 'error' | 'status
 export interface Message {
   message_id: string;
   from: string;
-  room: string;
+  room_id: number;
   to: string | null;
   text: string;
   kind: MessageKind;
@@ -57,7 +59,7 @@ export type TaskStatus = 'sent' | 'queued' | 'active' | 'completed' | 'error' | 
 
 export interface Task {
   id: number;
-  room: string;
+  room_id: number;
   assigned_to: string;
   created_by: string;
   message_id: number | null;
@@ -96,7 +98,7 @@ export function err(error: string): ToolResult {
 
 export interface TokenUsage {
   id: number;
-  agent_name: string;
+  agent_id: number;
   session_id: string | null;
   model: string | null;
   input_tokens: number;
