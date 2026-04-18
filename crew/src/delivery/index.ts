@@ -8,7 +8,11 @@ import {
   getRoomMembers,
   markAgentStale,
 } from '../state/index.ts';
-import { paneCommandLooksAlive, paneExists } from '../tmux/index.ts';
+import {
+  capturePaneTail,
+  paneCommandLooksAlive,
+  paneExists,
+} from '../tmux/index.ts';
 import { getQueue } from './pane-queue.ts';
 
 const NOTIFY_KINDS: MessageKind[] = ['completion', 'error', 'question'];
@@ -156,16 +160,31 @@ export async function deliverMessage(
     }
   }
 
-  // Auto-notify: if sender is worker and kind is notifiable, push brief summary to leaders
+  // Auto-notify: if sender is worker and kind is notifiable, push summary to leaders
   if (NOTIFY_KINDS.includes(kind)) {
     const sender = getAgent(senderName);
     if (sender?.role === 'worker') {
       const members = roomObj ? getRoomMembers(roomObj.id) : [];
       const leaders = members.filter(
-        (m) => m.role === 'leader' && m.name !== senderName,
+        (m) => m.role === 'leader' && m.name !== senderName && m.tmux_target,
       );
-      const summary = text.length > 80 ? text.slice(0, 77) + '...' : text;
-      const notifyText = `[system@${room}]: ${senderName} ${kind}: "${summary}"`;
+      const summary = text.length > 200 ? text.slice(0, 197) + '...' : text;
+      let notifyText = `[system@${room}]: ${senderName} ${kind}: "${summary}"`;
+
+      // Append last 20 non-empty pane lines as single-line context (avoids multiline paste issues)
+      if (sender.tmux_target) {
+        const tail = await capturePaneTail(sender.tmux_target, 20).catch(
+          () => null,
+        );
+        if (tail) {
+          const flatTail = tail
+            .split('\n')
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .join(' | ');
+          notifyText += ` [context: ${flatTail}]`;
+        }
+      }
 
       for (const leader of leaders) {
         getQueue(leader.tmux_target!, { role: leader.role })

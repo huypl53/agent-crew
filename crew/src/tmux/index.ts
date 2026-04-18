@@ -216,6 +216,28 @@ async function capturePaneLines(
   return result.stdout || '';
 }
 
+/** Capture last `lines` non-empty lines from pane scrollback. Returns null on failure. */
+export async function capturePaneTail(
+  target: string,
+  lines: number,
+): Promise<string | null> {
+  // Fetch 3x buffer from scrollback to ensure enough non-empty lines after filtering
+  const result = await run(
+    'capture-pane',
+    '-t',
+    target,
+    '-p',
+    '-S',
+    `-${lines * 3}`,
+  );
+  if (!result.success) return null;
+  const nonEmpty = stripAnsi(result.stdout)
+    .split('\n')
+    .filter((l) => l.trim().length > 0)
+    .slice(-lines);
+  return nonEmpty.length > 0 ? nonEmpty.join('\n') : null;
+}
+
 export async function capturePane(target: string): Promise<string | null> {
   const result = await run('capture-pane', '-t', target, '-p');
   if (!result.success) return null;
