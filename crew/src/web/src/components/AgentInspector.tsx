@@ -219,9 +219,11 @@ export default function AgentInspector({ room, onEditAgent }: Props) {
               <div className="text-slate-300">{selected.capabilities}</div>
             </Field>
           )}
-          <Field label="Rooms">
-            <div className="text-slate-400">{selected.rooms.join(', ')}</div>
-          </Field>
+          {selected.room_name && (
+            <Field label="Room">
+              <div className="text-slate-400">{selected.room_name}</div>
+            </Field>
+          )}
 
           {hasStats && (
             <>
