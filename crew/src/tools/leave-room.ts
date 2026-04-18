@@ -19,7 +19,7 @@ export async function handleLeaveRoom(params: LeaveRoomParams): Promise<ToolResu
     return err(`Agent "${name}" is not registered`);
   }
 
-  if (!agent.rooms.includes(room)) {
+  if (!(agent.room_name === room || agent.room_path === room)) {
     return err(`Agent "${name}" is not in room "${room}"`);
   }
 

@@ -13,7 +13,7 @@ export async function handleSetRoomTopic(params: SetRoomTopicParams): Promise<To
   if (!room || !text || !name) return err('Missing required params: room, text, name');
 
   const agent = getAgent(name);
-  if (!agent || !agent.rooms.includes(room)) {
+  if (!agent || !(agent.room_name === room || agent.room_path === room)) {
     return err(`Agent "${name}" is not a member of room "${room}"`);
   }
 

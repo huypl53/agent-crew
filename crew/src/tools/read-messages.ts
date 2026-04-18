@@ -10,11 +10,11 @@ interface ReadMessagesParams {
   limit?: number;
 }
 
-function mapMsg(m: { message_id: string; from: string; room: string; to: string | null; text: string; kind: string; timestamp: string; sequence: number; mode: string }) {
+function mapMsg(m: { message_id: string; from: string; room_id: number; to: string | null; text: string; kind: string; timestamp: string; sequence: number; mode: string }) {
   return {
     message_id: m.message_id,
     from: m.from,
-    room: m.room,
+    room_id: m.room_id,
     to: m.to,
     text: m.text,
     kind: m.kind,

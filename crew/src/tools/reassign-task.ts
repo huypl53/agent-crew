@@ -30,7 +30,7 @@ export async function handleReassignTask(params: ReassignTaskParams): Promise<To
   if (!worker) {
     return err(`Worker "${worker_name}" is not registered`);
   }
-  if (!worker.rooms.includes(room)) {
+  if (!(worker.room_name === room || worker.room_path === room)) {
     return err(`Worker "${worker_name}" is not in room "${room}"`);
   }
 
