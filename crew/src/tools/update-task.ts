@@ -1,6 +1,6 @@
-import { ok, err } from '../shared/types.ts';
-import type { ToolResult, TaskStatus } from '../shared/types.ts';
 import { assertRole } from '../shared/role-guard.ts';
+import type { TaskStatus, ToolResult } from '../shared/types.ts';
+import { err, ok } from '../shared/types.ts';
 import { getTask, updateTaskStatus } from '../state/index.ts';
 
 interface UpdateTaskParams {
@@ -13,7 +13,9 @@ interface UpdateTaskParams {
 
 const WORKER_ALLOWED: TaskStatus[] = ['queued', 'active', 'completed', 'error'];
 
-export async function handleUpdateTask(params: UpdateTaskParams): Promise<ToolResult> {
+export async function handleUpdateTask(
+  params: UpdateTaskParams,
+): Promise<ToolResult> {
   const { task_id, status, note, context, name } = params;
 
   if (!task_id || !status || !name) {
@@ -21,7 +23,9 @@ export async function handleUpdateTask(params: UpdateTaskParams): Promise<ToolRe
   }
 
   if (!WORKER_ALLOWED.includes(status as TaskStatus)) {
-    return err(`Invalid status "${status}". Allowed: ${WORKER_ALLOWED.join(', ')}`);
+    return err(
+      `Invalid status "${status}". Allowed: ${WORKER_ALLOWED.join(', ')}`,
+    );
   }
 
   // Role check: worker only
@@ -37,10 +41,17 @@ export async function handleUpdateTask(params: UpdateTaskParams): Promise<ToolRe
     return err(`Task ${task_id} not found`);
   }
   if (task.assigned_to !== name) {
-    return err(`Task ${task_id} is assigned to "${task.assigned_to}", not "${name}"`);
+    return err(
+      `Task ${task_id} is assigned to "${task.assigned_to}", not "${name}"`,
+    );
   }
 
-  const updated = updateTaskStatus(task_id, status as TaskStatus, note, context);
+  const updated = updateTaskStatus(
+    task_id,
+    status as TaskStatus,
+    note,
+    context,
+  );
   if (!updated) {
     return err(`Failed to update task ${task_id}`);
   }

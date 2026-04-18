@@ -1,6 +1,17 @@
-import { describe, expect, test, beforeEach, afterAll, setDefaultTimeout } from 'bun:test';
-import { createTestSession, cleanupAllTestSessions, captureFromPane } from './helpers.ts';
+import {
+  afterAll,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from 'bun:test';
 import { getQueue } from '../src/delivery/pane-queue.ts';
+import {
+  captureFromPane,
+  cleanupAllTestSessions,
+  createTestSession,
+} from './helpers.ts';
 
 // PaneQueue tests involve real tmux delivery: waitForReady (~1s) + paste settle (500ms) + Enter retry.
 // Default 5000ms is too tight; bump to 15000ms for this file.
@@ -49,7 +60,9 @@ describe('PaneQueue', () => {
     const q = getQueue(testPane);
     const order: string[] = [];
     // Enqueue paste then escape — escape should process first
-    const p1 = q.enqueue({ type: 'paste', text: 'first' }).then(() => order.push('paste'));
+    const p1 = q
+      .enqueue({ type: 'paste', text: 'first' })
+      .then(() => order.push('paste'));
     const p2 = q.enqueue({ type: 'escape' }).then(() => order.push('escape'));
     await Promise.all([p1, p2]);
     // escape should have been processed before paste

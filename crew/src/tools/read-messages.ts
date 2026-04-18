@@ -1,5 +1,5 @@
-import { ok, err } from '../shared/types.ts';
 import type { ToolResult } from '../shared/types.ts';
+import { err, ok } from '../shared/types.ts';
 import { getAgent, readMessages, readRoomMessages } from '../state/index.ts';
 
 interface ReadMessagesParams {
@@ -10,7 +10,17 @@ interface ReadMessagesParams {
   limit?: number;
 }
 
-function mapMsg(m: { message_id: string; from: string; room_id: number; to: string | null; text: string; kind: string; timestamp: string; sequence: number; mode: string }) {
+function mapMsg(m: {
+  message_id: string;
+  from: string;
+  room_id: number;
+  to: string | null;
+  text: string;
+  kind: string;
+  timestamp: string;
+  sequence: number;
+  mode: string;
+}) {
   return {
     message_id: m.message_id,
     from: m.from,
@@ -24,7 +34,9 @@ function mapMsg(m: { message_id: string; from: string; room_id: number; to: stri
   };
 }
 
-export async function handleReadMessages(params: ReadMessagesParams): Promise<ToolResult> {
+export async function handleReadMessages(
+  params: ReadMessagesParams,
+): Promise<ToolResult> {
   const { name, room, since_sequence, kinds, limit } = params;
 
   if (!name) {
@@ -48,7 +60,9 @@ export async function handleReadMessages(params: ReadMessagesParams): Promise<To
   // Fallback: legacy inbox read
   const result = readMessages(name, undefined, since_sequence);
   return ok({
-    messages: result.messages.map(m => mapMsg({ ...m, kind: m.kind ?? 'chat' })),
+    messages: result.messages.map((m) =>
+      mapMsg({ ...m, kind: m.kind ?? 'chat' }),
+    ),
     next_sequence: result.next_sequence,
   });
 }

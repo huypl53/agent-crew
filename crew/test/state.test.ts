@@ -1,16 +1,40 @@
-import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
-import { initDb, closeDb } from '../src/state/db.ts';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { closeDb, initDb } from '../src/state/db.ts';
 import {
-  addAgent, getAgent, removeAgent, getRoom, getAllRooms,
-  getRoomMembers, isNameTakenInRoom, addMessage, readMessages,
-  getRoomMessages, getCursor, advanceCursor, readRoomMessages,
-  clearState, removeAgentFully, validateLiveness,
-  createTask, getTask, getTasksForAgent, updateTaskStatus, cleanupDeadAgentTasks,
+  addAgent,
+  addMessage,
+  advanceCursor,
   cancelQueuedTasksForAgent,
-  getTaskDetails, searchTasks,
-  recordTaskEvent, getTaskEvents, getAllTaskEvents,
-  recordTokenUsage, getTokenUsageForAgent, getTotalCost, getPricing, upsertPricing,
-  getChangeVersions, getOrCreateRoom,
+  cleanupDeadAgentTasks,
+  clearState,
+  createTask,
+  getAgent,
+  getAllRooms,
+  getAllTaskEvents,
+  getChangeVersions,
+  getCursor,
+  getOrCreateRoom,
+  getPricing,
+  getRoom,
+  getRoomMembers,
+  getRoomMessages,
+  getTask,
+  getTaskDetails,
+  getTaskEvents,
+  getTasksForAgent,
+  getTokenUsageForAgent,
+  getTotalCost,
+  isNameTakenInRoom,
+  readMessages,
+  readRoomMessages,
+  recordTaskEvent,
+  recordTokenUsage,
+  removeAgent,
+  removeAgentFully,
+  searchTasks,
+  updateTaskStatus,
+  upsertPricing,
+  validateLiveness,
 } from '../src/state/index.ts';
 
 function mkRoom(name: string) {
@@ -63,7 +87,7 @@ describe('state module', () => {
       const room = getRoom('company');
       expect(room).toBeDefined();
       const members = getRoomMembers(room!.id);
-      expect(members.map(m => m.name)).toEqual(['boss']);
+      expect(members.map((m) => m.name)).toEqual(['boss']);
     });
 
     test('room tracks all members', () => {
@@ -71,7 +95,7 @@ describe('state module', () => {
       addAgent('lead-1', 'leader', mkRoom('company').id, '%101');
       const room = getRoom('company');
       const members = getRoomMembers(room!.id);
-      expect(members.map(m => m.name)).toEqual(['boss', 'lead-1']);
+      expect(members.map((m) => m.name)).toEqual(['boss', 'lead-1']);
     });
 
     test('room is deleted when last member leaves', () => {
@@ -91,7 +115,7 @@ describe('state module', () => {
       addAgent('lead-1', 'leader', mkRoom('company').id, '%101');
       const members = getRoomMembers(getRoom('company')!.id);
       expect(members.length).toBe(2);
-      expect(members.map(m => m.name)).toEqual(['boss', 'lead-1']);
+      expect(members.map((m) => m.name)).toEqual(['boss', 'lead-1']);
     });
 
     test('isNameTakenInRoom detects duplicates', () => {
@@ -250,7 +274,13 @@ describe('state module', () => {
     });
 
     test('createTask creates a task with status sent', () => {
-      const task = createTask('frontend', 'worker-1', 'lead-1', 1, 'Build login form');
+      const task = createTask(
+        'frontend',
+        'worker-1',
+        'lead-1',
+        1,
+        'Build login form',
+      );
       expect(task.id).toBeGreaterThan(0);
       expect(task.status).toBe('sent');
       expect(task.assigned_to).toBe('worker-1');
@@ -261,7 +291,13 @@ describe('state module', () => {
     });
 
     test('getTask retrieves task by id', () => {
-      const created = createTask('frontend', 'worker-1', 'lead-1', null, 'Test task');
+      const created = createTask(
+        'frontend',
+        'worker-1',
+        'lead-1',
+        null,
+        'Test task',
+      );
       const fetched = getTask(created.id);
       expect(fetched).toBeDefined();
       expect(fetched!.id).toBe(created.id);
@@ -311,7 +347,9 @@ describe('state module', () => {
       updateTaskStatus(task.id, 'active');
       updateTaskStatus(task.id, 'completed');
       // completed → active is not valid
-      expect(() => updateTaskStatus(task.id, 'active')).toThrow('Invalid transition');
+      expect(() => updateTaskStatus(task.id, 'active')).toThrow(
+        'Invalid transition',
+      );
     });
 
     test('updateTaskStatus returns undefined for non-existent task', () => {
@@ -319,11 +357,29 @@ describe('state module', () => {
     });
 
     test('cleanupDeadAgentTasks transitions non-terminal tasks to error', () => {
-      const t1 = createTask('frontend', 'worker-1', 'lead-1', null, 'Active task');
+      const t1 = createTask(
+        'frontend',
+        'worker-1',
+        'lead-1',
+        null,
+        'Active task',
+      );
       updateTaskStatus(t1.id, 'active');
-      const t2 = createTask('frontend', 'worker-1', 'lead-1', null, 'Queued task');
+      const t2 = createTask(
+        'frontend',
+        'worker-1',
+        'lead-1',
+        null,
+        'Queued task',
+      );
       updateTaskStatus(t2.id, 'queued');
-      const t3 = createTask('frontend', 'worker-1', 'lead-1', null, 'Completed task');
+      const t3 = createTask(
+        'frontend',
+        'worker-1',
+        'lead-1',
+        null,
+        'Completed task',
+      );
       updateTaskStatus(t3.id, 'active');
       updateTaskStatus(t3.id, 'completed');
 
@@ -340,7 +396,13 @@ describe('state module', () => {
     test('validateLiveness cleans up tasks for dead agents', async () => {
       // This test uses a fake pane that doesn't exist — isPaneDead returns true
       addAgent('dead-worker', 'worker', mkRoom('frontend').id, '%99999');
-      const task = createTask('frontend', 'dead-worker', 'lead-1', null, 'Doomed task');
+      const task = createTask(
+        'frontend',
+        'dead-worker',
+        'lead-1',
+        null,
+        'Doomed task',
+      );
       updateTaskStatus(task.id, 'active');
 
       await validateLiveness();
@@ -370,7 +432,11 @@ describe('state module', () => {
   describe('token_usage table', () => {
     test('token_usage table exists', () => {
       const db = require('../src/state/db.ts').getDb();
-      const row = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'").get();
+      const row = db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'",
+        )
+        .get();
       expect(row).toBeTruthy();
     });
 
@@ -389,8 +455,13 @@ describe('state module', () => {
       clearState();
       const wk = addAgent('wk-01', 'worker', mkRoom('billing').id, '%71');
       recordTokenUsage({
-        agent_id: wk.agent_id, session_id: 'sess-123', model: 'claude-opus-4-6',
-        input_tokens: 1000, output_tokens: 500, cost_usd: 0.05, source: 'statusline',
+        agent_id: wk.agent_id,
+        session_id: 'sess-123',
+        model: 'claude-opus-4-6',
+        input_tokens: 1000,
+        output_tokens: 500,
+        cost_usd: 0.05,
+        source: 'statusline',
       });
       const rows = getTokenUsageForAgent('wk-01');
       expect(rows.length).toBe(1);
@@ -401,8 +472,24 @@ describe('state module', () => {
       clearState();
       const wk1 = addAgent('wk-01', 'worker', mkRoom('billing').id, '%72');
       const wk2 = addAgent('wk-02', 'worker', mkRoom('billing').id, '%73');
-      recordTokenUsage({ agent_id: wk1.agent_id, session_id: 's1', model: 'o3', input_tokens: 100, output_tokens: 50, cost_usd: 0.01, source: 'codex_db' });
-      recordTokenUsage({ agent_id: wk2.agent_id, session_id: 's2', model: 'o3', input_tokens: 200, output_tokens: 100, cost_usd: 0.02, source: 'codex_db' });
+      recordTokenUsage({
+        agent_id: wk1.agent_id,
+        session_id: 's1',
+        model: 'o3',
+        input_tokens: 100,
+        output_tokens: 50,
+        cost_usd: 0.01,
+        source: 'codex_db',
+      });
+      recordTokenUsage({
+        agent_id: wk2.agent_id,
+        session_id: 's2',
+        model: 'o3',
+        input_tokens: 200,
+        output_tokens: 100,
+        cost_usd: 0.02,
+        source: 'codex_db',
+      });
       const rows = getTokenUsageForAgent('wk-01');
       expect(rows.length).toBe(1);
     });
@@ -411,16 +498,48 @@ describe('state module', () => {
       clearState();
       const a1 = addAgent('a1', 'worker', mkRoom('billing').id, '%74');
       const a2 = addAgent('a2', 'worker', mkRoom('billing').id, '%75');
-      recordTokenUsage({ agent_id: a1.agent_id, session_id: 's1', model: 'm', input_tokens: 0, output_tokens: 0, cost_usd: 1.00, source: 'statusline' });
-      recordTokenUsage({ agent_id: a2.agent_id, session_id: 's2', model: 'm', input_tokens: 0, output_tokens: 0, cost_usd: 2.50, source: 'statusline' });
-      expect(getTotalCost()).toBeCloseTo(3.50);
+      recordTokenUsage({
+        agent_id: a1.agent_id,
+        session_id: 's1',
+        model: 'm',
+        input_tokens: 0,
+        output_tokens: 0,
+        cost_usd: 1.0,
+        source: 'statusline',
+      });
+      recordTokenUsage({
+        agent_id: a2.agent_id,
+        session_id: 's2',
+        model: 'm',
+        input_tokens: 0,
+        output_tokens: 0,
+        cost_usd: 2.5,
+        source: 'statusline',
+      });
+      expect(getTotalCost()).toBeCloseTo(3.5);
     });
 
     test('recordTokenUsage upserts — second call for same agent updates row, not inserts', () => {
       clearState();
       const wk = addAgent('wk-01', 'worker', mkRoom('billing').id, '%76');
-      recordTokenUsage({ agent_id: wk.agent_id, session_id: 's1', model: 'o3', input_tokens: 100, output_tokens: 50, cost_usd: 0.01, source: 'statusline' });
-      recordTokenUsage({ agent_id: wk.agent_id, session_id: 's2', model: 'gpt-4.1', input_tokens: 200, output_tokens: 100, cost_usd: 0.02, source: 'statusline' });
+      recordTokenUsage({
+        agent_id: wk.agent_id,
+        session_id: 's1',
+        model: 'o3',
+        input_tokens: 100,
+        output_tokens: 50,
+        cost_usd: 0.01,
+        source: 'statusline',
+      });
+      recordTokenUsage({
+        agent_id: wk.agent_id,
+        session_id: 's2',
+        model: 'gpt-4.1',
+        input_tokens: 200,
+        output_tokens: 100,
+        cost_usd: 0.02,
+        source: 'statusline',
+      });
       const rows = getTokenUsageForAgent('wk-01');
       expect(rows.length).toBe(1);
       expect(rows[0]!.input_tokens).toBe(200);
@@ -435,7 +554,7 @@ describe('state module', () => {
 
     test('upsertPricing updates existing model', () => {
       upsertPricing('claude-opus-4-6', 20.0, 100.0);
-      const p = getPricing().find(e => e.model_name === 'claude-opus-4-6');
+      const p = getPricing().find((e) => e.model_name === 'claude-opus-4-6');
       expect(p?.input_cost_per_million).toBe(20.0);
     });
   });
@@ -444,9 +563,20 @@ describe('state module', () => {
     test('updateTaskStatus with context stores it', () => {
       addAgent('lead-01', 'leader', mkRoom('test-room').id, '%79');
       addAgent('wk-01', 'worker', mkRoom('test-room').id, '%80');
-      const task = createTask('test-room', 'wk-01', 'lead-01', null, 'test task summary');
+      const task = createTask(
+        'test-room',
+        'wk-01',
+        'lead-01',
+        null,
+        'test task summary',
+      );
       updateTaskStatus(task.id, 'active');
-      updateTaskStatus(task.id, 'completed', 'done', 'Explored src/auth.ts. Found JWT validation in middleware.');
+      updateTaskStatus(
+        task.id,
+        'completed',
+        'done',
+        'Explored src/auth.ts. Found JWT validation in middleware.',
+      );
       const details = getTaskDetails(task.id);
       expect(details).toBeTruthy();
       expect(details!.context).toContain('JWT validation');
@@ -455,9 +585,20 @@ describe('state module', () => {
     test('searchTasks by keyword finds matching tasks', () => {
       addAgent('lead-01', 'leader', mkRoom('test-room').id, '%81');
       addAgent('wk-01', 'worker', mkRoom('test-room').id, '%82');
-      const t1 = createTask('test-room', 'wk-01', 'lead-01', null, 'fix auth middleware');
+      const t1 = createTask(
+        'test-room',
+        'wk-01',
+        'lead-01',
+        null,
+        'fix auth middleware',
+      );
       updateTaskStatus(t1.id, 'active');
-      updateTaskStatus(t1.id, 'completed', undefined, 'JWT tokens expire too early');
+      updateTaskStatus(
+        t1.id,
+        'completed',
+        undefined,
+        'JWT tokens expire too early',
+      );
 
       const results = searchTasks({ keyword: 'JWT' });
       expect(results.length).toBeGreaterThan(0);
@@ -468,14 +609,20 @@ describe('state module', () => {
       addAgent('wk-01', 'worker', mkRoom('room-ctx-a').id, '%84');
       createTask('room-ctx-a', 'wk-01', 'lead-01', null, 'task in room a');
       const results = searchTasks({ room: 'room-ctx-a' });
-      expect(results.every(r => r.room === 'room-ctx-a')).toBe(true);
+      expect(results.every((r) => r.room === 'room-ctx-a')).toBe(true);
     });
 
     test('searchTasks returns context_preview truncated', () => {
       addAgent('lead-01', 'leader', mkRoom('test-room').id, '%85');
       addAgent('wk-01', 'worker', mkRoom('test-room').id, '%86');
       const longCtx = 'x'.repeat(500);
-      const t = createTask('test-room', 'wk-01', 'lead-01', null, 'long ctx task');
+      const t = createTask(
+        'test-room',
+        'wk-01',
+        'lead-01',
+        null,
+        'long ctx task',
+      );
       updateTaskStatus(t.id, 'active');
       updateTaskStatus(t.id, 'completed', undefined, longCtx);
       const results = searchTasks({ keyword: 'long ctx' });
@@ -525,7 +672,7 @@ describe('state module', () => {
       const t = createTask('room', 'wk-01', 'lead-01', null, 'task');
       cancelQueuedTasksForAgent('wk-01', 'lead-01');
       const events = getTaskEvents(t.id);
-      const cancelEvent = events.find(e => e.to_status === 'cancelled');
+      const cancelEvent = events.find((e) => e.to_status === 'cancelled');
       expect(cancelEvent).toBeDefined();
       expect(cancelEvent!.triggered_by).toBe('lead-01');
     });
@@ -570,9 +717,15 @@ describe('state module', () => {
 
       closeDb();
       const { unlinkSync } = await import('fs');
-      try { unlinkSync(tmpPath); } catch {}
-      try { unlinkSync(tmpPath + '-wal'); } catch {}
-      try { unlinkSync(tmpPath + '-shm'); } catch {}
+      try {
+        unlinkSync(tmpPath);
+      } catch {}
+      try {
+        unlinkSync(tmpPath + '-wal');
+      } catch {}
+      try {
+        unlinkSync(tmpPath + '-shm');
+      } catch {}
     });
   });
 
@@ -584,7 +737,13 @@ describe('state module', () => {
     });
 
     test('recordTaskEvent stores a transition', () => {
-      const task = createTask('test-room', 'wk-01', 'lead-01', null, 'event test');
+      const task = createTask(
+        'test-room',
+        'wk-01',
+        'lead-01',
+        null,
+        'event test',
+      );
       recordTaskEvent(task.id, null, 'sent', 'system');
       const events = getTaskEvents(task.id);
       expect(events.length).toBe(2);
@@ -593,7 +752,13 @@ describe('state module', () => {
     });
 
     test('getTaskEvents returns events in order', () => {
-      const task = createTask('test-room', 'wk-01', 'lead-01', null, 'multi event');
+      const task = createTask(
+        'test-room',
+        'wk-01',
+        'lead-01',
+        null,
+        'multi event',
+      );
       recordTaskEvent(task.id, null, 'sent', 'system');
       recordTaskEvent(task.id, 'sent', 'active', 'wk-01');
       recordTaskEvent(task.id, 'active', 'completed', 'wk-01');
@@ -607,7 +772,13 @@ describe('state module', () => {
     });
 
     test('updateTaskStatus auto-records event', () => {
-      const task = createTask('test-room', 'wk-01', 'lead-01', null, 'auto event');
+      const task = createTask(
+        'test-room',
+        'wk-01',
+        'lead-01',
+        null,
+        'auto event',
+      );
       // Task starts with status 'sent'
       updateTaskStatus(task.id, 'active', undefined, undefined, 'wk-01');
       const events = getTaskEvents(task.id);
@@ -618,7 +789,13 @@ describe('state module', () => {
     });
 
     test('createTask produces initial task_event', () => {
-      const task = createTask('test-room', 'wk-01', 'lead-01', null, 'initial event task');
+      const task = createTask(
+        'test-room',
+        'wk-01',
+        'lead-01',
+        null,
+        'initial event task',
+      );
       const events = getTaskEvents(task.id);
       expect(events.length).toBe(1);
       expect(events[0]!.from_status).toBeNull();
@@ -636,10 +813,19 @@ describe('state module', () => {
 
     test('change_log table has 5 initial rows after initDb', () => {
       const db = require('../src/state/db.ts').getDb();
-      const rows = db.prepare('SELECT * FROM change_log').all() as { scope: string; version: number }[];
+      const rows = db.prepare('SELECT * FROM change_log').all() as {
+        scope: string;
+        version: number;
+      }[];
       expect(rows.length).toBe(5);
-      const scopes = rows.map(r => r.scope).sort();
-      expect(scopes).toEqual(['agents', 'messages', 'room-templates', 'tasks', 'templates']);
+      const scopes = rows.map((r) => r.scope).sort();
+      expect(scopes).toEqual([
+        'agents',
+        'messages',
+        'room-templates',
+        'tasks',
+        'templates',
+      ]);
     });
 
     test('Inserting a message bumps messages version', () => {
@@ -661,7 +847,13 @@ describe('state module', () => {
     });
 
     test('Updating a task bumps tasks version', () => {
-      const task = createTask('test-room', 'wk-01', 'lead-01', null, 'test task');
+      const task = createTask(
+        'test-room',
+        'wk-01',
+        'lead-01',
+        null,
+        'test task',
+      );
       const before = getChangeVersions(['tasks']);
       const v1 = before['tasks']?.version ?? 0;
       updateTaskStatus(task.id, 'active');

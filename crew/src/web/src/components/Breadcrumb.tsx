@@ -17,7 +17,9 @@ export default function Breadcrumb({ nodes, onSelect }: Props) {
           <button
             onClick={() => onSelect(node)}
             className={`hover:text-text-primary transition-colors ${
-              i === nodes.length - 1 ? 'text-text-primary font-medium' : 'text-text-secondary'
+              i === nodes.length - 1
+                ? 'text-text-primary font-medium'
+                : 'text-text-secondary'
             }`}
           >
             {i === 0 && node.kind === 'root' ? 'Home' : node.label}

@@ -1,11 +1,11 @@
-import { ok } from '../shared/types.ts';
 import type { ToolResult } from '../shared/types.ts';
+import { ok } from '../shared/types.ts';
 import { getAllRooms, getRoomMembers } from '../state/index.ts';
 
 export async function handleListRooms(): Promise<ToolResult> {
   const allRooms = getAllRooms();
 
-  const rooms = allRooms.map(room => {
+  const rooms = allRooms.map((room) => {
     const members = getRoomMembers(room.id);
     const roles = { boss: 0, leader: 0, worker: 0 };
     for (const m of members) {

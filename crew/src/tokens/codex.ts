@@ -1,7 +1,11 @@
 import { Database } from 'bun:sqlite';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { recordTokenUsage, getPricingForModel, getLatestTokenUsage } from '../state/index.ts';
+import {
+  getLatestTokenUsage,
+  getPricingForModel,
+  recordTokenUsage,
+} from '../state/index.ts';
 
 const HOME = process.env.HOME ?? '';
 const CODEX_DB_PATH = join(HOME, '.codex', 'state_5.sqlite');
@@ -19,7 +23,11 @@ export function readCodexThreads(): CodexThread[] {
   if (!existsSync(CODEX_DB_PATH)) return [];
   try {
     const db = new Database(CODEX_DB_PATH, { readonly: true });
-    const rows = db.prepare('SELECT id, model, tokens_used, created_at, updated_at, title FROM threads ORDER BY updated_at DESC').all() as CodexThread[];
+    const rows = db
+      .prepare(
+        'SELECT id, model, tokens_used, created_at, updated_at, title FROM threads ORDER BY updated_at DESC',
+      )
+      .all() as CodexThread[];
     db.close();
     return rows;
   } catch {
@@ -38,7 +46,10 @@ export function collectCodexTokens(agentName: string): void {
   if (!thread || thread.tokens_used === 0) return;
 
   const latest = getLatestTokenUsage(agentName);
-  if (latest?.session_id === thread.id && latest.input_tokens === thread.tokens_used) {
+  if (
+    latest?.session_id === thread.id &&
+    latest.input_tokens === thread.tokens_used
+  ) {
     return; // no change — dedup
   }
 

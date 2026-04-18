@@ -9,22 +9,22 @@
 // Set isolated socket BEFORE any imports so src/tmux/index.ts picks it up
 process.env.CREW_TMUX_SOCKET = 'crew-uat-edge';
 
+import { getPollingInterval, PaneQueue } from '../src/delivery/pane-queue.ts';
+import { matchStatusLine } from '../src/shared/status-patterns.ts';
+import { sendKeys as tmuxSendKeys } from '../src/tmux/index.ts';
+import { setupTestDb, teardownTestDb } from './lib/db-test-helpers.ts';
 import {
-  setupEdgeTestEnv,
+  assert,
+  capturePane,
   cleanupEdgeTestEnv,
   createTestPane,
   killPane,
-  capturePane,
-  sendKeys,
-  setAgentMode,
-  assert,
   runTmux,
   SOCKET_NAME,
+  sendKeys,
+  setAgentMode,
+  setupEdgeTestEnv,
 } from './lib/edge-test-harness.ts';
-import { sendKeys as tmuxSendKeys } from '../src/tmux/index.ts';
-import { setupTestDb, teardownTestDb } from './lib/db-test-helpers.ts';
-import { getPollingInterval, PaneQueue } from '../src/delivery/pane-queue.ts';
-import { matchStatusLine } from '../src/shared/status-patterns.ts';
 
 // ─── Globals ─────────────────────────────────────────────────────────────────
 
@@ -32,7 +32,8 @@ let passed = 0;
 let failed = 0;
 
 function check(result: { passed: boolean }) {
-  if (result.passed) passed++; else failed++;
+  if (result.passed) passed++;
+  else failed++;
 }
 
 // Wrapper that tracks pass/fail and prefixes detail on failure
@@ -43,7 +44,8 @@ function ok(condition: boolean, label: string, detail?: string) {
 // ─── Fixtures path ────────────────────────────────────────────────────────────
 
 // Resolve relative to this file's directory
-const FIXTURES = new URL('../test/fixtures/mock-agent.sh', import.meta.url).pathname;
+const FIXTURES = new URL('../test/fixtures/mock-agent.sh', import.meta.url)
+  .pathname;
 
 // ─── E1: Pane dies mid-delivery ───────────────────────────────────────────────
 
@@ -54,7 +56,9 @@ async function testE1_PaneDiesMidDelivery() {
   await Bun.sleep(500);
 
   // Start delivery then kill pane immediately — should not crash
-  const deliveryPromise = sendKeys(pane, 'Test message for dead pane').catch(() => {});
+  const deliveryPromise = sendKeys(pane, 'Test message for dead pane').catch(
+    () => {},
+  );
   await Bun.sleep(80);
   await killPane(pane);
 
@@ -81,7 +85,11 @@ async function testE2_EnterRetryExhaustion() {
   await tmuxSendKeys(pane, 'Message to frozen agent');
   const elapsed = Date.now() - start;
 
-  ok(elapsed > 1800, `Enter retry backoff observed (${elapsed}ms > 1800ms)`, `elapsed=${elapsed}ms`);
+  ok(
+    elapsed > 1800,
+    `Enter retry backoff observed (${elapsed}ms > 1800ms)`,
+    `elapsed=${elapsed}ms`,
+  );
 }
 
 // ─── E3: Large payload (10KB) ─────────────────────────────────────────────────
@@ -100,16 +108,22 @@ async function testE3_LargePayload() {
 
   // Use bracketed paste (src/tmux/index.ts) to deliver 10KB atomically
   const result = await tmuxSendKeys(pane, payload);
-  ok(result.delivered, `10KB payload sent successfully (delivered=${result.delivered})`);
+  ok(
+    result.delivered,
+    `10KB payload sent successfully (delivered=${result.delivered})`,
+  );
   // Ctrl-C to flush cat's output to disk
   await runTmux('send-keys', '-t', pane, 'C-c');
   await Bun.sleep(500);
 
-  const written = await Bun.file(markerFile).exists()
+  const written = (await Bun.file(markerFile).exists())
     ? await Bun.file(markerFile).text()
     : '';
   await Bun.$`rm -f ${markerFile}`.quiet().catch(() => {});
-  ok(written.includes(marker), `Full 10KB payload arrived (marker present in output)`);
+  ok(
+    written.includes(marker),
+    `Full 10KB payload arrived (marker present in output)`,
+  );
 }
 
 // ─── E4: Special characters ───────────────────────────────────────────────────
@@ -160,7 +174,11 @@ async function testE5_RapidFire() {
     if (content.includes(m)) found++;
   }
 
-  ok(found >= 8, `At least 8/10 rapid messages arrived (found ${found}/10)`, `found=${found}`);
+  ok(
+    found >= 8,
+    `At least 8/10 rapid messages arrived (found ${found}/10)`,
+    `found=${found}`,
+  );
 
   // Check order — markers should appear in sequence (best-effort: check the ones that arrived)
   let lastIdx = -1;
@@ -197,8 +215,16 @@ async function testE6_UnstableContent() {
   const elapsed = Date.now() - start;
 
   // Should have waited for content to stabilize (~2s idle switch + polling overhead)
-  ok(elapsed >= 1800, `Waited for stability (${elapsed}ms >= 1800ms)`, `elapsed=${elapsed}ms`);
-  ok(elapsed < 12000, `Delivered before timeout (${elapsed}ms < 12000ms)`, `elapsed=${elapsed}ms`);
+  ok(
+    elapsed >= 1800,
+    `Waited for stability (${elapsed}ms >= 1800ms)`,
+    `elapsed=${elapsed}ms`,
+  );
+  ok(
+    elapsed < 12000,
+    `Delivered before timeout (${elapsed}ms < 12000ms)`,
+    `elapsed=${elapsed}ms`,
+  );
 }
 
 // ─── E7: Busy timeout ─────────────────────────────────────────────────────────
@@ -219,8 +245,16 @@ async function testE7_BusyTimeout() {
   await queue.enqueue({ type: 'paste', text: 'message to busy agent' });
   const elapsed = Date.now() - start;
 
-  ok(elapsed >= 9000, `Waited near timeout (${elapsed}ms >= 9000ms)`, `elapsed=${elapsed}ms`);
-  ok(elapsed <= 14000, `Did not hang forever (${elapsed}ms <= 14000ms)`, `elapsed=${elapsed}ms`);
+  ok(
+    elapsed >= 9000,
+    `Waited near timeout (${elapsed}ms >= 9000ms)`,
+    `elapsed=${elapsed}ms`,
+  );
+  ok(
+    elapsed <= 14000,
+    `Did not hang forever (${elapsed}ms <= 14000ms)`,
+    `elapsed=${elapsed}ms`,
+  );
 }
 
 // ─── E8: Status line buried under verbose output ──────────────────────────────
@@ -238,7 +272,10 @@ async function testE8_BuriedStatus() {
   const content = lines.join('\n');
 
   const status = matchStatusLine(content);
-  ok(status === 'idle', `Detected idle despite 200 lines above (got: ${status})`);
+  ok(
+    status === 'idle',
+    `Detected idle despite 200 lines above (got: ${status})`,
+  );
 }
 
 // ─── E9: Queue 20 messages ────────────────────────────────────────────────────
@@ -269,7 +306,11 @@ async function testE9_QueueBacklog() {
     if (content.includes(m)) delivered++;
   }
 
-  ok(delivered >= 18, `At least 18/20 queued messages delivered (got ${delivered})`, `delivered=${delivered}`);
+  ok(
+    delivered >= 18,
+    `At least 18/20 queued messages delivered (got ${delivered})`,
+    `delivered=${delivered}`,
+  );
 
   // Verify FIFO order among those that arrived
   let lastIdx = -1;
@@ -289,15 +330,24 @@ async function testE10_HeartbeatStaleFallback() {
 
   // Fresh activity (1 second ago) → role-based interval
   const freshInterval = getPollingInterval('worker', Date.now() - 1000);
-  ok(freshInterval === 2000, `Fresh worker interval is 2000ms (got ${freshInterval})`);
+  ok(
+    freshInterval === 2000,
+    `Fresh worker interval is 2000ms (got ${freshInterval})`,
+  );
 
   // Stale activity (35s ago, > 30s threshold) → 500ms conservative
   const staleInterval = getPollingInterval('worker', Date.now() - 35000);
-  ok(staleInterval === 500, `Stale worker falls back to 500ms (got ${staleInterval})`);
+  ok(
+    staleInterval === 500,
+    `Stale worker falls back to 500ms (got ${staleInterval})`,
+  );
 
   // Very stale leader → 500ms
   const staleLeaderInterval = getPollingInterval('leader', Date.now() - 60000);
-  ok(staleLeaderInterval === 500, `Stale leader falls back to 500ms (got ${staleLeaderInterval})`);
+  ok(
+    staleLeaderInterval === 500,
+    `Stale leader falls back to 500ms (got ${staleLeaderInterval})`,
+  );
 }
 
 // ─── E11: Role-based polling intervals ────────────────────────────────────────
@@ -310,7 +360,10 @@ async function testE11_RoleBasedIntervals() {
   ok(getPollingInterval('worker', now) === 2000, `Worker interval is 2000ms`);
   ok(getPollingInterval('leader', now) === 5000, `Leader interval is 5000ms`);
   ok(getPollingInterval('boss', now) === 10000, `Boss interval is 10000ms`);
-  ok(getPollingInterval('unknown-role', now) === 2000, `Unknown role defaults to 2000ms`);
+  ok(
+    getPollingInterval('unknown-role', now) === 2000,
+    `Unknown role defaults to 2000ms`,
+  );
   ok(getPollingInterval(undefined, now) === 2000, `No role defaults to 2000ms`);
 }
 
@@ -341,16 +394,25 @@ console.log('log-ok:' + (result.isError !== true));
 
   try {
     const logProc = Bun.spawn(['bun', 'run', tmpScript], {
-      env: { ...process.env, TMUX_PANE: '%99', CREW_SENDER_VERIFICATION: 'log', CREW_TMUX_SOCKET: '' },
+      env: {
+        ...process.env,
+        TMUX_PANE: '%99',
+        CREW_SENDER_VERIFICATION: 'log',
+        CREW_TMUX_SOCKET: '',
+      },
       stdout: 'pipe',
       stderr: 'pipe',
     });
     const logExit = await logProc.exited;
     const logOut = await new Response(logProc.stdout).text();
     const logErr = await new Response(logProc.stderr).text();
-    if (logErr && !logOut.includes('log-ok')) console.log('  [E12 LOG stderr]:', logErr.slice(0, 200));
+    if (logErr && !logOut.includes('log-ok'))
+      console.log('  [E12 LOG stderr]:', logErr.slice(0, 200));
     ok(logExit === 0, 'LOG mode subprocess ran without crash');
-    ok(logOut.includes('log-ok:true'), `LOG mode: message allowed (got: ${logOut.trim()})`);
+    ok(
+      logOut.includes('log-ok:true'),
+      `LOG mode: message allowed (got: ${logOut.trim()})`,
+    );
 
     // ENFORCE mode
     const scriptEnforce = `
@@ -375,16 +437,29 @@ if (result.isError) {
     await Bun.write(tmpScript, scriptEnforce);
 
     const enforceProc = Bun.spawn(['bun', 'run', tmpScript], {
-      env: { ...process.env, TMUX_PANE: '%99', CREW_SENDER_VERIFICATION: 'enforce', CREW_TMUX_SOCKET: '' },
+      env: {
+        ...process.env,
+        TMUX_PANE: '%99',
+        CREW_SENDER_VERIFICATION: 'enforce',
+        CREW_TMUX_SOCKET: '',
+      },
       stdout: 'pipe',
       stderr: 'pipe',
     });
     await enforceProc.exited;
     const enforceOut = await new Response(enforceProc.stdout).text();
-    ok(enforceOut.includes('enforce-ok:false'), `ENFORCE mode: message rejected (got: ${enforceOut.trim()})`);
-    ok(enforceOut.includes('mismatch'), `ENFORCE mode: error mentions mismatch (got: ${enforceOut.trim()})`);
+    ok(
+      enforceOut.includes('enforce-ok:false'),
+      `ENFORCE mode: message rejected (got: ${enforceOut.trim()})`,
+    );
+    ok(
+      enforceOut.includes('mismatch'),
+      `ENFORCE mode: error mentions mismatch (got: ${enforceOut.trim()})`,
+    );
   } finally {
-    await Bun.file(tmpScript).exists().then(e => e && Bun.$`rm ${tmpScript}`.quiet());
+    await Bun.file(tmpScript)
+      .exists()
+      .then((e) => e && Bun.$`rm ${tmpScript}`.quiet());
   }
 }
 
@@ -413,7 +488,11 @@ console.log('result-ok:' + (result.isError !== true));
   await Bun.write(tmpScript, script);
 
   try {
-    const env = { ...process.env, CREW_SENDER_VERIFICATION: 'enforce', CREW_TMUX_SOCKET: '' };
+    const env = {
+      ...process.env,
+      CREW_SENDER_VERIFICATION: 'enforce',
+      CREW_TMUX_SOCKET: '',
+    };
     delete env.TMUX_PANE; // simulate external CLI — no pane
 
     const proc = Bun.spawn(['bun', 'run', tmpScript], {
@@ -424,9 +503,14 @@ console.log('result-ok:' + (result.isError !== true));
     await proc.exited;
     const out = await new Response(proc.stdout).text();
     // Without TMUX_PANE the callerPane is null so verification is skipped → ok=true
-    ok(out.includes('result-ok:true'), `No TMUX_PANE: verification skipped, message allowed (got: ${out.trim()})`);
+    ok(
+      out.includes('result-ok:true'),
+      `No TMUX_PANE: verification skipped, message allowed (got: ${out.trim()})`,
+    );
   } finally {
-    await Bun.file(tmpScript).exists().then(e => e && Bun.$`rm ${tmpScript}`.quiet());
+    await Bun.file(tmpScript)
+      .exists()
+      .then((e) => e && Bun.$`rm ${tmpScript}`.quiet());
   }
 }
 
@@ -448,12 +532,19 @@ async function testE14_StalePaneDetection() {
     addAgent('stale-leader', 'leader', 'stale-room', '%999', 'claude-code');
 
     const results = await deliverMessage(
-      'stale-leader', 'stale-room', 'task for stale worker',
-      'stale-worker', 'push', 'task',
+      'stale-leader',
+      'stale-room',
+      'task for stale worker',
+      'stale-worker',
+      'push',
+      'task',
     );
 
     ok(results.length === 1, `Got one delivery result (got ${results.length})`);
-    ok(results[0]!.delivered === false, 'Delivery failed (stale pane detected)');
+    ok(
+      results[0]!.delivered === false,
+      'Delivery failed (stale pane detected)',
+    );
     ok(results[0]!.queued === true, 'Message still queued');
     ok(
       (results[0]!.error ?? '').includes('stale'),
@@ -462,8 +553,13 @@ async function testE14_StalePaneDetection() {
 
     // markAgentStale removes the agent from the registry entirely
     const { getDb } = await import('../src/state/db.ts');
-    const agent = getDb().query('SELECT name FROM agents WHERE name = ?').get('stale-worker') as { name: string } | null;
-    ok(agent === null, `Stale agent removed from DB (got: ${JSON.stringify(agent)})`);
+    const agent = getDb()
+      .query('SELECT name FROM agents WHERE name = ?')
+      .get('stale-worker') as { name: string } | null;
+    ok(
+      agent === null,
+      `Stale agent removed from DB (got: ${JSON.stringify(agent)})`,
+    );
   } finally {
     teardownTestDb();
   }
@@ -498,23 +594,45 @@ async function testE15_BroadcastPartialDelivery() {
     addAgent('broadcaster', 'leader', 'broadcast-room', '%800', 'unknown');
 
     for (let i = 0; i < 3; i++) {
-      addAgent(`live-e15-${i}`, 'worker', 'broadcast-room', livePanes[i]!, 'unknown');
+      addAgent(
+        `live-e15-${i}`,
+        'worker',
+        'broadcast-room',
+        livePanes[i]!,
+        'unknown',
+      );
     }
     for (let i = 0; i < 2; i++) {
       // Use 'claude-code' so the stale-pane check fires immediately (skips 10s waitForReady timeout)
-      addAgent(`dead-e15-${i}`, 'worker', 'broadcast-room', deadPanes[i]!, 'claude-code');
+      addAgent(
+        `dead-e15-${i}`,
+        'worker',
+        'broadcast-room',
+        deadPanes[i]!,
+        'claude-code',
+      );
     }
 
     const results = await deliverMessage(
-      'broadcaster', 'broadcast-room', 'broadcast message',
-      null, 'push', 'chat',
+      'broadcaster',
+      'broadcast-room',
+      'broadcast message',
+      null,
+      'push',
+      'chat',
     );
 
     // All 5 non-broadcaster members get attempted
-    ok(results.length === 5, `Broadcast to 5 recipients (got ${results.length})`);
-    const deliveredCount = results.filter(r => r.delivered).length;
-    ok(deliveredCount === 3, `3 delivered to live panes (got ${deliveredCount})`);
-    const queuedCount = results.filter(r => r.queued).length;
+    ok(
+      results.length === 5,
+      `Broadcast to 5 recipients (got ${results.length})`,
+    );
+    const deliveredCount = results.filter((r) => r.delivered).length;
+    ok(
+      deliveredCount === 3,
+      `3 delivered to live panes (got ${deliveredCount})`,
+    );
+    const queuedCount = results.filter((r) => r.queued).length;
     ok(queuedCount === 5, `All 5 queued (got ${queuedCount})`);
   } finally {
     teardownTestDb();
@@ -540,8 +658,12 @@ async function testE16_WorkerNotifiesLeader() {
 
     // Worker sends a completion message (kind='completion' triggers auto-notify to leader)
     await deliverMessage(
-      'e16-worker', 'notify-room', 'Task completed successfully',
-      'e16-leader', 'push', 'completion',
+      'e16-worker',
+      'notify-room',
+      'Task completed successfully',
+      'e16-leader',
+      'push',
+      'completion',
     );
 
     // Auto-notify is fire-and-forget. Allow up to 3s for: waitForReady (~0ms, pane is idle)
@@ -579,24 +701,34 @@ async function testE17_ConcurrentSends() {
     }
 
     // Fire 3 deliveries concurrently
-    const promises = [1, 2, 3].map(i =>
+    const promises = [1, 2, 3].map((i) =>
       deliverMessage(
-        `e17-sender-${i}`, 'concurrent-room',
+        `e17-sender-${i}`,
+        'concurrent-room',
         `CONCURRENT-MSG-${i}-MARKER`,
-        'e17-target', 'push', 'chat',
+        'e17-target',
+        'push',
+        'chat',
       ),
     );
 
     const results = await Promise.all(promises);
 
     // All 3 should have been delivered (PaneQueue mutex serializes them)
-    const allDelivered = results.every(r => r.length === 1 && r[0]!.delivered);
-    ok(allDelivered, `All 3 concurrent sends reported delivered (got: ${results.map(r => r[0]?.delivered).join(',')})`);
+    const allDelivered = results.every(
+      (r) => r.length === 1 && r[0]!.delivered,
+    );
+    ok(
+      allDelivered,
+      `All 3 concurrent sends reported delivered (got: ${results.map((r) => r[0]?.delivered).join(',')})`,
+    );
 
     await Bun.sleep(1500);
     const content = await capturePane(targetPane, 100);
 
-    const found = [1, 2, 3].filter(i => content.includes(`CONCURRENT-MSG-${i}-MARKER`)).length;
+    const found = [1, 2, 3].filter((i) =>
+      content.includes(`CONCURRENT-MSG-${i}-MARKER`),
+    ).length;
     ok(found === 3, `All 3 messages in target pane (found ${found}/3)`);
   } finally {
     teardownTestDb();
@@ -648,16 +780,31 @@ async function main() {
     console.log('\n─── Cleanup ───');
     await cleanupEdgeTestEnv();
     // Delete leftover mode files so they don't bleed into the next test run
-    for (const name of ['e1-agent','e2-agent','e3-agent','e4-agent','e5-agent',
-                         'e6-agent','e7-agent','e8-agent','e9-agent',
-                         'e16-leader','e16-worker','e17-target',
-                         'live-e15-0','live-e15-1','live-e15-2']) {
+    for (const name of [
+      'e1-agent',
+      'e2-agent',
+      'e3-agent',
+      'e4-agent',
+      'e5-agent',
+      'e6-agent',
+      'e7-agent',
+      'e8-agent',
+      'e9-agent',
+      'e16-leader',
+      'e16-worker',
+      'e17-target',
+      'live-e15-0',
+      'live-e15-1',
+      'live-e15-2',
+    ]) {
       await Bun.$`rm -f /tmp/crew-mock-${name}.mode`.quiet().catch(() => {});
     }
   }
 
   const total = passed + failed;
-  console.log(`\n═══ Results: ${passed}/${total} passed, ${failed} failed ═══\n`);
+  console.log(
+    `\n═══ Results: ${passed}/${total} passed, ${failed} failed ═══\n`,
+  );
   if (failed > 0) process.exit(1);
 }
 

@@ -1,5 +1,5 @@
 import { Database } from 'bun:sqlite';
-import { mkdirSync, existsSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 
 let _db: Database | null = null;
@@ -168,7 +168,10 @@ export function getDbPath(): string {
 }
 
 export function initDb(path?: string): void {
-  if (_db) { _db.close(); _db = null; }
+  if (_db) {
+    _db.close();
+    _db = null;
+  }
 
   const dbPath = path ?? getDbPath();
   if (dbPath !== ':memory:') {
@@ -179,15 +182,23 @@ export function initDb(path?: string): void {
   _db = new Database(dbPath, { create: true });
 
   const hasRoomsTable = Boolean(
-    _db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='rooms'").get() as { name: string } | null,
+    _db
+      .query(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='rooms'",
+      )
+      .get() as { name: string } | null,
   );
 
   if (hasRoomsTable) {
-    const roomCols = _db.query('PRAGMA table_info(rooms)').all() as Array<{ name: string }>;
-    const hasPathCol = roomCols.some(c => c.name === 'path');
+    const roomCols = _db.query('PRAGMA table_info(rooms)').all() as Array<{
+      name: string;
+    }>;
+    const hasPathCol = roomCols.some((c) => c.name === 'path');
 
     if (!hasPathCol) {
-      console.warn('[crew] Legacy schema detected. Resetting database to room-scoped schema...');
+      console.warn(
+        '[crew] Legacy schema detected. Resetting database to room-scoped schema...',
+      );
       _db.exec(`
         PRAGMA foreign_keys=OFF;
         DROP TABLE IF EXISTS members;
@@ -211,8 +222,10 @@ export function initDb(path?: string): void {
   _db.exec(SCHEMA);
 
   // Additive column migrations (safe to run on existing DBs)
-  const taskCols = _db.query('PRAGMA table_info(tasks)').all() as Array<{ name: string }>;
-  if (!taskCols.some(c => c.name === 'context')) {
+  const taskCols = _db.query('PRAGMA table_info(tasks)').all() as Array<{
+    name: string;
+  }>;
+  if (!taskCols.some((c) => c.name === 'context')) {
     _db.exec('ALTER TABLE tasks ADD COLUMN context TEXT');
   }
 

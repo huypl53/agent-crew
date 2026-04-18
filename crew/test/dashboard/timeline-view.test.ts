@@ -1,11 +1,17 @@
-import { describe, it, expect } from 'bun:test';
-import type { Task, TaskEvent, Agent } from '../../src/shared/types';
+import { describe, expect, it } from 'bun:test';
+import type { Agent, Task, TaskEvent } from '../../src/shared/types';
 
 // Mock component rendering logic (we'll test the data transformation, not JSX)
 interface TimelineSegment {
   agentName: string;
   roomName: string;
-  segments: Array<{ status: string; startMs: number; endMs: number; color: string; char: string }>;
+  segments: Array<{
+    status: string;
+    startMs: number;
+    endMs: number;
+    color: string;
+    char: string;
+  }>;
 }
 
 /**
@@ -16,25 +22,34 @@ function buildAgentTimelines(
   tasks: Task[],
   taskEvents: TaskEvent[],
   agents: Agent[],
-  timeRange: { minMs: number; maxMs: number; rangeMs: number }
+  timeRange: { minMs: number; maxMs: number; rangeMs: number },
 ): TimelineSegment[] {
   const result: TimelineSegment[] = [];
 
   for (const agent of agents) {
-    const agentTasks = tasks.filter(t => t.assigned_to === agent.name);
+    const agentTasks = tasks.filter((t) => t.assigned_to === agent.name);
     const segments: TimelineSegment['segments'] = [];
 
     for (const task of agentTasks) {
       const events = taskEvents
-        .filter(e => e.task_id === task.id)
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        .filter((e) => e.task_id === task.id)
+        .sort(
+          (a, b) =>
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+        );
 
       // SYNTHETIC BAR: If no events, create a bar from created_at to updated_at
       if (events.length === 0) {
         const startMs = new Date(task.created_at).getTime() - timeRange.minMs;
         const endMs = new Date(task.updated_at).getTime() - timeRange.minMs;
         if (startMs < endMs) {
-          segments.push({ status: 'queued', startMs, endMs, color: 'cyan', char: '░' });
+          segments.push({
+            status: 'queued',
+            startMs,
+            endMs,
+            color: 'cyan',
+            char: '░',
+          });
         }
         continue;
       }
@@ -71,7 +86,11 @@ function buildAgentTimelines(
     }
 
     if (segments.length > 0) {
-      result.push({ agentName: agent.name, roomName: agent.room_name ?? 'unknown', segments });
+      result.push({
+        agentName: agent.name,
+        roomName: agent.room_name ?? 'unknown',
+        segments,
+      });
     }
   }
 
@@ -185,7 +204,12 @@ describe('TimelineView improvements', () => {
         updated_at: new Date(baseTime + 5000).toISOString(),
       };
 
-      const timelines = buildAgentTimelines([task], [], [mockAgentMultiRoom], timeRange);
+      const timelines = buildAgentTimelines(
+        [task],
+        [],
+        [mockAgentMultiRoom],
+        timeRange,
+      );
 
       expect(timelines[0]!.roomName).toBe('project-a');
     });
@@ -208,7 +232,12 @@ describe('TimelineView improvements', () => {
         updated_at: new Date(baseTime + 5000).toISOString(),
       };
 
-      const timelines = buildAgentTimelines([task], [], [agentNoRooms], timeRange);
+      const timelines = buildAgentTimelines(
+        [task],
+        [],
+        [agentNoRooms],
+        timeRange,
+      );
 
       expect(timelines[0]!.roomName).toBe('unknown');
     });

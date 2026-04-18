@@ -30,25 +30,40 @@ export function buildMessageTree(messages: Message[]): MessageNode[] {
   return roots;
 }
 
-export function flattenTree(roots: MessageNode[], collapsed: Set<string>): FlatRow[] {
+export function flattenTree(
+  roots: MessageNode[],
+  collapsed: Set<string>,
+): FlatRow[] {
   const rows: FlatRow[] = [];
   function visit(node: MessageNode, depth: number, continuing: boolean[]) {
     const nodeId = String(node.message.sequence);
     const isCollapsed = collapsed.has(nodeId);
     const hasChildren = node.children.length > 0;
     const hiddenCount = isCollapsed ? countDescendants(node) : 0;
-    rows.push({ message: node.message, prefix: buildPrefix(depth, continuing, hasChildren, isCollapsed), nodeId, hasChildren, isCollapsed, hiddenCount });
+    rows.push({
+      message: node.message,
+      prefix: buildPrefix(depth, continuing, hasChildren, isCollapsed),
+      nodeId,
+      hasChildren,
+      isCollapsed,
+      hiddenCount,
+    });
     if (!isCollapsed) {
       node.children.forEach((child, i) => {
         visit(child, depth + 1, [...continuing, i < node.children.length - 1]);
       });
     }
   }
-  roots.forEach(r => visit(r, 0, []));
+  roots.forEach((r) => visit(r, 0, []));
   return rows;
 }
 
-function buildPrefix(depth: number, continuing: boolean[], hasChildren: boolean, isCollapsed: boolean): string {
+function buildPrefix(
+  depth: number,
+  continuing: boolean[],
+  hasChildren: boolean,
+  isCollapsed: boolean,
+): string {
   const leaf = hasChildren && isCollapsed ? '▶ ' : '· ';
   if (depth === 0) return leaf;
   let p = '';
@@ -62,5 +77,5 @@ function countDescendants(node: MessageNode): number {
 }
 
 export function hasThreading(messages: Message[]): boolean {
-  return messages.some(m => m.reply_to != null);
+  return messages.some((m) => m.reply_to != null);
 }

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import type { Room } from '../types.ts';
 import { get } from '../hooks/useApi.ts';
+import type { Room } from '../types.ts';
 
 interface Props {
   selectedRoom: string | null;
@@ -12,16 +12,26 @@ interface Props {
   onCloneRoom?: (room: Room) => void;
 }
 
-export default function RoomsSidebar({ selectedRoom, onSelect, onCreateRoom, onDeleteRoom, onEditTopic, onEditCast, onCloneRoom }: Props) {
+export default function RoomsSidebar({
+  selectedRoom,
+  onSelect,
+  onCreateRoom,
+  onDeleteRoom,
+  onEditTopic,
+  onEditCast,
+  onCloneRoom,
+}: Props) {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     get<Room[]>('/rooms')
       .then(setRooms)
-      .catch(e => setError((e as Error).message));
+      .catch((e) => setError((e as Error).message));
     const id = setInterval(() => {
-      get<Room[]>('/rooms').then(setRooms).catch(() => undefined);
+      get<Room[]>('/rooms')
+        .then(setRooms)
+        .catch(() => undefined);
     }, 5000);
     return () => clearInterval(id);
   }, []);
@@ -40,7 +50,7 @@ export default function RoomsSidebar({ selectedRoom, onSelect, onCreateRoom, onD
       </div>
       {error && <div className="p-2 text-xs text-red-400">{error}</div>}
       <ul className="flex-1 overflow-y-auto">
-        {rooms.map(room => (
+        {rooms.map((room) => (
           <li key={room.name} className="group relative">
             <button
               onClick={() => onSelect(room.name)}
@@ -49,20 +59,26 @@ export default function RoomsSidebar({ selectedRoom, onSelect, onCreateRoom, onD
               {/* Room name — extra right padding to clear icon buttons */}
               <div className="truncate pr-24 font-medium">#{room.name}</div>
               <div className="text-xs text-slate-500 truncate">
-                {room.member_count ?? 0} member{(room.member_count ?? 0) !== 1 ? 's' : ''}
+                {room.member_count ?? 0} member
+                {(room.member_count ?? 0) !== 1 ? 's' : ''}
               </div>
               {room.topic && (
                 <p className="text-xs text-slate-500 truncate">{room.topic}</p>
               )}
               {!!room.template_names?.length && (
-                <p className="text-xs text-slate-600 italic truncate">{room.template_names.join(', ')}</p>
+                <p className="text-xs text-slate-600 italic truncate">
+                  {room.template_names.join(', ')}
+                </p>
               )}
             </button>
 
             {/* Clone as template — visible on hover */}
             {onCloneRoom && (
               <button
-                onClick={e => { e.stopPropagation(); onCloneRoom(room); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCloneRoom(room);
+                }}
                 title="Clone as template"
                 className="absolute right-20 top-2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-blue-400 text-xs transition-opacity"
               >
@@ -71,21 +87,30 @@ export default function RoomsSidebar({ selectedRoom, onSelect, onCreateRoom, onD
             )}
             {/* Edit topic — visible on hover, positioned left of delete */}
             <button
-              onClick={e => { e.stopPropagation(); onEditTopic(room); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditTopic(room);
+              }}
               title="Edit topic"
               className="absolute right-8 top-2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-slate-200 text-xs transition-opacity"
             >
               ✎
             </button>
             <button
-              onClick={e => { e.stopPropagation(); onEditCast(room); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditCast(room);
+              }}
               title="Edit cast"
               className="absolute right-14 top-2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-blue-400 text-xs transition-opacity"
             >
               👥
             </button>
             <button
-              onClick={e => { e.stopPropagation(); onDeleteRoom(room); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteRoom(room);
+              }}
               title="Delete room"
               className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 text-xs transition-opacity"
             >

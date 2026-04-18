@@ -1,5 +1,5 @@
-import type { Agent, AgentRole } from './types.ts';
 import { getAgent } from '../state/index.ts';
+import type { Agent, AgentRole } from './types.ts';
 
 export function assertRole(
   callerName: string,
@@ -12,7 +12,7 @@ export function assertRole(
   }
   if (!allowedRoles.includes(agent.role)) {
     throw new Error(
-      `Only ${allowedRoles.join('/')} can ${action}. You are registered as ${agent.role}.`
+      `Only ${allowedRoles.join('/')} can ${action}. You are registered as ${agent.role}.`,
     );
   }
   return agent;

@@ -9,7 +9,13 @@ function fmtTime(unix: number): string {
 
 function fmtDateTime(unix: number): string {
   const d = new Date(unix * 1000);
-  return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return d.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 }
 
 function fmtDuration(ms: number | null): string {
@@ -24,17 +30,17 @@ function fmtDuration(ms: number | null): string {
 
 // ── Bar colours by kind ────────────────────────────────────────────────────
 const BAR_COLORS: Record<string, string> = {
-  task:    'bg-amber-500/70',
+  task: 'bg-amber-500/70',
   message: 'bg-slate-500/50',
-  agent:   'bg-violet-500/50',
-  room:    'bg-blue-500/40',
+  agent: 'bg-violet-500/50',
+  room: 'bg-blue-500/40',
 };
 
 const BAR_SELECTED: Record<string, string> = {
-  task:    'bg-amber-400',
+  task: 'bg-amber-400',
   message: 'bg-slate-300',
-  agent:   'bg-violet-400',
-  room:    'bg-blue-400',
+  agent: 'bg-violet-400',
+  room: 'bg-blue-400',
 };
 
 // ── Props ──────────────────────────────────────────────────────────────────
@@ -46,19 +52,29 @@ interface Props {
 }
 
 // ── Tooltip ────────────────────────────────────────────────────────────────
-function Tooltip({ node, rect }: { node: FlatRow['node']; rect: DOMRect | null }) {
+function Tooltip({
+  node,
+  rect,
+}: {
+  node: FlatRow['node'];
+  rect: DOMRect | null;
+}) {
   if (!rect) return null;
   return (
     <div
       className="fixed z-50 bg-slate-800 border border-slate-600 rounded px-2.5 py-1.5 text-xs space-y-0.5 pointer-events-none shadow-lg"
       style={{ left: rect.left, top: rect.bottom + 4 }}
     >
-      <div className="text-slate-200 font-medium truncate max-w-xs">{node.label}</div>
+      <div className="text-slate-200 font-medium truncate max-w-xs">
+        {node.label}
+      </div>
       {node.timestamp != null && (
         <div className="text-slate-400">{fmtDateTime(node.timestamp)}</div>
       )}
       {node.durationMs != null && (
-        <div className="text-slate-400">Duration: {fmtDuration(node.durationMs)}</div>
+        <div className="text-slate-400">
+          Duration: {fmtDuration(node.durationMs)}
+        </div>
       )}
       {node.status && (
         <div className="text-slate-400 capitalize">{String(node.status)}</div>
@@ -68,7 +84,12 @@ function Tooltip({ node, rect }: { node: FlatRow['node']; rect: DOMRect | null }
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
-export default function TraceTimeline({ rows, selectedId, onSelect, timeBounds }: Props) {
+export default function TraceTimeline({
+  rows,
+  selectedId,
+  onSelect,
+  timeBounds,
+}: Props) {
   const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
   const [hoverNode, setHoverNode] = useState<FlatRow['node'] | null>(null);
 
@@ -83,7 +104,7 @@ export default function TraceTimeline({ rows, selectedId, onSelect, timeBounds }
   }
 
   // Filter rows to only those with a timestamp
-  const timedRows = rows.filter(r => r.node.timestamp != null);
+  const timedRows = rows.filter((r) => r.node.timestamp != null);
 
   if (timedRows.length === 0) {
     return (
@@ -113,7 +134,7 @@ export default function TraceTimeline({ rows, selectedId, onSelect, timeBounds }
 
       {/* Scrollable bar area */}
       <div className="flex-1 overflow-y-auto relative">
-        {rows.map(row => {
+        {rows.map((row) => {
           const { node } = row;
           if (node.timestamp == null) {
             // Spacer row (no bar) — maintains alignment with tree
@@ -133,8 +154,14 @@ export default function TraceTimeline({ rows, selectedId, onSelect, timeBounds }
               key={node.id}
               className="h-6 flex items-center px-1 cursor-pointer"
               onClick={() => onSelect(node.id)}
-              onMouseEnter={e => { setHoverRect(e.currentTarget.getBoundingClientRect()); setHoverNode(node); }}
-              onMouseLeave={() => { setHoverRect(null); setHoverNode(null); }}
+              onMouseEnter={(e) => {
+                setHoverRect(e.currentTarget.getBoundingClientRect());
+                setHoverNode(node);
+              }}
+              onMouseLeave={() => {
+                setHoverRect(null);
+                setHoverNode(null);
+              }}
             >
               <div
                 className={`h-3.5 rounded-sm transition-colors ${

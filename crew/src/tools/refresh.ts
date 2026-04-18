@@ -1,15 +1,17 @@
-import { ok, err } from '../shared/types.ts';
-import type { ToolResult } from '../shared/types.ts';
-import { getRoomByPath, refreshAgent } from '../state/index.ts';
-import { paneExists, getPaneCwd } from '../tmux/index.ts';
 import { normalizePath } from '../shared/path-utils.ts';
+import type { ToolResult } from '../shared/types.ts';
+import { err, ok } from '../shared/types.ts';
+import { getRoomByPath, refreshAgent } from '../state/index.ts';
+import { getPaneCwd, paneExists } from '../tmux/index.ts';
 
 interface RefreshParams {
   name: string;
   tmux_target?: string;
 }
 
-export async function handleRefresh(params: RefreshParams): Promise<ToolResult> {
+export async function handleRefresh(
+  params: RefreshParams,
+): Promise<ToolResult> {
   const { name, tmux_target } = params;
 
   if (!name) {
@@ -21,7 +23,9 @@ export async function handleRefresh(params: RefreshParams): Promise<ToolResult> 
   if (!target) {
     const pane = process.env.TMUX_PANE;
     if (!pane) {
-      return err('Not running inside a tmux pane. Set TMUX_PANE env var, or provide tmux_target param.');
+      return err(
+        'Not running inside a tmux pane. Set TMUX_PANE env var, or provide tmux_target param.',
+      );
     }
     target = pane;
   }
@@ -41,12 +45,16 @@ export async function handleRefresh(params: RefreshParams): Promise<ToolResult> 
   const room = getRoomByPath(normalizedPath);
 
   if (!room) {
-    return err(`Room not found for path: ${normalizedPath}. Use 'crew join' to register first.`);
+    return err(
+      `Room not found for path: ${normalizedPath}. Use 'crew join' to register first.`,
+    );
   }
 
   const agent = await refreshAgent(room.id, name, target);
   if (!agent) {
-    return err(`Agent "${name}" not found in room "${room.name}". Use 'crew join' to register first.`);
+    return err(
+      `Agent "${name}" not found in room "${room.name}". Use 'crew join' to register first.`,
+    );
   }
 
   return ok({

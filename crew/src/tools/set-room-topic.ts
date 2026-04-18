@@ -1,5 +1,5 @@
-import { ok, err } from '../shared/types.ts';
 import type { ToolResult } from '../shared/types.ts';
+import { err, ok } from '../shared/types.ts';
 import { getAgent, getRoom, setRoomTopic } from '../state/index.ts';
 
 interface SetRoomTopicParams {
@@ -8,9 +8,12 @@ interface SetRoomTopicParams {
   name: string;
 }
 
-export async function handleSetRoomTopic(params: SetRoomTopicParams): Promise<ToolResult> {
+export async function handleSetRoomTopic(
+  params: SetRoomTopicParams,
+): Promise<ToolResult> {
   const { room, text, name } = params;
-  if (!room || !text || !name) return err('Missing required params: room, text, name');
+  if (!room || !text || !name)
+    return err('Missing required params: room, text, name');
 
   const agent = getAgent(name);
   if (!agent || !(agent.room_name === room || agent.room_path === room)) {

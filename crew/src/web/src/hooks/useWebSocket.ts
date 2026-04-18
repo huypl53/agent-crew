@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { WsEvent } from '../types.ts';
 
 type Handler = (event: WsEvent) => void;
@@ -15,9 +15,13 @@ export function useWebSocket() {
 
     ws.onmessage = (e: MessageEvent) => {
       let evt: WsEvent;
-      try { evt = JSON.parse(e.data as string) as WsEvent; } catch { return; }
+      try {
+        evt = JSON.parse(e.data as string) as WsEvent;
+      } catch {
+        return;
+      }
       const handlers = handlersRef.current.get(evt.type);
-      handlers?.forEach(h => h(evt));
+      handlers?.forEach((h) => h(evt));
     };
 
     ws.onclose = () => {

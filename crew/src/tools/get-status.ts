@@ -1,16 +1,22 @@
-import { ok, err } from '../shared/types.ts';
-import type { ToolResult, AgentStatus } from '../shared/types.ts';
-import { getAgent, touchAgentActivity, getTasksForAgent } from '../state/index.ts';
-import { isPaneDead } from '../tmux/index.ts';
 import { getPaneStatus } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
+import type { AgentStatus, ToolResult } from '../shared/types.ts';
+import { err, ok } from '../shared/types.ts';
+import {
+  getAgent,
+  getTasksForAgent,
+  touchAgentActivity,
+} from '../state/index.ts';
+import { isPaneDead } from '../tmux/index.ts';
 
 interface GetStatusParams {
   agent_name?: string;
   name?: string; // calling agent's own identity
 }
 
-export async function handleGetStatus(params: GetStatusParams): Promise<ToolResult> {
+export async function handleGetStatus(
+  params: GetStatusParams,
+): Promise<ToolResult> {
   const targetName = params.agent_name ?? params.name;
 
   if (!targetName) {
@@ -25,10 +31,19 @@ export async function handleGetStatus(params: GetStatusParams): Promise<ToolResu
   // Get task info (before dead check — dead agents may still have tasks)
   const activeTasks = getTasksForAgent(targetName, ['active']);
   const queuedTasks = getTasksForAgent(targetName, ['queued', 'sent']);
-  const currentTask = activeTasks.length > 0 ? {
-    id: activeTasks[0]!.id, status: activeTasks[0]!.status, summary: activeTasks[0]!.summary,
-  } : null;
-  const queuedTasksList = queuedTasks.map(t => ({ id: t.id, status: t.status, summary: t.summary }));
+  const currentTask =
+    activeTasks.length > 0
+      ? {
+          id: activeTasks[0]!.id,
+          status: activeTasks[0]!.status,
+          summary: activeTasks[0]!.summary,
+        }
+      : null;
+  const queuedTasksList = queuedTasks.map((t) => ({
+    id: t.id,
+    status: t.status,
+    summary: t.summary,
+  }));
 
   // Check liveness first
   const dead = await isPaneDead(agent.tmux_target);
@@ -55,7 +70,10 @@ export async function handleGetStatus(params: GetStatusParams): Promise<ToolResu
       touchAgentActivity(targetName);
     }
   } catch (e) {
-    logServer('ERROR', `getPaneStatus failed for ${targetName} (pane ${agent.tmux_target}): ${e instanceof Error ? e.message : String(e)}`);
+    logServer(
+      'ERROR',
+      `getPaneStatus failed for ${targetName} (pane ${agent.tmux_target}): ${e instanceof Error ? e.message : String(e)}`,
+    );
     status = 'unknown';
   }
 

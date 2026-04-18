@@ -8,7 +8,7 @@
  *
  * Usage: bun test/uat-send-reliability.ts
  */
-import { sendKeys, capturePane, paneExists } from '../src/tmux/index.ts';
+import { capturePane, paneExists, sendKeys } from '../src/tmux/index.ts';
 
 const SESSION = 'uat-send-rel';
 const PANES: string[] = [];
@@ -38,11 +38,30 @@ async function runTmux(...args: string[]): Promise<string> {
 
 async function createPane(): Promise<string> {
   if (PANES.length === 0) {
-    const pane = await runTmux('new-session', '-d', '-s', SESSION, '-x', '200', '-y', '50', '-P', '-F', '#{pane_id}');
+    const pane = await runTmux(
+      'new-session',
+      '-d',
+      '-s',
+      SESSION,
+      '-x',
+      '200',
+      '-y',
+      '50',
+      '-P',
+      '-F',
+      '#{pane_id}',
+    );
     PANES.push(pane);
     return pane;
   }
-  const pane = await runTmux('split-window', '-t', SESSION, '-P', '-F', '#{pane_id}');
+  const pane = await runTmux(
+    'split-window',
+    '-t',
+    SESSION,
+    '-P',
+    '-F',
+    '#{pane_id}',
+  );
   PANES.push(pane);
   return pane;
 }
@@ -57,7 +76,10 @@ async function waitForPrompt(pane: string, timeoutMs = 3000): Promise<void> {
 }
 
 async function captureFull(pane: string): Promise<string> {
-  const proc = Bun.spawn(['tmux', 'capture-pane', '-p', '-J', '-t', pane, '-S', '-100'], { stdout: 'pipe' });
+  const proc = Bun.spawn(
+    ['tmux', 'capture-pane', '-p', '-J', '-t', pane, '-S', '-100'],
+    { stdout: 'pipe' },
+  );
   const text = await new Response(proc.stdout).text();
   await proc.exited;
   return text;
@@ -66,7 +88,9 @@ async function captureFull(pane: string): Promise<string> {
 async function cleanup() {
   try {
     await runTmux('kill-session', '-t', SESSION);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 // ─── TEST CASES ───
@@ -145,21 +169,30 @@ try {
     const paneText = await captureFull(pane);
 
     // The text should appear in the pane (either as typed input or in error output)
-    assert(paneText.includes(tc.expect), `Pane contains expected marker "${tc.expect}"`,
-      paneText.includes(tc.expect) ? undefined : `Pane text:\n${paneText.slice(-500)}`);
+    assert(
+      paneText.includes(tc.expect),
+      `Pane contains expected marker "${tc.expect}"`,
+      paneText.includes(tc.expect)
+        ? undefined
+        : `Pane text:\n${paneText.slice(-500)}`,
+    );
 
     // Verify Enter was processed: look for shell response after the text.
     // Shell-agnostic: check for error output, prompt chars, or any new output.
     const afterText = paneText.split(tc.expect).pop() || '';
-    const enterProcessed = afterText.includes('not found')
-      || afterText.includes('No such file')
-      || afterText.includes('no matches found')
-      || afterText.includes('$')
-      || afterText.includes('❯')
-      || afterText.includes('>')
-      || afterText.includes('#');
-    assert(enterProcessed, 'Enter was processed (shell responded after text)',
-      enterProcessed ? undefined : `After marker:\n${afterText.slice(0, 300)}`);
+    const enterProcessed =
+      afterText.includes('not found') ||
+      afterText.includes('No such file') ||
+      afterText.includes('no matches found') ||
+      afterText.includes('$') ||
+      afterText.includes('❯') ||
+      afterText.includes('>') ||
+      afterText.includes('#');
+    assert(
+      enterProcessed,
+      'Enter was processed (shell responded after text)',
+      enterProcessed ? undefined : `After marker:\n${afterText.slice(0, 300)}`,
+    );
   }
 
   // ─── Rapid-fire test: send multiple messages to same pane quickly ───
@@ -186,10 +219,14 @@ try {
   assert(rapidText.includes('marker-rapid-3'), 'Rapid: msg 3 text arrived');
 
   // All three should have been submitted — count shell responses (errors or prompts)
-  const shellResponses = (rapidText.match(/no matches found|not found|No such file/g) || []).length;
-  assert(shellResponses >= 3, `Rapid: ${shellResponses} shell responses (>= 3 = all submitted)`,
-    shellResponses < 3 ? `Pane:\n${rapidText.slice(-600)}` : undefined);
-
+  const shellResponses = (
+    rapidText.match(/no matches found|not found|No such file/g) || []
+  ).length;
+  assert(
+    shellResponses >= 3,
+    `Rapid: ${shellResponses} shell responses (>= 3 = all submitted)`,
+    shellResponses < 3 ? `Pane:\n${rapidText.slice(-600)}` : undefined,
+  );
 } finally {
   console.log('\n─── Cleanup ───');
   await cleanup();

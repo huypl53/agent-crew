@@ -8,7 +8,7 @@
  *   teardownTestDb(db);
  */
 
-import { initDb, closeDb } from '../../src/state/index.ts';
+import { closeDb, initDb } from '../../src/state/index.ts';
 
 /**
  * Point the global DB singleton at a fresh in-memory database and initialize

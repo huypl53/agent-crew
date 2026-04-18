@@ -1,16 +1,26 @@
-import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
-import { initDb, closeDb } from '../src/state/db.ts';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { closeDb, initDb } from '../src/state/db.ts';
+import {
+  addAgent,
+  getAgent,
+  getAllRooms,
+  getOrCreateRoom,
+  getRoom,
+} from '../src/state/index.ts';
 import { handleCreateRoom } from '../src/tools/create-room.ts';
 import { handleDeleteRoom } from '../src/tools/delete-room.ts';
-import { addAgent, getRoom, getAllRooms, getAgent, getOrCreateRoom } from '../src/state/index.ts';
 
 function mkRoom(name: string) {
   return getOrCreateRoom(`/test/${name}`, name);
 }
 
 describe('create-room tool', () => {
-  beforeEach(() => { initDb(':memory:'); });
-  afterEach(() => { closeDb(); });
+  beforeEach(() => {
+    initDb(':memory:');
+  });
+  afterEach(() => {
+    closeDb();
+  });
 
   test('creates a room with valid name', () => {
     const result = handleCreateRoom({ room: 'alpha', name: 'boss-1' });
@@ -22,7 +32,11 @@ describe('create-room tool', () => {
   });
 
   test('creates a room with topic', () => {
-    const result = handleCreateRoom({ room: 'beta', topic: 'planning', name: 'boss-1' });
+    const result = handleCreateRoom({
+      room: 'beta',
+      topic: 'planning',
+      name: 'boss-1',
+    });
     const data = JSON.parse(result.content[0]!.text);
     expect(data.topic).toBe('planning');
   });
@@ -57,8 +71,12 @@ describe('create-room tool', () => {
 });
 
 describe('delete-room tool', () => {
-  beforeEach(() => { initDb(':memory:'); });
-  afterEach(() => { closeDb(); });
+  beforeEach(() => {
+    initDb(':memory:');
+  });
+  afterEach(() => {
+    closeDb();
+  });
 
   test('refuses without --confirm', () => {
     handleCreateRoom({ room: 'target', name: 'boss-1' });
@@ -70,7 +88,11 @@ describe('delete-room tool', () => {
 
   test('deletes empty room with --confirm', () => {
     handleCreateRoom({ room: 'empty-room', name: 'boss-1' });
-    const result = handleDeleteRoom({ room: 'empty-room', confirm: true, name: 'boss-1' });
+    const result = handleDeleteRoom({
+      room: 'empty-room',
+      confirm: true,
+      name: 'boss-1',
+    });
     expect(result.isError).toBeUndefined();
     const data = JSON.parse(result.content[0]!.text);
     expect(data.deleted).toBe(true);
@@ -81,7 +103,11 @@ describe('delete-room tool', () => {
   test('reports members and messages deleted', () => {
     // Create room via addAgent (which also creates the room + membership)
     addAgent('wk', 'worker', mkRoom('crew-room').id, '%10');
-    const result = handleDeleteRoom({ room: 'crew-room', confirm: true, name: 'boss-1' });
+    const result = handleDeleteRoom({
+      room: 'crew-room',
+      confirm: true,
+      name: 'boss-1',
+    });
     expect(result.isError).toBeUndefined();
     const data = JSON.parse(result.content[0]!.text);
     expect(data.removed_members).toContain('wk');
@@ -100,11 +126,15 @@ describe('delete-room tool', () => {
     addAgent('shared-wk', 'worker', mkRoom('room-b').id, '%30');
     handleDeleteRoom({ room: 'room-a', confirm: true, name: 'boss-1' });
     const remaining = getAllRooms();
-    expect(remaining.some(r => r.name === 'room-b')).toBe(true);
+    expect(remaining.some((r) => r.name === 'room-b')).toBe(true);
   });
 
   test('errors on non-existent room', () => {
-    const result = handleDeleteRoom({ room: 'ghost', confirm: true, name: 'boss-1' });
+    const result = handleDeleteRoom({
+      room: 'ghost',
+      confirm: true,
+      name: 'boss-1',
+    });
     expect(result.isError).toBe(true);
     expect(JSON.parse(result.content[0]!.text).error).toMatch(/does not exist/);
   });

@@ -4,36 +4,58 @@ export function getCallerTestTag(): string {
   const stack = new Error().stack ?? '';
   const line = stack
     .split('\n')
-    .map(l => l.trim())
-    .find(l => l.includes('/test/') && !l.includes('/test/helpers.ts'));
+    .map((l) => l.trim())
+    .find((l) => l.includes('/test/') && !l.includes('/test/helpers.ts'));
 
   const match = line?.match(/\/([^/]+\.test\.(?:ts|tsx|js|jsx))(?::\d+:\d+)?/);
   const file = match?.[1] ?? 'generic';
-  return file.replace(/\.test\.(?:ts|tsx|js|jsx)$/, '').replace(/[^a-zA-Z0-9_-]/g, '-');
+  return file
+    .replace(/\.test\.(?:ts|tsx|js|jsx)$/, '')
+    .replace(/[^a-zA-Z0-9_-]/g, '-');
 }
 
 function sessionName(name: string): string {
   return `${TEST_SESSION_PREFIX}${getCallerTestTag()}-${name}`;
 }
 
-export async function createTestSession(name: string): Promise<{ session: string; pane: string }> {
+export async function createTestSession(
+  name: string,
+): Promise<{ session: string; pane: string }> {
   const session = sessionName(name);
 
   // Kill existing session if any
   await runTmux('kill-session', '-t', session).catch(() => {});
 
   // Create new session with a simple shell
-  const proc = Bun.spawn(['tmux', 'new-session', '-d', '-s', session, '-c', process.cwd(), '-x', '120', '-y', '40'], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
+  const proc = Bun.spawn(
+    [
+      'tmux',
+      'new-session',
+      '-d',
+      '-s',
+      session,
+      '-c',
+      process.cwd(),
+      '-x',
+      '120',
+      '-y',
+      '40',
+    ],
+    {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
   await proc.exited;
 
   // Get the pane ID
-  const paneProc = Bun.spawn(['tmux', 'list-panes', '-t', session, '-F', '#{pane_id}'], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
+  const paneProc = Bun.spawn(
+    ['tmux', 'list-panes', '-t', session, '-F', '#{pane_id}'],
+    {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
   await paneProc.exited;
   const pane = (await new Response(paneProc.stdout).text()).trim();
 
@@ -82,7 +104,10 @@ export async function cleanupAllTestSessions(tag?: string): Promise<void> {
     await proc.exited;
     const output = await new Response(proc.stdout).text();
     const prefix = tag ? `${TEST_SESSION_PREFIX}${tag}-` : TEST_SESSION_PREFIX;
-    const sessions = output.trim().split('\n').filter(s => s.startsWith(prefix));
+    const sessions = output
+      .trim()
+      .split('\n')
+      .filter((s) => s.startsWith(prefix));
     for (const session of sessions) {
       await runTmux('kill-session', '-t', session).catch(() => {});
     }

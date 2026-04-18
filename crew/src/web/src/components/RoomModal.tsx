@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import type { Room, AgentTemplate } from '../types.ts';
-import { post, del, patch } from '../hooks/useApi.ts';
+import { del, patch, post } from '../hooks/useApi.ts';
 import { validateRoomName } from '../lib/validators.ts';
+import type { AgentTemplate, Room } from '../types.ts';
 
 export { validateRoomName };
 
@@ -15,9 +15,17 @@ interface Props {
   onSuccess: () => void;
 }
 
-export default function RoomModal({ mode, room, templates = [], onClose, onSuccess }: Props) {
+export default function RoomModal({
+  mode,
+  room,
+  templates = [],
+  onClose,
+  onSuccess,
+}: Props) {
   const [name, setName] = useState('');
-  const [topic, setTopic] = useState(mode === 'edit-topic' ? (room?.topic ?? '') : '');
+  const [topic, setTopic] = useState(
+    mode === 'edit-topic' ? (room?.topic ?? '') : '',
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // Template picker step state (create mode only)
@@ -26,19 +34,25 @@ export default function RoomModal({ mode, room, templates = [], onClose, onSucce
     if (mode === 'edit-cast' && room?.template_names) {
       // Map template names back to IDs
       return templates
-        .filter(t => room.template_names!.includes(t.name))
-        .map(t => t.id);
+        .filter((t) => room.template_names!.includes(t.name))
+        .map((t) => t.id);
     }
     return [];
   });
 
   const toggleId = (id: number) =>
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
 
   const submitCreate = async (templateIds: number[]) => {
     setSaving(true);
     try {
-      await post('/rooms', { name: name.trim(), topic: topic.trim() || undefined, templateIds });
+      await post('/rooms', {
+        name: name.trim(),
+        topic: topic.trim() || undefined,
+        templateIds,
+      });
       onSuccess();
       onClose();
     } catch (e) {
@@ -50,7 +64,10 @@ export default function RoomModal({ mode, room, templates = [], onClose, onSucce
 
   const handleNameTopicNext = () => {
     const err = validateRoomName(name);
-    if (err) { setError(err); return; }
+    if (err) {
+      setError(err);
+      return;
+    }
     setError(null);
     if (templates.length > 0) {
       setStep('templates');
@@ -77,7 +94,9 @@ export default function RoomModal({ mode, room, templates = [], onClose, onSucce
     if (!room) return;
     setSaving(true);
     try {
-      await patch(`/rooms/${encodeURIComponent(room.name)}`, { topic: topic.trim() || null });
+      await patch(`/rooms/${encodeURIComponent(room.name)}`, {
+        topic: topic.trim() || null,
+      });
       onSuccess();
       onClose();
     } catch (e) {
@@ -91,7 +110,9 @@ export default function RoomModal({ mode, room, templates = [], onClose, onSucce
     if (!room) return;
     setSaving(true);
     try {
-      await patch(`/rooms/${encodeURIComponent(room.name)}/templates`, { templateIds: selectedIds });
+      await patch(`/rooms/${encodeURIComponent(room.name)}/templates`, {
+        templateIds: selectedIds,
+      });
       onSuccess();
       onClose();
     } catch (e) {
@@ -102,9 +123,14 @@ export default function RoomModal({ mode, room, templates = [], onClose, onSucce
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-slate-800 rounded p-6 w-96 space-y-4" onClick={e => e.stopPropagation()}>
-
+    <div
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+      onClick={onClose}
+    >
+      <div
+        className="bg-slate-800 rounded p-6 w-96 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
         {mode === 'create' && step === 'name-topic' && (
           <>
             <h2 className="text-slate-100 font-semibold">Create Room</h2>
@@ -112,15 +138,15 @@ export default function RoomModal({ mode, room, templates = [], onClose, onSucce
               <input
                 autoFocus
                 value={name}
-                onChange={e => setName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleNameTopicNext()}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleNameTopicNext()}
                 placeholder="Room name"
                 className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none"
               />
               <input
                 value={topic}
-                onChange={e => setTopic(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleNameTopicNext()}
+                onChange={(e) => setTopic(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleNameTopicNext()}
                 placeholder="Topic (optional)"
                 className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none"
               />
@@ -130,10 +156,14 @@ export default function RoomModal({ mode, room, templates = [], onClose, onSucce
 
         {mode === 'create' && step === 'templates' && (
           <>
-            <h2 className="text-slate-100 font-semibold">Add templates to #{name}</h2>
-            <p className="text-xs text-slate-400">Select agent templates for this room (optional)</p>
+            <h2 className="text-slate-100 font-semibold">
+              Add templates to #{name}
+            </h2>
+            <p className="text-xs text-slate-400">
+              Select agent templates for this room (optional)
+            </p>
             <ul className="max-h-48 overflow-y-auto space-y-1">
-              {templates.map(t => (
+              {templates.map((t) => (
                 <li key={t.id}>
                   <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-700 cursor-pointer text-sm text-slate-300">
                     <input
@@ -153,20 +183,25 @@ export default function RoomModal({ mode, room, templates = [], onClose, onSucce
 
         {mode === 'delete-confirm' && (
           <>
-            <h2 className="text-slate-100 font-semibold">Delete #{room?.name}?</h2>
+            <h2 className="text-slate-100 font-semibold">
+              Delete #{room?.name}?
+            </h2>
             <p className="text-sm text-slate-400">
-              This will remove {room?.member_count ?? 0} member{(room?.member_count ?? 0) !== 1 ? 's' : ''} and all messages.
+              This will remove {room?.member_count ?? 0} member
+              {(room?.member_count ?? 0) !== 1 ? 's' : ''} and all messages.
             </p>
           </>
         )}
 
         {mode === 'edit-topic' && room && (
           <>
-            <h2 className="text-slate-100 font-semibold">Edit topic — #{room.name}</h2>
+            <h2 className="text-slate-100 font-semibold">
+              Edit topic — #{room.name}
+            </h2>
             <textarea
               autoFocus
               value={topic}
-              onChange={e => setTopic(e.target.value)}
+              onChange={(e) => setTopic(e.target.value)}
               rows={3}
               placeholder="Room topic (optional)"
               className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none resize-none"
@@ -176,13 +211,19 @@ export default function RoomModal({ mode, room, templates = [], onClose, onSucce
 
         {mode === 'edit-cast' && room && (
           <>
-            <h2 className="text-slate-100 font-semibold">Edit cast — #{room.name}</h2>
-            <p className="text-xs text-slate-400">Select agent templates for this room</p>
+            <h2 className="text-slate-100 font-semibold">
+              Edit cast — #{room.name}
+            </h2>
+            <p className="text-xs text-slate-400">
+              Select agent templates for this room
+            </p>
             {templates.length === 0 ? (
-              <p className="text-xs text-slate-500">No templates available. Create templates first.</p>
+              <p className="text-xs text-slate-500">
+                No templates available. Create templates first.
+              </p>
             ) : (
               <ul className="max-h-48 overflow-y-auto space-y-1">
-                {templates.map(t => (
+                {templates.map((t) => (
                   <li key={t.id}>
                     <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-700 cursor-pointer text-sm text-slate-300">
                       <input
@@ -204,7 +245,10 @@ export default function RoomModal({ mode, room, templates = [], onClose, onSucce
         {error && <div className="text-xs text-red-400">{error}</div>}
 
         <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="px-3 py-1.5 rounded text-sm text-slate-400 hover:text-slate-200">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 rounded text-sm text-slate-400 hover:text-slate-200"
+          >
             Cancel
           </button>
 
@@ -214,13 +258,16 @@ export default function RoomModal({ mode, room, templates = [], onClose, onSucce
               disabled={saving}
               className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 disabled:opacity-50 rounded text-sm text-white"
             >
-              {templates.length > 0 ? 'Next →' : (saving ? '…' : 'Create')}
+              {templates.length > 0 ? 'Next →' : saving ? '…' : 'Create'}
             </button>
           )}
 
           {mode === 'create' && step === 'templates' && (
             <>
-              <button onClick={() => void submitCreate([])} className="px-3 py-1.5 rounded text-sm text-slate-400 hover:text-slate-200">
+              <button
+                onClick={() => void submitCreate([])}
+                className="px-3 py-1.5 rounded text-sm text-slate-400 hover:text-slate-200"
+              >
                 Skip
               </button>
               <button

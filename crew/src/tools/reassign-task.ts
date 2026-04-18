@@ -1,8 +1,14 @@
-import { ok, err } from '../shared/types.ts';
-import type { ToolResult } from '../shared/types.ts';
-import { assertRole } from '../shared/role-guard.ts';
-import { getAgent, getTasksForAgent, updateTaskStatus, createTask, addMessage } from '../state/index.ts';
 import { getQueue } from '../delivery/pane-queue.ts';
+import { assertRole } from '../shared/role-guard.ts';
+import type { ToolResult } from '../shared/types.ts';
+import { err, ok } from '../shared/types.ts';
+import {
+  addMessage,
+  createTask,
+  getAgent,
+  getTasksForAgent,
+  updateTaskStatus,
+} from '../state/index.ts';
 
 interface ReassignTaskParams {
   worker_name: string;
@@ -11,7 +17,9 @@ interface ReassignTaskParams {
   name: string;
 }
 
-export async function handleReassignTask(params: ReassignTaskParams): Promise<ToolResult> {
+export async function handleReassignTask(
+  params: ReassignTaskParams,
+): Promise<ToolResult> {
   const { worker_name, room, text, name } = params;
 
   if (!worker_name || !room || !text || !name) {
@@ -59,8 +67,22 @@ export async function handleReassignTask(params: ReassignTaskParams): Promise<To
   // Queue message and create task record
   const header = `[${name}@${room}]:`;
   const fullText = `${header} ${text}`;
-  const msg = addMessage(worker_name, name, room, text, 'push', worker_name, 'task');
-  const newTask = createTask(room, worker_name, name, Number(msg.message_id), text);
+  const msg = addMessage(
+    worker_name,
+    name,
+    room,
+    text,
+    'push',
+    worker_name,
+    'task',
+  );
+  const newTask = createTask(
+    room,
+    worker_name,
+    name,
+    Number(msg.message_id),
+    text,
+  );
 
   // Deliver new task
   await queue.enqueue({ type: 'paste', text: fullText });

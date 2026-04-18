@@ -11,9 +11,13 @@
     "test": "bun test --timeout 15000",
     "postinstall": "bash scripts/patch-string-width.sh",
     "build:web": "cd src/web && npx vite build",
-    "dev:web": "cd src/web && npx vite dev"
+    "dev:web": "cd src/web && npx vite dev",
+    "lint": "bunx biome check src/ test/ scripts/",
+    "lint:fix": "bunx biome check --write src/ test/ scripts/",
+    "format": "bunx biome format --write src/ test/ scripts/"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.12",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/bun": "latest",

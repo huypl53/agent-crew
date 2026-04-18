@@ -1,19 +1,31 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync } from 'fs';
-import { buildMessageTree, flattenTree, hasThreading } from '../src/web/src/hooks/useMessageTree.ts';
+import {
+  buildMessageTree,
+  flattenTree,
+  hasThreading,
+} from '../src/web/src/hooks/useMessageTree.ts';
 import type { Message } from '../src/web/src/types.ts';
 
 const mkMsg = (id: number, reply_to?: number): Message => ({
   message_id: String(id),
-  from: 'a', room: 'r', to: null, text: 'hi',
-  kind: 'chat', timestamp: '2026-01-01T00:00:00Z', sequence: id, mode: 'pull',
+  from: 'a',
+  room: 'r',
+  to: null,
+  text: 'hi',
+  kind: 'chat',
+  timestamp: '2026-01-01T00:00:00Z',
+  sequence: id,
+  mode: 'pull',
   reply_to: reply_to ?? null,
 });
 
 describe('web build', () => {
   test('bun run build:web produces crew/dist/web/index.html', () => {
     // Build was run during setup — verify artifact exists
-    expect(existsSync(new URL('../dist/web/index.html', import.meta.url).pathname)).toBe(true);
+    expect(
+      existsSync(new URL('../dist/web/index.html', import.meta.url).pathname),
+    ).toBe(true);
   });
 });
 
@@ -29,7 +41,7 @@ describe('web useMessageTree (no Ink deps)', () => {
   test('buildMessageTree — flat list becomes single-level roots', () => {
     const roots = buildMessageTree([mkMsg(1), mkMsg(2), mkMsg(3)]);
     expect(roots).toHaveLength(3);
-    roots.forEach(r => expect(r.children).toHaveLength(0));
+    roots.forEach((r) => expect(r.children).toHaveLength(0));
   });
 
   test('buildMessageTree — reply_to links child to parent', () => {

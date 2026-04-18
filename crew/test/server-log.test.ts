@@ -1,8 +1,8 @@
-import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
-import { existsSync, readFileSync, rmSync, mkdirSync } from 'fs';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { logServer, initServerLog } from '../src/shared/server-log.ts';
+import { initServerLog, logServer } from '../src/shared/server-log.ts';
 
 const TEST_DIR = join(tmpdir(), `crew-server-log-test-${process.pid}`);
 const TEST_LOG = join(TEST_DIR, 'server.log');
@@ -51,7 +51,10 @@ describe('server-log', () => {
       logServer('TEST', `line-${i} ${longLine}`);
     }
     const content = readFileSync(TEST_LOG, 'utf8');
-    const lines = content.trim().split('\n').filter(l => l.length > 0);
+    const lines = content
+      .trim()
+      .split('\n')
+      .filter((l) => l.length > 0);
     // After truncation, should have ≤ 500 lines
     expect(lines.length).toBeLessThanOrEqual(500);
     // Should keep the most recent lines (last ones written)

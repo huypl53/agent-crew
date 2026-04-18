@@ -1,7 +1,21 @@
 import type { ServerWebSocket } from 'bun';
-import { getChangeVersions, getAllMessages, getAllAgents, getAllRooms, getTasksForAgent, searchTasks } from '../state/index.ts';
+import {
+  getAllAgents,
+  getAllMessages,
+  getAllRooms,
+  getChangeVersions,
+  getTasksForAgent,
+  searchTasks,
+} from '../state/index.ts';
 
-const POLL_SCOPES = ['messages', 'agents', 'tasks', 'rooms', 'templates', 'room-templates'];
+const POLL_SCOPES = [
+  'messages',
+  'agents',
+  'tasks',
+  'rooms',
+  'templates',
+  'room-templates',
+];
 
 const clients = new Set<ServerWebSocket<unknown>>();
 let lastVersions: Record<string, number> = {};
@@ -18,7 +32,11 @@ export function wsClose(ws: ServerWebSocket<unknown>): void {
 function broadcast(event: unknown): void {
   const json = JSON.stringify(event);
   for (const ws of clients) {
-    try { ws.send(json); } catch { clients.delete(ws); }
+    try {
+      ws.send(json);
+    } catch {
+      clients.delete(ws);
+    }
   }
 }
 
@@ -38,16 +56,28 @@ function broadcastChanges(): void {
       }
     } else if (scope === 'agents') {
       for (const agent of getAllAgents()) {
-        broadcast({ type: 'agent-status', name: agent.name, status: 'unknown' });
+        broadcast({
+          type: 'agent-status',
+          name: agent.name,
+          status: 'unknown',
+        });
       }
     } else if (scope === 'tasks') {
       const tasks = searchTasks({});
       for (const task of tasks) {
-        broadcast({ type: 'task-update', taskId: task.id, status: task.status });
+        broadcast({
+          type: 'task-update',
+          taskId: task.id,
+          status: task.status,
+        });
       }
     } else if (scope === 'rooms') {
       for (const room of getAllRooms()) {
-        broadcast({ type: 'room-change', room: room.name, kind: 'topic-changed' });
+        broadcast({
+          type: 'room-change',
+          room: room.name,
+          kind: 'topic-changed',
+        });
       }
     } else if (scope === 'templates') {
       broadcast({ type: 'template-change' });
@@ -70,5 +100,8 @@ export function startWsPoller(): void {
 }
 
 export function stopWsPoller(): void {
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
 }

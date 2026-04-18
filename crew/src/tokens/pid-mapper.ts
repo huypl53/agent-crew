@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 const HOME = process.env.HOME ?? '';
@@ -13,24 +13,34 @@ interface ClaudeSession {
   name?: string;
 }
 
-export async function getClaudePidFromPane(paneTarget: string): Promise<number | null> {
+export async function getClaudePidFromPane(
+  paneTarget: string,
+): Promise<number | null> {
   try {
-    const shellProc = Bun.spawn(['tmux', 'display-message', '-p', '-t', paneTarget, '#{pane_pid}'], {
-      stdout: 'pipe', stderr: 'pipe',
-    });
+    const shellProc = Bun.spawn(
+      ['tmux', 'display-message', '-p', '-t', paneTarget, '#{pane_pid}'],
+      {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    );
     const shellPidStr = (await new Response(shellProc.stdout).text()).trim();
     await shellProc.exited;
     const shellPid = parseInt(shellPidStr);
     if (isNaN(shellPid)) return null;
 
     const pgrepProc = Bun.spawn(['pgrep', '-P', String(shellPid)], {
-      stdout: 'pipe', stderr: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
     });
     const childPidsStr = (await new Response(pgrepProc.stdout).text()).trim();
     await pgrepProc.exited;
     if (!childPidsStr) return null;
 
-    const childPids = childPidsStr.split('\n').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+    const childPids = childPidsStr
+      .split('\n')
+      .map((s) => parseInt(s.trim()))
+      .filter((n) => !isNaN(n));
     for (const pid of childPids) {
       const sessionFile = join(CLAUDE_SESSIONS_DIR, `${pid}.json`);
       if (existsSync(sessionFile)) return pid;
@@ -67,5 +77,10 @@ export async function resolveAgentSession(paneTarget: string): Promise<{
   const session = getSessionForPid(claudePid);
   if (!session) return null;
   const sessionPath = resolveSessionPath(session.sessionId, session.cwd);
-  return { claudePid, sessionId: session.sessionId, sessionPath, name: session.name };
+  return {
+    claudePid,
+    sessionId: session.sessionId,
+    sessionPath,
+    name: session.name,
+  };
 }

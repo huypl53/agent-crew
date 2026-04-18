@@ -15,7 +15,8 @@ interface WaitIdleParams {
  * Called inline from cli.ts before initDb().
  */
 export async function handleWaitIdle(params: WaitIdleParams): Promise<void> {
-  const { target, stable_count, idle_seconds, poll_interval, timeout, lines } = params;
+  const { target, stable_count, idle_seconds, poll_interval, timeout, lines } =
+    params;
 
   if (!target) {
     console.error('Error: --target <pane> is required');
@@ -32,7 +33,9 @@ export async function handleWaitIdle(params: WaitIdleParams): Promise<void> {
   });
 
   if (result.timedOut) {
-    console.error(`wait-idle: timed out after ${result.elapsed}ms (pane ${target} never settled)`);
+    console.error(
+      `wait-idle: timed out after ${result.elapsed}ms (pane ${target} never settled)`,
+    );
     process.exit(2);
   }
 

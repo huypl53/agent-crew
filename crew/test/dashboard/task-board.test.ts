@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 import type { Task } from '../../src/shared/types';
 
 /**
@@ -35,11 +35,19 @@ function formatTaskTimestamp(timestamp: string, now?: Date): string {
 
   // Same day but older than 24 hours shouldn't reach here, but keep for completeness
   if (isSameDay) {
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
   }
 
   // Full date for older timestamps
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+  });
 }
 
 describe('TaskBoard timestamp formatting', () => {
@@ -126,13 +134,17 @@ describe('TaskBoard timestamp formatting', () => {
         assigned_to: 'wk-02',
         created_by: 'lead-01',
         message_id: null,
-        summary: 'This is a very long task summary that should be truncated to fit in the display',
+        summary:
+          'This is a very long task summary that should be truncated to fit in the display',
         status: 'queued',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
 
-      const summary = task.summary.length > 40 ? task.summary.substring(0, 37) + '...' : task.summary;
+      const summary =
+        task.summary.length > 40
+          ? task.summary.substring(0, 37) + '...'
+          : task.summary;
       expect(summary.length).toBeLessThanOrEqual(40);
       expect(summary).toEndWith('...');
     });
@@ -177,7 +189,9 @@ describe('TaskBoard timestamp formatting', () => {
         updated_at: new Date().toISOString(),
       };
 
-      expect(task.text).toBe('This is the full task text with all the instructions that were sent to the worker.');
+      expect(task.text).toBe(
+        'This is the full task text with all the instructions that were sent to the worker.',
+      );
     });
 
     it('should handle missing optional fields (note, context)', () => {

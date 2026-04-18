@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 test.describe('Web Dashboard UAT', () => {
   test.beforeEach(async ({ page }) => {
@@ -29,7 +29,9 @@ test.describe('Web Dashboard UAT', () => {
     }
 
     // Verify room appears in sidebar
-    await expect(page.locator(`text=#${roomName}`)).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(`text=#${roomName}`)).toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test('2. Create an agent template', async ({ page }) => {
@@ -37,7 +39,9 @@ test.describe('Web Dashboard UAT', () => {
     await page.click('button:has-text("Templates"), a:has-text("Templates")');
 
     // Wait for Templates panel
-    await expect(page.locator('h2:has-text("Templates")')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('h2:has-text("Templates")')).toBeVisible({
+      timeout: 5000,
+    });
 
     // Click + New Template
     await page.click('button:has-text("+ New")');
@@ -55,59 +59,80 @@ test.describe('Web Dashboard UAT', () => {
     await page.click('button:has-text("Create")');
 
     // Verify template appears in list
-    await expect(page.locator(`text=${templateName}`)).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(`text=${templateName}`)).toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test('3. Edit an agent template', async ({ page }) => {
     // Navigate to Templates tab
     await page.click('button:has-text("Templates"), a:has-text("Templates")');
-    await expect(page.locator('h2:has-text("Templates")')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('h2:has-text("Templates")')).toBeVisible({
+      timeout: 5000,
+    });
 
     // First create a template to edit
     await page.click('button:has-text("+ New")');
     const templateName = `edit-test-${Date.now()}`;
     await page.fill('input[placeholder="my-template"]', templateName);
     await page.click('button:has-text("Create")');
-    await expect(page.locator(`text=${templateName}`)).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(`text=${templateName}`)).toBeVisible({
+      timeout: 5000,
+    });
 
     // Click Edit on the template - find the card containing the name then get its Edit button
-    const templateCard = page.locator('.bg-slate-800.rounded-lg').filter({ hasText: templateName });
+    const templateCard = page
+      .locator('.bg-slate-800.rounded-lg')
+      .filter({ hasText: templateName });
     await templateCard.locator('button:has-text("Edit")').click();
 
     // Wait for edit modal
     await expect(page.locator('h2:has-text("Edit Template")')).toBeVisible();
 
     // Change persona
-    await page.fill('textarea[placeholder*="senior engineer"]', 'Updated persona');
+    await page.fill(
+      'textarea[placeholder*="senior engineer"]',
+      'Updated persona',
+    );
 
     // Click Save
     await page.click('button:has-text("Save")');
 
     // Verify modal closed
-    await expect(page.locator('h2:has-text("Edit Template")')).not.toBeVisible({ timeout: 3000 });
+    await expect(page.locator('h2:has-text("Edit Template")')).not.toBeVisible({
+      timeout: 3000,
+    });
   });
 
   test('4. Delete an agent template', async ({ page }) => {
     // Navigate to Templates tab
     await page.click('button:has-text("Templates"), a:has-text("Templates")');
-    await expect(page.locator('h2:has-text("Templates")')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('h2:has-text("Templates")')).toBeVisible({
+      timeout: 5000,
+    });
 
     // First create a template to delete
     await page.click('button:has-text("+ New")');
     const templateName = `delete-test-${Date.now()}`;
     await page.fill('input[placeholder="my-template"]', templateName);
     await page.click('button:has-text("Create")');
-    await expect(page.locator(`text=${templateName}`)).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(`text=${templateName}`)).toBeVisible({
+      timeout: 5000,
+    });
 
     // Handle confirm dialog
-    page.on('dialog', dialog => dialog.accept());
+    page.on('dialog', (dialog) => dialog.accept());
 
     // Click Delete on the template - find the card containing the name then get its Delete button
-    const templateCard = page.locator('.bg-slate-800.rounded-lg').filter({ hasText: templateName });
+    const templateCard = page
+      .locator('.bg-slate-800.rounded-lg')
+      .filter({ hasText: templateName });
     await templateCard.locator('button:has-text("Delete")').click();
 
     // Verify template is removed
-    await expect(page.locator(`text=${templateName}`)).not.toBeVisible({ timeout: 5000 });
+    await expect(page.locator(`text=${templateName}`)).not.toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test('5. Edit room topic', async ({ page }) => {
@@ -126,13 +151,18 @@ test.describe('Web Dashboard UAT', () => {
       await expect(page.locator('h2:has-text("Edit topic")')).toBeVisible();
 
       // Change topic
-      await page.fill('textarea[placeholder*="topic"]', `Updated topic ${Date.now()}`);
+      await page.fill(
+        'textarea[placeholder*="topic"]',
+        `Updated topic ${Date.now()}`,
+      );
 
       // Click Save
       await page.click('button:has-text("Save")');
 
       // Verify modal closed
-      await expect(page.locator('h2:has-text("Edit topic")')).not.toBeVisible({ timeout: 3000 });
+      await expect(page.locator('h2:has-text("Edit topic")')).not.toBeVisible({
+        timeout: 3000,
+      });
     } else {
       test.skip();
     }
@@ -140,7 +170,9 @@ test.describe('Web Dashboard UAT', () => {
 
   test('6. Expected cast shows for room with templates', async ({ page }) => {
     // Use the existing test-with-templates room
-    const roomButton = page.locator('aside ul li button').filter({ hasText: 'test-with-templates' });
+    const roomButton = page
+      .locator('aside ul li button')
+      .filter({ hasText: 'test-with-templates' });
 
     if (await roomButton.isVisible({ timeout: 3000 }).catch(() => false)) {
       await roomButton.click();
@@ -150,10 +182,14 @@ test.describe('Web Dashboard UAT', () => {
 
       // Verify "Expected cast" section appears in the right panel (agents panel)
       const agentsPanel = page.locator('aside').filter({ hasText: 'Agents' });
-      await expect(agentsPanel.locator('text=Expected cast')).toBeVisible({ timeout: 5000 });
+      await expect(agentsPanel.locator('text=Expected cast')).toBeVisible({
+        timeout: 5000,
+      });
 
       // Verify template names are shown with "not joined" label (at least one)
-      await expect(agentsPanel.locator('text=· not joined').first()).toBeVisible();
+      await expect(
+        agentsPanel.locator('text=· not joined').first(),
+      ).toBeVisible();
     } else {
       // Create room with templates if it doesn't exist
       await page.click('button[title="Create room"]');
@@ -183,7 +219,9 @@ test.describe('Web Dashboard UAT', () => {
       await page.waitForSelector('aside:has-text("Agents")', { timeout: 5000 });
 
       // Click on an agent
-      const agentButton = page.locator('aside:has-text("Agents") ul li button').first();
+      const agentButton = page
+        .locator('aside:has-text("Agents") ul li button')
+        .first();
 
       if (await agentButton.isVisible({ timeout: 3000 }).catch(() => false)) {
         await agentButton.click();
@@ -192,22 +230,31 @@ test.describe('Web Dashboard UAT', () => {
         await page.waitForTimeout(500);
 
         // Check if send input button exists (only for agents with tmux_target)
-        const sendButton = page.locator('button:has-text("Send input to agent")');
+        const sendButton = page.locator(
+          'button:has-text("Send input to agent")',
+        );
 
         if (await sendButton.isVisible({ timeout: 3000 }).catch(() => false)) {
           await sendButton.click();
 
           // Verify textarea appears
-          await expect(page.locator('textarea[placeholder*="Text to send"]')).toBeVisible();
+          await expect(
+            page.locator('textarea[placeholder*="Text to send"]'),
+          ).toBeVisible();
 
           // Fill text
-          await page.fill('textarea[placeholder*="Text to send"]', 'Test input');
+          await page.fill(
+            'textarea[placeholder*="Text to send"]',
+            'Test input',
+          );
 
           // Click Send
           await page.click('button:has-text("Send (⌘↵)")');
 
           // Verify success (textarea closes)
-          await expect(page.locator('textarea[placeholder*="Text to send"]')).not.toBeVisible({ timeout: 5000 });
+          await expect(
+            page.locator('textarea[placeholder*="Text to send"]'),
+          ).not.toBeVisible({ timeout: 5000 });
         } else {
           console.log('Agent has no tmux_target - send input not available');
         }

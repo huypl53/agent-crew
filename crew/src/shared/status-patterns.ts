@@ -11,9 +11,11 @@ export const CC_COMPLETE_PATTERN = /^✻\s+\w+\s+for\s+/m;
 
 // === Codex CLI patterns ===
 // Idle: › prompt with model line visible (gpt-*-codex or o3/o4)
-export const CODEX_IDLE_PATTERN = /^›\s+.*\n\n\s+gpt-.*-codex|^›\s+.*\n\n\s+o[34]/m;
+export const CODEX_IDLE_PATTERN =
+  /^›\s+.*\n\n\s+gpt-.*-codex|^›\s+.*\n\n\s+o[34]/m;
 // Busy: • action indicator (Codex shows • for tool calls/actions)
-export const CODEX_BUSY_PATTERN = /^•\s+(?:Running|Reading|Writing|Editing|Searching)/m;
+export const CODEX_BUSY_PATTERN =
+  /^•\s+(?:Running|Reading|Writing|Editing|Searching)/m;
 
 export type StatusMatch = 'idle' | 'busy' | 'unknown';
 

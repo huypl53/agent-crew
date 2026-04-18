@@ -1,8 +1,8 @@
-import { ok, err } from '../shared/types.ts';
-import type { ToolResult } from '../shared/types.ts';
-import { assertRole } from '../shared/role-guard.ts';
-import { getAgent, cancelQueuedTasksForAgent } from '../state/index.ts';
 import { getQueue } from '../delivery/pane-queue.ts';
+import { assertRole } from '../shared/role-guard.ts';
+import type { ToolResult } from '../shared/types.ts';
+import { err, ok } from '../shared/types.ts';
+import { cancelQueuedTasksForAgent, getAgent } from '../state/index.ts';
 
 interface ClearWorkerSessionParams {
   worker_name: string;
@@ -10,7 +10,9 @@ interface ClearWorkerSessionParams {
   name: string;
 }
 
-export async function handleClearWorkerSession(params: ClearWorkerSessionParams): Promise<ToolResult> {
+export async function handleClearWorkerSession(
+  params: ClearWorkerSessionParams,
+): Promise<ToolResult> {
   const { worker_name, room, name } = params;
 
   if (!worker_name || !room || !name) {
@@ -42,18 +44,24 @@ export async function handleClearWorkerSession(params: ClearWorkerSessionParams)
 
   // Step 2: Send /clear to the worker's pane
   try {
-    await getQueue(worker.tmux_target).enqueue({ type: 'paste', text: '/clear' });
+    await getQueue(worker.tmux_target).enqueue({
+      type: 'paste',
+      text: '/clear',
+    });
   } catch (e) {
     return err(e instanceof Error ? e.message : String(e));
   }
 
   // Step 3: Wait 2 seconds for CC to process /clear
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
   // Step 4: Send crew:refresh command to re-register the worker
   const refreshText = `/crew:refresh --name ${worker_name}`;
   try {
-    await getQueue(worker.tmux_target).enqueue({ type: 'paste', text: refreshText });
+    await getQueue(worker.tmux_target).enqueue({
+      type: 'paste',
+      text: refreshText,
+    });
   } catch (e) {
     return err(e instanceof Error ? e.message : String(e));
   }

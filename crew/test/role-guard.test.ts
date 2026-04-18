@@ -1,7 +1,7 @@
-import { describe, expect, test, beforeEach, afterAll } from 'bun:test';
-import { initDb, closeDb } from '../src/state/db.ts';
-import { addAgent, clearState, getOrCreateRoom } from '../src/state/index.ts';
+import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
 import { assertRole } from '../src/shared/role-guard.ts';
+import { closeDb, initDb } from '../src/state/db.ts';
+import { addAgent, clearState, getOrCreateRoom } from '../src/state/index.ts';
 
 function mkRoom(name: string) {
   return getOrCreateRoom(`/test/${name}`, name);
@@ -16,7 +16,9 @@ describe('assertRole', () => {
     addAgent('boss-1', 'boss', mkRoom('company').id, '%3');
   });
 
-  afterAll(() => { closeDb(); });
+  afterAll(() => {
+    closeDb();
+  });
 
   test('allows leader for leader-allowed action', () => {
     const agent = assertRole('lead-1', ['leader', 'boss'], 'interrupt_worker');
@@ -30,13 +32,15 @@ describe('assertRole', () => {
   });
 
   test('rejects worker for leader-only action', () => {
-    expect(() => assertRole('worker-1', ['leader', 'boss'], 'interrupt_worker'))
-      .toThrow('Only leader/boss can interrupt_worker');
+    expect(() =>
+      assertRole('worker-1', ['leader', 'boss'], 'interrupt_worker'),
+    ).toThrow('Only leader/boss can interrupt_worker');
   });
 
   test('rejects unknown agent', () => {
-    expect(() => assertRole('nobody', ['leader', 'boss'], 'interrupt_worker'))
-      .toThrow('not registered');
+    expect(() =>
+      assertRole('nobody', ['leader', 'boss'], 'interrupt_worker'),
+    ).toThrow('not registered');
   });
 
   test('allows worker for worker-allowed action', () => {

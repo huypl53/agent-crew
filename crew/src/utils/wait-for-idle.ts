@@ -1,13 +1,13 @@
 import { capturePane } from '../tmux/index.ts';
 
 export interface WaitForIdleOptions {
-  target: string;        // tmux pane target (e.g. "%5" or "session:0.1")
-  stableCount?: number;  // consecutive identical-hash polls needed (default: 3)
-  idleSeconds?: number;  // seconds content must be unchanged (default: 5)
+  target: string; // tmux pane target (e.g. "%5" or "session:0.1")
+  stableCount?: number; // consecutive identical-hash polls needed (default: 3)
+  idleSeconds?: number; // seconds content must be unchanged (default: 5)
   pollInterval?: number; // ms between polls (default: 1000)
-  timeout?: number;      // max wait ms (default: 60000)
-  lines?: number;        // tail lines to hash (default: 50)
-  checkCpu?: boolean;    // also require no CPU growth (default: true)
+  timeout?: number; // max wait ms (default: 60000)
+  lines?: number; // tail lines to hash (default: 50)
+  checkCpu?: boolean; // also require no CPU growth (default: true)
 }
 
 export interface IdleResult {
@@ -35,9 +35,13 @@ function tailLines(text: string, n: number): string {
 /** Get pane PID from tmux */
 async function getPanePid(target: string): Promise<number | null> {
   try {
-    const proc = Bun.spawn(['tmux', 'display-message', '-p', '-t', target, '#{pane_pid}'], {
-      stdout: 'pipe', stderr: 'pipe',
-    });
+    const proc = Bun.spawn(
+      ['tmux', 'display-message', '-p', '-t', target, '#{pane_pid}'],
+      {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    );
     const out = (await new Response(proc.stdout).text()).trim();
     await proc.exited;
     const pid = parseInt(out, 10);
@@ -56,7 +60,8 @@ async function getDescendants(rootPid: number): Promise<number[]> {
     const current = queue.shift()!;
     try {
       const proc = Bun.spawn(['pgrep', '-P', String(current)], {
-        stdout: 'pipe', stderr: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
       });
       const out = (await new Response(proc.stdout).text()).trim();
       await proc.exited;
@@ -77,7 +82,8 @@ async function getDescendants(rootPid: number): Promise<number[]> {
 /** Parse ps time format (e.g. "0:02.34" or "1-02:03:04") to seconds */
 function parseTimeToSeconds(raw: string): number {
   const cleaned = raw.trim().replace(/\.\d+$/, ''); // remove fractional
-  let days = 0, rest = cleaned;
+  let days = 0,
+    rest = cleaned;
 
   if (rest.includes('-')) {
     const [d, r] = rest.split('-');
@@ -85,8 +91,10 @@ function parseTimeToSeconds(raw: string): number {
     rest = r;
   }
 
-  const parts = rest.split(':').map(p => parseInt(p, 10) || 0);
-  let h = 0, m = 0, s = 0;
+  const parts = rest.split(':').map((p) => parseInt(p, 10) || 0);
+  let h = 0,
+    m = 0,
+    s = 0;
   if (parts.length === 3) [h, m, s] = parts;
   else if (parts.length === 2) [m, s] = parts;
   else if (parts.length === 1) [s] = parts;
@@ -99,7 +107,8 @@ async function getCpuTotal(pids: number[]): Promise<number> {
   if (pids.length === 0) return 0;
   try {
     const proc = Bun.spawn(['ps', '-o', 'time=', '-p', pids.join(',')], {
-      stdout: 'pipe', stderr: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
     });
     const out = (await new Response(proc.stdout).text()).trim();
     await proc.exited;
@@ -120,7 +129,9 @@ async function getCpuTotal(pids: number[]): Promise<number> {
  *
  * Returns immediately with timedOut=true if `timeout` ms elapses.
  */
-export async function waitForIdle(options: WaitForIdleOptions): Promise<IdleResult> {
+export async function waitForIdle(
+  options: WaitForIdleOptions,
+): Promise<IdleResult> {
   const {
     target,
     stableCount = 3,
@@ -174,7 +185,8 @@ export async function waitForIdle(options: WaitForIdleOptions): Promise<IdleResu
       }
 
       const stableMs = Date.now() - lastChangeAt;
-      const hashStable = stableStreak >= stableCount && stableMs >= idleSeconds * 1000;
+      const hashStable =
+        stableStreak >= stableCount && stableMs >= idleSeconds * 1000;
 
       // Check CPU growth if enabled
       let cpuIdle = true;
@@ -185,7 +197,12 @@ export async function waitForIdle(options: WaitForIdleOptions): Promise<IdleResu
       }
 
       if (hashStable && cpuIdle) {
-        return { idle: true, content: raw, elapsed: Date.now() - start, timedOut: false };
+        return {
+          idle: true,
+          content: raw,
+          elapsed: Date.now() - start,
+          timedOut: false,
+        };
       }
     }
 

@@ -1,12 +1,21 @@
 import { describe, expect, test } from 'bun:test';
-import { validateRoomName, validateCapabilities } from '../src/web/src/lib/validators.ts';
 import { buildMessagePayload } from '../src/web/src/lib/compose.ts';
+import {
+  validateCapabilities,
+  validateRoomName,
+} from '../src/web/src/lib/validators.ts';
 import type { Message } from '../src/web/src/types.ts';
 
 const mkMsg = (id: number): Message => ({
   message_id: String(id),
-  from: 'a', room: 'r', to: null, text: 'hello world',
-  kind: 'chat', timestamp: '2026-01-01T00:00:00Z', sequence: id, mode: 'pull',
+  from: 'a',
+  room: 'r',
+  to: null,
+  text: 'hello world',
+  kind: 'chat',
+  timestamp: '2026-01-01T00:00:00Z',
+  sequence: id,
+  mode: 'pull',
 });
 
 describe('validateRoomName', () => {
@@ -74,7 +83,14 @@ describe('buildMessagePayload', () => {
   });
 
   test('directed when to is set', () => {
-    const p = buildMessagePayload('crew', 'hello', 'wk-01', 'task', 'push', null);
+    const p = buildMessagePayload(
+      'crew',
+      'hello',
+      'wk-01',
+      'task',
+      'push',
+      null,
+    );
     expect(p.to).toBe('wk-01');
     expect(p.kind).toBe('task');
   });
@@ -90,7 +106,14 @@ describe('buildMessagePayload', () => {
   });
 
   test('trims text whitespace', () => {
-    const p = buildMessagePayload('crew', '  hello  ', '', 'chat', 'push', null);
+    const p = buildMessagePayload(
+      'crew',
+      '  hello  ',
+      '',
+      'chat',
+      'push',
+      null,
+    );
     expect(p.text).toBe('hello');
   });
 

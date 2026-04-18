@@ -12,7 +12,9 @@ function getSocketArgs(): string[] {
   return socket ? ['-L', socket] : [];
 }
 
-async function run(...args: string[]): Promise<{ stdout: string; stderr: string; success: boolean }> {
+async function run(
+  ...args: string[]
+): Promise<{ stdout: string; stderr: string; success: boolean }> {
   try {
     const socketArgs = getSocketArgs();
     const proc = Bun.spawn(['tmux', ...socketArgs, ...args], {
@@ -25,19 +27,33 @@ async function run(...args: string[]): Promise<{ stdout: string; stderr: string;
 
     const stdout = await new Response(proc.stdout).text();
     const stderr = await new Response(proc.stderr).text();
-    return { stdout: stdout.trimEnd(), stderr: stderr.trimEnd(), success: exitCode === 0 };
+    return {
+      stdout: stdout.trimEnd(),
+      stderr: stderr.trimEnd(),
+      success: exitCode === 0,
+    };
   } catch (e) {
-    logServer('ERROR', `tmux spawn failed (args=${args.join(' ')}): ${e instanceof Error ? e.message : String(e)}`);
+    logServer(
+      'ERROR',
+      `tmux spawn failed (args=${args.join(' ')}): ${e instanceof Error ? e.message : String(e)}`,
+    );
     return { stdout: '', stderr: 'tmux command failed', success: false };
   }
 }
 
-export async function validateTmux(): Promise<{ ok: boolean; version?: string; error?: string }> {
+export async function validateTmux(): Promise<{
+  ok: boolean;
+  version?: string;
+  error?: string;
+}> {
   const result = await run('-V');
   if (result.success) {
     return { ok: true, version: result.stdout };
   }
-  return { ok: false, error: 'crew requires tmux to be installed and available on PATH' };
+  return {
+    ok: false,
+    error: 'crew requires tmux to be installed and available on PATH',
+  };
 }
 
 // Delay between paste-buffer and Enter to let the terminal app finish processing
@@ -45,7 +61,10 @@ export async function validateTmux(): Promise<{ ok: boolean; version?: string; e
 // 80ms fails, 100ms works. Using 500ms for wide margin across machines/apps.
 const PASTE_SETTLE_MS = 500;
 
-export async function sendKeys(target: string, text: string): Promise<{ delivered: boolean; error?: string }> {
+export async function sendKeys(
+  target: string,
+  text: string,
+): Promise<{ delivered: boolean; error?: string }> {
   // Use tmux paste-buffer with bracketed paste mode (-p) instead of send-keys -l.
   //
   // Why: send-keys -l injects characters one-at-a-time. Terminal apps like Claude Code
@@ -61,23 +80,39 @@ export async function sendKeys(target: string, text: string): Promise<{ delivere
     // Load text into a named tmux buffer via stdin (safe for arbitrary content).
     // Must use the same socket as paste-buffer so both commands share the same server.
     const socketArgs = getSocketArgs();
-    const loadProc = Bun.spawn(['tmux', ...socketArgs, 'load-buffer', '-b', bufferName, '-'], {
-      stdin: Buffer.from(text),
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
+    const loadProc = Bun.spawn(
+      ['tmux', ...socketArgs, 'load-buffer', '-b', bufferName, '-'],
+      {
+        stdin: Buffer.from(text),
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    );
     const loadTimeout = setTimeout(() => loadProc.kill(), SPAWN_TIMEOUT);
     const loadExit = await loadProc.exited;
     clearTimeout(loadTimeout);
     if (loadExit !== 0) {
       const stderr = await new Response(loadProc.stderr).text();
-      return { delivered: false, error: stderr.trimEnd() || 'load-buffer failed' };
+      return {
+        delivered: false,
+        error: stderr.trimEnd() || 'load-buffer failed',
+      };
     }
 
     // Paste with bracketed paste mode; -d deletes the buffer after pasting
-    const pasteResult = await run('paste-buffer', '-dp', '-b', bufferName, '-t', target);
+    const pasteResult = await run(
+      'paste-buffer',
+      '-dp',
+      '-b',
+      bufferName,
+      '-t',
+      target,
+    );
     if (!pasteResult.success) {
-      return { delivered: false, error: pasteResult.stderr || 'paste-buffer failed' };
+      return {
+        delivered: false,
+        error: pasteResult.stderr || 'paste-buffer failed',
+      };
     }
 
     // Let the terminal app finish processing the bracketed paste
@@ -89,7 +124,10 @@ export async function sendKeys(target: string, text: string): Promise<{ delivere
     // Submit
     const enterResult = await run('send-keys', '-t', target, 'Enter');
     if (!enterResult.success) {
-      return { delivered: false, error: enterResult.stderr || 'send-keys Enter failed' };
+      return {
+        delivered: false,
+        error: enterResult.stderr || 'send-keys Enter failed',
+      };
     }
 
     // Verify Enter landed — retry up to 3 times with backoff
@@ -109,43 +147,72 @@ export async function sendKeys(target: string, text: string): Promise<{ delivere
     return { delivered: true };
   } catch (e) {
     // Clean up buffer on failure
-    logServer('ERROR', `paste delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`);
+    logServer(
+      'ERROR',
+      `paste delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
+    );
     await run('delete-buffer', '-b', bufferName).catch(() => {});
     return { delivered: false, error: 'paste delivery failed' };
   }
 }
 
-export async function sendEscape(target: string): Promise<{ delivered: boolean; error?: string }> {
+export async function sendEscape(
+  target: string,
+): Promise<{ delivered: boolean; error?: string }> {
   try {
     const result = await run('send-keys', '-t', target, 'Escape');
     if (!result.success) {
-      return { delivered: false, error: result.stderr || 'send-keys Escape failed' };
+      return {
+        delivered: false,
+        error: result.stderr || 'send-keys Escape failed',
+      };
     }
     await Bun.sleep(PASTE_SETTLE_MS);
     return { delivered: true };
   } catch (e) {
-    logServer('ERROR', `Escape delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`);
+    logServer(
+      'ERROR',
+      `Escape delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
+    );
     return { delivered: false, error: 'Escape delivery failed' };
   }
 }
 
-export async function sendClear(target: string): Promise<{ delivered: boolean; error?: string }> {
+export async function sendClear(
+  target: string,
+): Promise<{ delivered: boolean; error?: string }> {
   try {
     const result = await run('send-keys', '-t', target, 'C-l');
     if (!result.success) {
-      return { delivered: false, error: result.stderr || 'send-keys C-l failed' };
+      return {
+        delivered: false,
+        error: result.stderr || 'send-keys C-l failed',
+      };
     }
     await Bun.sleep(PASTE_SETTLE_MS);
     return { delivered: true };
   } catch (e) {
-    logServer('ERROR', `Ctrl-L delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`);
+    logServer(
+      'ERROR',
+      `Ctrl-L delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
+    );
     return { delivered: false, error: 'Ctrl-L delivery failed' };
   }
 }
 
 /** Internal helper: captures the last N lines of a pane for content-diff checks. */
-async function capturePaneLines(target: string, lines: number): Promise<string> {
-  const result = await run('capture-pane', '-t', target, '-p', '-S', `-${lines}`);
+async function capturePaneLines(
+  target: string,
+  lines: number,
+): Promise<string> {
+  const result = await run(
+    'capture-pane',
+    '-t',
+    target,
+    '-p',
+    '-S',
+    `-${lines}`,
+  );
   return result.stdout || '';
 }
 
@@ -157,7 +224,13 @@ export async function capturePane(target: string): Promise<string | null> {
 
 export async function isPaneDead(target: string): Promise<boolean> {
   // display-message accepts bare pane IDs (%N) unlike list-panes which expects a window target
-  const result = await run('display-message', '-t', target, '-p', '#{pane_dead}');
+  const result = await run(
+    'display-message',
+    '-t',
+    target,
+    '-p',
+    '#{pane_dead}',
+  );
   if (!result.success) return true; // pane doesn't exist = treat as dead
   // Empty output means pane doesn't exist (tmux returns exit 0 but no output)
   const output = result.stdout.trim();
@@ -173,7 +246,9 @@ async function findPaneInAnySocket(target: string): Promise<boolean> {
   const candidates = [
     `/private/tmp/tmux-${uid}`,
     `/tmp/tmux-${uid}`,
-    ...(process.env.XDG_RUNTIME_DIR ? [`${process.env.XDG_RUNTIME_DIR}/tmux`] : []),
+    ...(process.env.XDG_RUNTIME_DIR
+      ? [`${process.env.XDG_RUNTIME_DIR}/tmux`]
+      : []),
   ];
 
   for (const dir of candidates) {
@@ -181,7 +256,10 @@ async function findPaneInAnySocket(target: string): Promise<boolean> {
     try {
       const ls = Bun.spawn(['ls', dir], { stdout: 'pipe', stderr: 'pipe' });
       await ls.exited;
-      names = (await new Response(ls.stdout).text()).trim().split('\n').filter(Boolean);
+      names = (await new Response(ls.stdout).text())
+        .trim()
+        .split('\n')
+        .filter(Boolean);
     } catch {
       continue;
     }
@@ -189,10 +267,22 @@ async function findPaneInAnySocket(target: string): Promise<boolean> {
     for (const name of names) {
       const sockPath = `${dir}/${name}`;
       try {
-        const proc = Bun.spawn(['tmux', '-S', sockPath, 'display-message', '-t', target, '-p', '#{pane_id}'], {
-          stdout: 'pipe',
-          stderr: 'pipe',
-        });
+        const proc = Bun.spawn(
+          [
+            'tmux',
+            '-S',
+            sockPath,
+            'display-message',
+            '-t',
+            target,
+            '-p',
+            '#{pane_id}',
+          ],
+          {
+            stdout: 'pipe',
+            stderr: 'pipe',
+          },
+        );
         const timeout = setTimeout(() => proc.kill(), 1000);
         const exitCode = await proc.exited;
         clearTimeout(timeout);
@@ -226,7 +316,14 @@ export async function paneExists(target: string): Promise<boolean> {
 }
 
 export async function getPaneCwd(paneId: string): Promise<string | null> {
-  const result = Bun.spawnSync(['tmux', 'display-message', '-p', '-t', paneId, '#{pane_current_path}']);
+  const result = Bun.spawnSync([
+    'tmux',
+    'display-message',
+    '-p',
+    '-t',
+    paneId,
+    '#{pane_current_path}',
+  ]);
   if (result.exitCode !== 0) return null;
   const cwd = result.stdout.toString().trim();
   return cwd || null;
@@ -237,8 +334,16 @@ export async function getPaneCwd(paneId: string): Promise<string | null> {
 const AGENT_PROC_RE = /^(node|bun|claude|codex)/i;
 
 /** Returns the foreground command name running in a pane, or null if unreachable. */
-export async function getPaneCurrentCommand(target: string): Promise<string | null> {
-  const result = await run('display-message', '-t', target, '-p', '#{pane_current_command}');
+export async function getPaneCurrentCommand(
+  target: string,
+): Promise<string | null> {
+  const result = await run(
+    'display-message',
+    '-t',
+    target,
+    '-p',
+    '#{pane_current_command}',
+  );
   if (!result.success) return null;
   const cmd = result.stdout.trim();
   return cmd || null;

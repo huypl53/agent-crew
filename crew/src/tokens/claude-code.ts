@@ -1,6 +1,10 @@
-import { readFileSync, existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
+import {
+  getLatestTokenUsage,
+  getPricingForModel,
+  recordTokenUsage,
+} from '../state/index.ts';
 import { resolveAgentSession } from './pid-mapper.ts';
-import { recordTokenUsage, getPricingForModel, getLatestTokenUsage } from '../state/index.ts';
 
 interface UsageEntry {
   input_tokens: number;
@@ -33,13 +37,16 @@ export function parseJsonlUsage(content: string): UsageEntry[] {
           model: obj.message.model ?? 'unknown',
         });
       }
-    } catch { /* skip malformed lines */ }
+    } catch {
+      /* skip malformed lines */
+    }
   }
   return entries;
 }
 
 export function sumUsageEntries(entries: UsageEntry[]): UsageTotals {
-  let input = 0, output = 0;
+  let input = 0,
+    output = 0;
   let model = 'unknown';
   for (const e of entries) {
     input += e.input_tokens;
@@ -49,7 +56,10 @@ export function sumUsageEntries(entries: UsageEntry[]): UsageTotals {
   return { input_tokens: input, output_tokens: output, model };
 }
 
-export async function collectClaudeCodeTokens(agentName: string, paneTarget: string): Promise<void> {
+export async function collectClaudeCodeTokens(
+  agentName: string,
+  paneTarget: string,
+): Promise<void> {
   const session = await resolveAgentSession(paneTarget);
   if (!session) return;
   if (!existsSync(session.sessionPath)) return;
@@ -61,9 +71,11 @@ export async function collectClaudeCodeTokens(agentName: string, paneTarget: str
   const totals = sumUsageEntries(entries);
 
   const latest = getLatestTokenUsage(agentName);
-  if (latest?.session_id === session.sessionId &&
-      latest.input_tokens === totals.input_tokens &&
-      latest.output_tokens === totals.output_tokens) {
+  if (
+    latest?.session_id === session.sessionId &&
+    latest.input_tokens === totals.input_tokens &&
+    latest.output_tokens === totals.output_tokens
+  ) {
     return; // no change — dedup
   }
 

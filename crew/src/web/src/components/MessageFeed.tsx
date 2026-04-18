@@ -1,13 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react';
+import {
+  buildMessageTree,
+  flattenTree,
+  hasThreading,
+} from '../hooks/useMessageTree.ts';
 import type { Message } from '../types.ts';
-import { buildMessageTree, flattenTree, hasThreading } from '../hooks/useMessageTree.ts';
 
 const KIND_COLORS: Record<string, string> = {
-  task: 'text-cyan-400', completion: 'text-green-400', error: 'text-red-400',
-  question: 'text-yellow-400', status: 'text-slate-400',
+  task: 'text-cyan-400',
+  completion: 'text-green-400',
+  error: 'text-red-400',
+  question: 'text-yellow-400',
+  status: 'text-slate-400',
 };
 const KIND_BADGES: Record<string, string> = {
-  task: 'TASK', completion: 'DONE', error: 'ERR', question: '?', status: 'STS',
+  task: 'TASK',
+  completion: 'DONE',
+  error: 'ERR',
+  question: '?',
+  status: 'STS',
 };
 
 function fmtTime(ts: string): string {
@@ -25,10 +36,19 @@ interface Props {
   onReplySelect?: (msg: Message) => void;
 }
 
-export default function MessageFeed({ messages, enabledKinds, loading, error, room, onReplySelect }: Props) {
+export default function MessageFeed({
+  messages,
+  enabledKinds,
+  loading,
+  error,
+  room,
+  onReplySelect,
+}: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   // Thread-collapse state: nodeIds whose children are hidden (existing threading feature)
-  const [threadCollapsed, setThreadCollapsed] = useState<Set<string>>(new Set());
+  const [threadCollapsed, setThreadCollapsed] = useState<Set<string>>(
+    new Set(),
+  );
   // Row-expand state: message_ids whose full text is shown (nothing expanded by default)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
@@ -44,7 +64,7 @@ export default function MessageFeed({ messages, enabledKinds, loading, error, ro
   }, [room]);
 
   const toggleThread = (nodeId: string) => {
-    setThreadCollapsed(prev => {
+    setThreadCollapsed((prev) => {
       const next = new Set(prev);
       next.has(nodeId) ? next.delete(nodeId) : next.add(nodeId);
       return next;
@@ -52,7 +72,7 @@ export default function MessageFeed({ messages, enabledKinds, loading, error, ro
   };
 
   const toggleExpand = (messageId: string) => {
-    setExpandedIds(prev => {
+    setExpandedIds((prev) => {
       const next = new Set(prev);
       next.has(messageId) ? next.delete(messageId) : next.add(messageId);
       return next;
@@ -60,8 +80,10 @@ export default function MessageFeed({ messages, enabledKinds, loading, error, ro
   };
 
   // Apply kind filter before tree building; unknown kinds fall through as 'chat'
-  const filtered = messages.filter(m =>
-    enabledKinds.has(m.kind) || (!KIND_BADGES[m.kind] && enabledKinds.has('chat')),
+  const filtered = messages.filter(
+    (m) =>
+      enabledKinds.has(m.kind) ||
+      (!KIND_BADGES[m.kind] && enabledKinds.has('chat')),
   );
 
   if (!room) {
@@ -73,11 +95,19 @@ export default function MessageFeed({ messages, enabledKinds, loading, error, ro
   }
 
   if (loading) {
-    return <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">Loading…</div>;
+    return (
+      <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">
+        Loading…
+      </div>
+    );
   }
 
   if (error) {
-    return <div className="flex-1 flex items-center justify-center text-red-400 text-sm">{error}</div>;
+    return (
+      <div className="flex-1 flex items-center justify-center text-red-400 text-sm">
+        {error}
+      </div>
+    );
   }
 
   const renderMessage = (
@@ -92,7 +122,8 @@ export default function MessageFeed({ messages, enabledKinds, loading, error, ro
     const badgeColor = KIND_COLORS[msg.kind] ?? 'text-slate-400';
     const id = nodeId ?? msg.message_id;
     const isExpanded = expandedIds.has(msg.message_id);
-    const snippet = msg.text.length > 120 ? msg.text.slice(0, 120) + '…' : msg.text;
+    const snippet =
+      msg.text.length > 120 ? msg.text.slice(0, 120) + '…' : msg.text;
 
     return (
       <div key={id} className="font-mono text-sm">
@@ -102,29 +133,53 @@ export default function MessageFeed({ messages, enabledKinds, loading, error, ro
           onClick={() => toggleExpand(msg.message_id)}
         >
           {prefix != null && (
-            <span className="text-slate-600 select-none whitespace-pre flex-shrink-0">{prefix}</span>
+            <span className="text-slate-600 select-none whitespace-pre flex-shrink-0">
+              {prefix}
+            </span>
           )}
           {hasChildren && (
             <button
-              onClick={e => { e.stopPropagation(); toggleThread(id); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleThread(id);
+              }}
               className="text-slate-500 hover:text-slate-300 text-xs w-4 flex-shrink-0"
               title={isThreadCollapsed ? 'Expand thread' : 'Collapse thread'}
             >
               {isThreadCollapsed ? '▶' : '▼'}
             </button>
           )}
-          {!hasChildren && prefix != null && <span className="w-4 flex-shrink-0" />}
-          <span className="text-slate-500 text-xs flex-shrink-0">{fmtTime(msg.timestamp)}</span>
-          {badge && <span className={`text-xs flex-shrink-0 ${badgeColor}`}>[{badge}]</span>}
-          <span className="text-slate-400 flex-shrink-0">[{msg.from}→{msg.to ?? 'ALL'}]</span>
-          <span className={`truncate ${isExpanded ? 'text-slate-400' : 'text-slate-200'}`}>{snippet}</span>
+          {!hasChildren && prefix != null && (
+            <span className="w-4 flex-shrink-0" />
+          )}
+          <span className="text-slate-500 text-xs flex-shrink-0">
+            {fmtTime(msg.timestamp)}
+          </span>
+          {badge && (
+            <span className={`text-xs flex-shrink-0 ${badgeColor}`}>
+              [{badge}]
+            </span>
+          )}
+          <span className="text-slate-400 flex-shrink-0">
+            [{msg.from}→{msg.to ?? 'ALL'}]
+          </span>
+          <span
+            className={`truncate ${isExpanded ? 'text-slate-400' : 'text-slate-200'}`}
+          >
+            {snippet}
+          </span>
           {isThreadCollapsed && hiddenCount != null && hiddenCount > 0 && (
-            <span className="text-slate-500 text-xs flex-shrink-0">(+{hiddenCount})</span>
+            <span className="text-slate-500 text-xs flex-shrink-0">
+              (+{hiddenCount})
+            </span>
           )}
           {/* Reply button — stopPropagation so it doesn't toggle expand */}
           {onReplySelect && (
             <button
-              onClick={e => { e.stopPropagation(); onReplySelect(msg); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onReplySelect(msg);
+              }}
               className="ml-auto flex-shrink-0 text-slate-600 hover:text-slate-400 text-xs opacity-0 group-hover:opacity-100"
               title="Reply to this message"
             >
@@ -151,7 +206,16 @@ export default function MessageFeed({ messages, enabledKinds, loading, error, ro
     return (
       <div className="flex-1 overflow-y-auto flex flex-col">
         <div className="flex-1" />
-        {rows.map(row => renderMessage(row.message, row.prefix, row.nodeId, row.hasChildren, row.isCollapsed, row.hiddenCount))}
+        {rows.map((row) =>
+          renderMessage(
+            row.message,
+            row.prefix,
+            row.nodeId,
+            row.hasChildren,
+            row.isCollapsed,
+            row.hiddenCount,
+          ),
+        )}
         <div ref={bottomRef} />
       </div>
     );
@@ -160,7 +224,7 @@ export default function MessageFeed({ messages, enabledKinds, loading, error, ro
   return (
     <div className="flex-1 overflow-y-auto flex flex-col">
       <div className="flex-1" />
-      {filtered.map(msg => renderMessage(msg))}
+      {filtered.map((msg) => renderMessage(msg))}
       <div ref={bottomRef} />
     </div>
   );

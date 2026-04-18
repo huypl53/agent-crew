@@ -1,10 +1,18 @@
 import { describe, expect, test } from 'bun:test';
-import { parseArgs } from '../src/cli/parse.ts';
 import { formatResult } from '../src/cli/formatter.ts';
+import { parseArgs } from '../src/cli/parse.ts';
 
 describe('CLI arg parser', () => {
   test('parses subcommand and positional args', () => {
-    const result = parseArgs(['send', '--room', 'crew', '--to', 'wk-01', '--text', 'hello']);
+    const result = parseArgs([
+      'send',
+      '--room',
+      'crew',
+      '--to',
+      'wk-01',
+      '--text',
+      'hello',
+    ]);
     expect(result.command).toBe('send');
     expect(result.flags.room).toBe('crew');
     expect(result.flags.to).toBe('wk-01');
@@ -24,14 +32,25 @@ describe('CLI arg parser', () => {
   });
 
   test('parses array flags (kinds)', () => {
-    const result = parseArgs(['read', '--name', 'lead-01', '--kinds', 'task,completion']);
+    const result = parseArgs([
+      'read',
+      '--name',
+      'lead-01',
+      '--kinds',
+      'task,completion',
+    ]);
     expect(result.flags.kinds).toBe('task,completion');
   });
 });
 
 describe('CLI formatter', () => {
   test('formats status output', () => {
-    const data = { name: 'wk-01', status: 'idle', tmux_target: '%33', rooms: ['crew'] };
+    const data = {
+      name: 'wk-01',
+      status: 'idle',
+      tmux_target: '%33',
+      rooms: ['crew'],
+    };
     const out = formatResult('status', data);
     expect(out).toContain('wk-01');
     expect(out).toContain('idle');
@@ -45,7 +64,15 @@ describe('CLI formatter', () => {
   });
 
   test('formats rooms list', () => {
-    const data = { rooms: [{ name: 'crew', member_count: 5, roles: { boss: 1, leader: 1, worker: 3 } }] };
+    const data = {
+      rooms: [
+        {
+          name: 'crew',
+          member_count: 5,
+          roles: { boss: 1, leader: 1, worker: 3 },
+        },
+      ],
+    };
     const out = formatResult('rooms', data);
     expect(out).toContain('crew');
     expect(out).toContain('5 members');
@@ -54,10 +81,22 @@ describe('CLI formatter', () => {
   test('formats messages one per line', () => {
     const data = {
       messages: [
-        { from: 'boss', room: 'crew', text: 'hello', kind: 'chat', timestamp: '2026-04-12T10:00:00Z' },
-        { from: 'wk-01', room: 'crew', text: 'done', kind: 'completion', timestamp: '2026-04-12T10:01:00Z' },
+        {
+          from: 'boss',
+          room: 'crew',
+          text: 'hello',
+          kind: 'chat',
+          timestamp: '2026-04-12T10:00:00Z',
+        },
+        {
+          from: 'wk-01',
+          room: 'crew',
+          text: 'done',
+          kind: 'completion',
+          timestamp: '2026-04-12T10:01:00Z',
+        },
       ],
-      next_sequence: 100
+      next_sequence: 100,
     };
     const out = formatResult('read', data);
     const lines = out.trim().split('\n');
@@ -75,8 +114,9 @@ describe('CLI formatter', () => {
 
   test('formats members list', () => {
     const data = {
-      room: 'crew', topic: 'building stuff',
-      members: [{ name: 'wk-01', role: 'worker', status: 'idle' }]
+      room: 'crew',
+      topic: 'building stuff',
+      members: [{ name: 'wk-01', role: 'worker', status: 'idle' }],
     };
     const out = formatResult('members', data);
     expect(out).toContain('wk-01');

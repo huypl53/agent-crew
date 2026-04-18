@@ -1,8 +1,14 @@
-import { sendKeys, sendEscape, sendClear, capturePane, paneExists } from '../tmux/index.ts';
-import { matchStatusLine } from '../shared/status-patterns.ts';
 import { config } from '../config.ts';
-import type { AgentRole } from '../shared/types.ts';
 import { logServer } from '../shared/server-log.ts';
+import { matchStatusLine } from '../shared/status-patterns.ts';
+import type { AgentRole } from '../shared/types.ts';
+import {
+  capturePane,
+  paneExists,
+  sendClear,
+  sendEscape,
+  sendKeys,
+} from '../tmux/index.ts';
 
 export type QueueItem =
   | { type: 'paste'; text: string }
@@ -23,7 +29,7 @@ function simpleHash(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convert to 32-bit integer
   }
   return hash;
@@ -33,7 +39,7 @@ function simpleHash(str: string): number {
 const POLL_INTERVALS: Record<string, number> = {
   worker: 2_000,
   leader: 5_000,
-  boss:   10_000,
+  boss: 10_000,
   default: 2_000,
 };
 
@@ -45,7 +51,10 @@ const POLL_INTERVALS: Record<string, number> = {
  * been silent for more than HEARTBEAT_STALE_MS — ensures responsiveness when
  * the agent may be in distress.
  */
-export function getPollingInterval(role?: AgentRole | string, lastActivityMs?: number): number {
+export function getPollingInterval(
+  role?: AgentRole | string,
+  lastActivityMs?: number,
+): number {
   // Fallback to conservative if no recent heartbeat
   if (lastActivityMs !== undefined) {
     if (Date.now() - lastActivityMs > HEARTBEAT_STALE_MS) {
@@ -85,7 +94,8 @@ export class PaneQueue {
   /** Update agent metadata so interval calculations stay current. */
   updateOptions(options: PaneQueueOptions): void {
     if (options.role !== undefined) this.role = options.role;
-    if (options.lastActivityMs !== undefined) this.lastActivityMs = options.lastActivityMs;
+    if (options.lastActivityMs !== undefined)
+      this.lastActivityMs = options.lastActivityMs;
   }
 
   enqueue(item: QueueItem): Promise<void> {
@@ -150,8 +160,11 @@ export class PaneQueue {
 
   private async deliver(item: QueueItem): Promise<void> {
     // Check if pane still exists before delivery
-    if (!await paneExists(this.target)) {
-      logServer('WARN', `pane-queue: pane ${this.target} is dead, skipping delivery`);
+    if (!(await paneExists(this.target))) {
+      logServer(
+        'WARN',
+        `pane-queue: pane ${this.target} is dead, skipping delivery`,
+      );
       throw new Error(`pane ${this.target} no longer exists`);
     }
 
@@ -178,7 +191,9 @@ export class PaneQueue {
     // Async mutex: wait for any prior lock holder to finish, then run exclusively
     const prev = this.lockPromise;
     let releaseLock: () => void;
-    this.lockPromise = new Promise<void>(resolve => { releaseLock = resolve; });
+    this.lockPromise = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
     await prev;
     try {
       return await fn();
@@ -190,7 +205,10 @@ export class PaneQueue {
 
 const queues = new Map<string, PaneQueue>();
 
-export function getQueue(target: string, options?: PaneQueueOptions): PaneQueue {
+export function getQueue(
+  target: string,
+  options?: PaneQueueOptions,
+): PaneQueue {
   let q = queues.get(target);
   if (!q) {
     q = new PaneQueue(target, options);

@@ -8,7 +8,9 @@ export const SOCKET_NAME = 'crew-uat-edge';
 const SESSION_NAME = 'edge-tests';
 
 /** Run a tmux command on the isolated socket. Never throws. */
-export async function runTmux(...args: string[]): Promise<{ stdout: string; success: boolean }> {
+export async function runTmux(
+  ...args: string[]
+): Promise<{ stdout: string; success: boolean }> {
   const proc = Bun.spawn(['tmux', '-L', SOCKET_NAME, ...args], {
     stdout: 'pipe',
     stderr: 'pipe',
@@ -21,7 +23,16 @@ export async function runTmux(...args: string[]): Promise<{ stdout: string; succ
 /** Initialize isolated tmux server + session. */
 export async function setupEdgeTestEnv(): Promise<void> {
   await cleanupEdgeTestEnv(); // clean any leftover
-  await runTmux('new-session', '-d', '-s', SESSION_NAME, '-x', '200', '-y', '50');
+  await runTmux(
+    'new-session',
+    '-d',
+    '-s',
+    SESSION_NAME,
+    '-x',
+    '200',
+    '-y',
+    '50',
+  );
 }
 
 /** Kill entire isolated tmux server. */
@@ -37,7 +48,15 @@ export async function cleanupEdgeTestEnv(): Promise<void> {
  * @returns    Pane ID (e.g. `%3`)
  */
 export async function createTestPane(cmd?: string): Promise<string> {
-  const args = ['new-window', '-t', SESSION_NAME, '-P', '-F', '#{pane_id}', '-d'];
+  const args = [
+    'new-window',
+    '-t',
+    SESSION_NAME,
+    '-P',
+    '-F',
+    '#{pane_id}',
+    '-d',
+  ];
   if (cmd) args.push(cmd);
   const result = await runTmux(...args);
   return result.stdout;
@@ -50,7 +69,14 @@ export async function killPane(paneId: string): Promise<void> {
 
 /** Capture pane content (last N lines). */
 export async function capturePane(paneId: string, lines = 50): Promise<string> {
-  const result = await runTmux('capture-pane', '-t', paneId, '-p', '-S', `-${lines}`);
+  const result = await runTmux(
+    'capture-pane',
+    '-t',
+    paneId,
+    '-p',
+    '-S',
+    `-${lines}`,
+  );
   return result.stdout;
 }
 
@@ -69,7 +95,11 @@ export async function setAgentMode(
 }
 
 /** Assert helper — returns pass/fail and increments global counters. */
-export function assert(condition: boolean, label: string, detail?: string): { passed: boolean } {
+export function assert(
+  condition: boolean,
+  label: string,
+  detail?: string,
+): { passed: boolean } {
   if (condition) {
     console.log(`  ✓ ${label}`);
     return { passed: true };

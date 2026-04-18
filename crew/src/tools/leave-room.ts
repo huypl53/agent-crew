@@ -1,5 +1,5 @@
-import { ok, err } from '../shared/types.ts';
 import type { ToolResult } from '../shared/types.ts';
+import { err, ok } from '../shared/types.ts';
 import { getAgent, removeAgent } from '../state/index.ts';
 
 interface LeaveRoomParams {
@@ -7,7 +7,9 @@ interface LeaveRoomParams {
   name: string;
 }
 
-export async function handleLeaveRoom(params: LeaveRoomParams): Promise<ToolResult> {
+export async function handleLeaveRoom(
+  params: LeaveRoomParams,
+): Promise<ToolResult> {
   const { room, name } = params;
 
   if (!room || !name) {

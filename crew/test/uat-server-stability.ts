@@ -16,7 +16,7 @@
  *   TC-H2  Heartbeat format
  */
 
-import { existsSync, readFileSync, mkdirSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { initServerLog, logServer } from '../src/shared/server-log.ts';
 
@@ -50,7 +50,9 @@ function makeTmp(label: string): string {
 }
 
 function cleanup() {
-  try { rmSync(BASE_TMP, { recursive: true, force: true }); } catch {}
+  try {
+    rmSync(BASE_TMP, { recursive: true, force: true });
+  } catch {}
 }
 
 // ─── TC-L: Server-Log Module ─────────────────────────────────────────────────
@@ -67,9 +69,14 @@ console.log('\nServer-Log Module');
     fail('TC-L1 write and read back', 'log file was not created');
   } else {
     const content = readFileSync(logPath, 'utf8');
-    assert('TC-L1 contains [INFO] level', content.includes('[INFO] hello world'));
-    assert('TC-L1 has ISO-8601 timestamp',
-      /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z/.test(content));
+    assert(
+      'TC-L1 contains [INFO] level',
+      content.includes('[INFO] hello world'),
+    );
+    assert(
+      'TC-L1 has ISO-8601 timestamp',
+      /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z/.test(content),
+    );
   }
 }
 
@@ -81,10 +88,16 @@ console.log('\nServer-Log Module');
   logServer('INFO', 'line-one');
   logServer('WARN', 'line-two');
   logServer('ERROR', 'line-three');
-  const lines = readFileSync(logPath, 'utf8').split('\n').filter(l => l.length > 0);
+  const lines = readFileSync(logPath, 'utf8')
+    .split('\n')
+    .filter((l) => l.length > 0);
   assert('TC-L2 has 3 lines', lines.length === 3, `got ${lines.length}`);
-  assert('TC-L2 lines in order',
-    lines[0].includes('line-one') && lines[1].includes('line-two') && lines[2].includes('line-three'));
+  assert(
+    'TC-L2 lines in order',
+    lines[0].includes('line-one') &&
+      lines[1].includes('line-two') &&
+      lines[2].includes('line-three'),
+  );
 }
 
 // TC-L3 — Rotation at 1 MB
@@ -97,10 +110,18 @@ console.log('\nServer-Log Module');
   for (let i = 0; i < 600; i++) {
     logServer('INFO', `${i.toString().padStart(3, '0')} ${msg}`);
   }
-  const lines = readFileSync(logPath, 'utf8').split('\n').filter(l => l.length > 0);
-  assert('TC-L3 file truncated to ≤500 lines', lines.length <= 500, `got ${lines.length}`);
-  assert('TC-L3 last line is last-written message',
-    lines[lines.length - 1].includes('599'));
+  const lines = readFileSync(logPath, 'utf8')
+    .split('\n')
+    .filter((l) => l.length > 0);
+  assert(
+    'TC-L3 file truncated to ≤500 lines',
+    lines.length <= 500,
+    `got ${lines.length}`,
+  );
+  assert(
+    'TC-L3 last line is last-written message',
+    lines[lines.length - 1].includes('599'),
+  );
 }
 
 // TC-L4 — Never throws on bad path
@@ -125,43 +146,66 @@ console.log('\nCrash Guard Registration');
 // This avoids starting the full MCP server (requires tmux) while still confirming
 // the guards are present and correctly implemented.
 
-const indexSrc = readFileSync(new URL('../src/index.ts', import.meta.url).pathname, 'utf8');
+const indexSrc = readFileSync(
+  new URL('../src/index.ts', import.meta.url).pathname,
+  'utf8',
+);
 
-assert('TC-G1 uncaughtException handler present',
+assert(
+  'TC-G1 uncaughtException handler present',
   indexSrc.includes("process.on('uncaughtException'"),
-  "process.on('uncaughtException') not found in src/index.ts");
+  "process.on('uncaughtException') not found in src/index.ts",
+);
 
-assert('TC-G2 unhandledRejection handler present',
+assert(
+  'TC-G2 unhandledRejection handler present',
   indexSrc.includes("process.on('unhandledRejection'"),
-  "process.on('unhandledRejection') not found in src/index.ts");
+  "process.on('unhandledRejection') not found in src/index.ts",
+);
 
-assert('TC-G3 SIGHUP handler present',
+assert(
+  'TC-G3 SIGHUP handler present',
   indexSrc.includes("process.on('SIGHUP'"),
-  "process.on('SIGHUP') not found in src/index.ts");
+  "process.on('SIGHUP') not found in src/index.ts",
+);
 
-assert('TC-G4 stdin.resume() present',
+assert(
+  'TC-G4 stdin.resume() present',
   indexSrc.includes('process.stdin.resume()'),
-  'process.stdin.resume() not found in src/index.ts');
+  'process.stdin.resume() not found in src/index.ts',
+);
 
 // TC-G5 — uncaughtException handler must NOT call process.exit
 // Extract the handler body and check
-const uncaughtMatch = indexSrc.match(/process\.on\('uncaughtException'[\s\S]*?\}\);/);
+const uncaughtMatch = indexSrc.match(
+  /process\.on\('uncaughtException'[\s\S]*?\}\);/,
+);
 if (!uncaughtMatch) {
-  fail('TC-G5 uncaughtException body does not call process.exit', 'handler not found');
+  fail(
+    'TC-G5 uncaughtException body does not call process.exit',
+    'handler not found',
+  );
 } else {
   const handlerBody = uncaughtMatch[0];
   const hasExit = /process\.exit/.test(handlerBody);
-  assert('TC-G5 uncaughtException does not call process.exit', !hasExit,
-    'handler body contains process.exit — server would crash on unhandled exception');
+  assert(
+    'TC-G5 uncaughtException does not call process.exit',
+    !hasExit,
+    'handler body contains process.exit — server would crash on unhandled exception',
+  );
 }
 
 // Also verify unhandledRejection doesn't exit
-const rejectionMatch = indexSrc.match(/process\.on\('unhandledRejection'[\s\S]*?\}\);/);
+const rejectionMatch = indexSrc.match(
+  /process\.on\('unhandledRejection'[\s\S]*?\}\);/,
+);
 if (!rejectionMatch) {
   fail('TC-G5b unhandledRejection body present', 'handler not found');
 } else {
-  assert('TC-G5b unhandledRejection does not call process.exit',
-    !/process\.exit/.test(rejectionMatch[0]));
+  assert(
+    'TC-G5b unhandledRejection does not call process.exit',
+    !/process\.exit/.test(rejectionMatch[0]),
+  );
 }
 
 // ─── TC-H: Health Heartbeat ───────────────────────────────────────────────────
@@ -179,18 +223,23 @@ console.log('\nHealth Heartbeat');
   initServerLog(logPath);
 
   // Verify heartbeat format string exists in source
-  assert('TC-H1 HEALTH level used in heartbeat',
+  assert(
+    'TC-H1 HEALTH level used in heartbeat',
     indexSrc.includes("logServer('HEALTH'"),
-    "logServer('HEALTH') not found in src/index.ts");
+    "logServer('HEALTH') not found in src/index.ts",
+  );
 
-  assert('TC-H1 heartbeat includes rss= field',
-    indexSrc.includes('rss='));
+  assert('TC-H1 heartbeat includes rss= field', indexSrc.includes('rss='));
 
-  assert('TC-H1 heartbeat includes agents= field',
-    indexSrc.includes('agents='));
+  assert(
+    'TC-H1 heartbeat includes agents= field',
+    indexSrc.includes('agents='),
+  );
 
-  assert('TC-H1 heartbeat includes uptime= field',
-    indexSrc.includes('uptime='));
+  assert(
+    'TC-H1 heartbeat includes uptime= field',
+    indexSrc.includes('uptime='),
+  );
 
   // TC-H2 — Generate a sample heartbeat line and verify it matches expected pattern
   const mem = process.memoryUsage();

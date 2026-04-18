@@ -22,10 +22,12 @@ export default function KeyboardShortcuts({ onClose }: KeyboardShortcutsProps) {
     >
       <div
         className="bg-slate-800 rounded-lg shadow-xl max-w-md w-full mx-4 border border-slate-700"
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
-          <h2 className="text-lg font-semibold text-slate-100">Keyboard Shortcuts</h2>
+          <h2 className="text-lg font-semibold text-slate-100">
+            Keyboard Shortcuts
+          </h2>
           <button
             onClick={onClose}
             className="text-slate-400 hover:text-slate-200 transition-colors p-1"
@@ -38,7 +40,14 @@ export default function KeyboardShortcuts({ onClose }: KeyboardShortcutsProps) {
           <table className="w-full text-sm">
             <tbody>
               {shortcuts.map((s, i) => (
-                <tr key={i} className={i !== shortcuts.length - 1 ? 'border-b border-slate-700/50' : ''}>
+                <tr
+                  key={i}
+                  className={
+                    i !== shortcuts.length - 1
+                      ? 'border-b border-slate-700/50'
+                      : ''
+                  }
+                >
                   <td className="py-2 pr-4">
                     <kbd className="px-2 py-1 bg-slate-900 rounded text-slate-200 font-mono text-xs border border-slate-600">
                       {s.key}

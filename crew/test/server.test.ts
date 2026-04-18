@@ -1,9 +1,9 @@
-import { describe, expect, test, beforeAll, afterAll } from 'bun:test';
-import { mkdirSync, rmSync, readdirSync, writeFileSync } from 'fs';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { initDb, closeDb } from '../src/state/db.ts';
-import { addAgent, getOrCreateRoom } from '../src/state/index.ts';
 import { startServer, stopServer } from '../src/server/index.ts';
+import { closeDb, initDb } from '../src/state/db.ts';
+import { addAgent, getOrCreateRoom } from '../src/state/index.ts';
 
 const TEST_STATE_DIR = `/tmp/crew-server-test-${process.pid}`;
 const PORT = 34560 + (process.pid % 1000); // unique port per test run
@@ -45,7 +45,10 @@ async function get(path: string): Promise<{ status: number; body: any }> {
   return { status: res.status, body: await res.json().catch(() => null) };
 }
 
-async function post(path: string, body: unknown): Promise<{ status: number; body: any }> {
+async function post(
+  path: string,
+  body: unknown,
+): Promise<{ status: number; body: any }> {
   const res = await fetch(`${base}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -107,7 +110,10 @@ describe('GET /api/rooms/:name/messages', () => {
 
 describe('POST /api/rooms', () => {
   test('creates a room', async () => {
-    const { status, body } = await post('/api/rooms', { name: 'test-room', topic: 'testing' });
+    const { status, body } = await post('/api/rooms', {
+      name: 'test-room',
+      topic: 'testing',
+    });
     expect(status).toBe(201);
     expect(body.ok).toBe(true);
     // verify it shows up
@@ -178,19 +184,25 @@ describe('GET /api/agents/:name', () => {
 
 describe('POST /api/agents/:name/update', () => {
   test('updates persona', async () => {
-    const { status, body } = await post('/api/agents/alice/update', { persona: 'senior engineer' });
+    const { status, body } = await post('/api/agents/alice/update', {
+      persona: 'senior engineer',
+    });
     expect(status).toBe(200);
     expect(body.ok).toBe(true);
   });
 
   test('updates capabilities as array', async () => {
-    const { status, body } = await post('/api/agents/alice/update', { capabilities: ['coding', 'review'] });
+    const { status, body } = await post('/api/agents/alice/update', {
+      capabilities: ['coding', 'review'],
+    });
     expect(status).toBe(200);
     expect(body.ok).toBe(true);
   });
 
   test('updates capabilities as comma-string', async () => {
-    const { status, body } = await post('/api/agents/alice/update', { capabilities: 'coding,review' });
+    const { status, body } = await post('/api/agents/alice/update', {
+      capabilities: 'coding,review',
+    });
     expect(status).toBe(200);
     expect(body.ok).toBe(true);
   });
@@ -206,7 +218,9 @@ describe('DELETE /api/agents/:name', () => {
 
   test('deletes with ?confirm=true', async () => {
     addAgent('to-delete-agent', 'worker', mkRoom('general').id, '%9');
-    const { status, body } = await del('/api/agents/to-delete-agent?confirm=true');
+    const { status, body } = await del(
+      '/api/agents/to-delete-agent?confirm=true',
+    );
     expect(status).toBe(200);
     expect(body.ok).toBe(true);
     expect(body.removed_from_rooms).toContain('general');
@@ -247,7 +261,9 @@ describe('POST /api/messages', () => {
 
   test('returns error when sender not registered', async () => {
     const { status, body } = await post('/api/messages', {
-      room: 'general', text: 'hello', name: 'ghost',
+      room: 'general',
+      text: 'hello',
+      name: 'ghost',
     });
     // ghost is not registered — handleSendMessage returns isError
     expect(status).toBe(400);
@@ -291,8 +307,13 @@ describe('static serving', () => {
     // Find the built JS asset (hashed filename) — skip if not built
     const distAssets = new URL('../dist/web/assets/', import.meta.url).pathname;
     let jsFile: string | undefined;
-    try { jsFile = readdirSync(distAssets).find(f => f.endsWith('.js')); } catch {}
-    if (!jsFile) { console.log('Skipping: dist/web/assets not built'); return; }
+    try {
+      jsFile = readdirSync(distAssets).find((f) => f.endsWith('.js'));
+    } catch {}
+    if (!jsFile) {
+      console.log('Skipping: dist/web/assets not built');
+      return;
+    }
 
     const res = await fetch(`${base}/assets/${jsFile}`);
     expect(res.status).toBe(200);
@@ -304,9 +325,13 @@ describe('static serving', () => {
   });
 
   test('GET /fake-spa-route falls back to index.html when dist is built', async () => {
-    const distIndex = new URL('../dist/web/index.html', import.meta.url).pathname;
+    const distIndex = new URL('../dist/web/index.html', import.meta.url)
+      .pathname;
     const hasIndex = await Bun.file(distIndex).exists();
-    if (!hasIndex) { console.log('Skipping: dist/web/index.html not built'); return; }
+    if (!hasIndex) {
+      console.log('Skipping: dist/web/index.html not built');
+      return;
+    }
 
     const res = await fetch(`${base}/some/nested/spa-route`);
     expect(res.status).toBe(200);
@@ -342,7 +367,11 @@ describe('WebSocket broadcast', () => {
       setTimeout(() => reject(new Error('WS connect timeout')), 2000);
     });
 
-    ws.onmessage = (e) => { try { received.push(JSON.parse(e.data)); } catch {} };
+    ws.onmessage = (e) => {
+      try {
+        received.push(JSON.parse(e.data));
+      } catch {}
+    };
 
     // Trigger a state change via the REST message endpoint (will fail because alice
     // has no room 'ws-test', but we just need the poller to tick and broadcast something)

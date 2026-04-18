@@ -1,21 +1,38 @@
-import {
-  getAllRooms, getRoom, getRoomMembers, getRoomMessages,
-  getAllAgents, getAgent, getAgentDbStatus,
-  searchTasks, getTaskEvents, getAllTaskEvents,
-  getChangeVersions,
-  getLatestTokenUsage,
-  getAgentMessageCounts,
-  getAgentTaskStats,
-  getAllTemplates, getRoomTemplateNames, getAllRoomTemplates,
-} from '../state/index.ts';
 import { getDb } from '../state/db.ts';
 import {
-  dbCreateRoom, dbDeleteRoom, dbSetTopic,
-  dbUpdateAgentPersona, dbUpdateAgentCapabilities, dbDeleteAgent,
-  dbCreateTemplate, dbUpdateTemplate, dbDeleteTemplate,
-  dbCreateRoomTemplate, dbUpdateRoomTemplate, dbDeleteRoomTemplate,
+  dbCreateRoom,
+  dbCreateRoomTemplate,
+  dbCreateTemplate,
+  dbDeleteAgent,
+  dbDeleteRoom,
+  dbDeleteRoomTemplate,
+  dbDeleteTemplate,
   dbSetRoomTemplates,
+  dbSetTopic,
+  dbUpdateAgentCapabilities,
+  dbUpdateAgentPersona,
+  dbUpdateRoomTemplate,
+  dbUpdateTemplate,
 } from '../state/db-write.ts';
+import {
+  getAgent,
+  getAgentDbStatus,
+  getAgentMessageCounts,
+  getAgentTaskStats,
+  getAllAgents,
+  getAllRooms,
+  getAllRoomTemplates,
+  getAllTaskEvents,
+  getAllTemplates,
+  getChangeVersions,
+  getLatestTokenUsage,
+  getRoom,
+  getRoomMembers,
+  getRoomMessages,
+  getRoomTemplateNames,
+  getTaskEvents,
+  searchTasks,
+} from '../state/index.ts';
 import { handleSendMessage } from '../tools/send-message.ts';
 
 function json(data: unknown, status = 200): Response {
@@ -42,7 +59,7 @@ export async function handleApi(req: Request): Promise<Response> {
 
   // GET /api/rooms
   if (method === 'GET' && path === '/rooms') {
-    const rooms = getAllRooms().map(r => ({
+    const rooms = getAllRooms().map((r) => ({
       ...r,
       member_count: getRoomMembers(r.id).length,
       template_names: getRoomTemplateNames(r.name),
@@ -84,7 +101,11 @@ export async function handleApi(req: Request): Promise<Response> {
   if (method === 'POST' && path === '/rooms') {
     const body = await req.json().catch(() => null);
     if (!body?.name) return err('Missing name');
-    const result = dbCreateRoom(body.name, body.topic, Array.isArray(body.templateIds) ? body.templateIds : undefined);
+    const result = dbCreateRoom(
+      body.name,
+      body.topic,
+      Array.isArray(body.templateIds) ? body.templateIds : undefined,
+    );
     if (result.error) return err(result.error);
     return json({ ok: true, name: body.name }, 201);
   }
@@ -92,7 +113,8 @@ export async function handleApi(req: Request): Promise<Response> {
   // DELETE /api/rooms/:name   PATCH /api/rooms/:name
   const roomDeleteMatch = path.match(/^\/rooms\/([^/]+)$/);
   if (method === 'DELETE' && roomDeleteMatch) {
-    if (url.searchParams.get('confirm') !== 'true') return err('Pass ?confirm=true to delete');
+    if (url.searchParams.get('confirm') !== 'true')
+      return err('Pass ?confirm=true to delete');
     const name = decodeURIComponent(roomDeleteMatch[1]!);
     const result = dbDeleteRoom(name);
     if (result.error) return err(result.error);
@@ -111,14 +133,15 @@ export async function handleApi(req: Request): Promise<Response> {
   if (method === 'PATCH' && roomTemplatesMatch) {
     const name = decodeURIComponent(roomTemplatesMatch[1]!);
     const body = await req.json().catch(() => null);
-    if (!body || !Array.isArray(body.templateIds)) return err('Missing templateIds array');
+    if (!body || !Array.isArray(body.templateIds))
+      return err('Missing templateIds array');
     const r = dbSetRoomTemplates(name, body.templateIds);
     return r.error ? err(r.error) : json({ ok: true });
   }
 
   // GET /api/agents
   if (method === 'GET' && path === '/agents') {
-    const agents = getAllAgents().map(a => ({
+    const agents = getAllAgents().map((a) => ({
       ...a,
       status: getAgentDbStatus(a.name) ?? 'unknown',
     }));
@@ -132,15 +155,28 @@ export async function handleApi(req: Request): Promise<Response> {
     const agent = getAgent(name);
     if (!agent) return err('Agent not found', 404);
     let token_usage: Record<string, unknown> | null = null;
-    try { token_usage = getLatestTokenUsage(name) as Record<string, unknown> | null; } catch { /* table may not exist */ }
+    try {
+      token_usage = getLatestTokenUsage(name) as Record<string, unknown> | null;
+    } catch {
+      /* table may not exist */
+    }
     const message_stats = getAgentMessageCounts(name);
     const task_stats = getAgentTaskStats(name);
-    return json({ ...agent, status: getAgentDbStatus(name) ?? 'unknown', token_usage, message_stats, task_stats });
+    return json({
+      ...agent,
+      status: getAgentDbStatus(name) ?? 'unknown',
+      token_usage,
+      message_stats,
+      task_stats,
+    });
   }
 
   // GET /api/stats — aggregate counters for HeaderStats
   if (method === 'GET' && path === '/stats') {
-    const agents = getAllAgents().map(a => ({ ...a, status: getAgentDbStatus(a.name) ?? 'unknown' }));
+    const agents = getAllAgents().map((a) => ({
+      ...a,
+      status: getAgentDbStatus(a.name) ?? 'unknown',
+    }));
     const tasks = searchTasks({});
     let total_cost: number | null = null;
     let total_input_tokens = 0;
@@ -154,19 +190,21 @@ export async function handleApi(req: Request): Promise<Response> {
           total_output_tokens += tu.output_tokens ?? 0;
         }
       }
-    } catch { /* token_usage table missing */ }
+    } catch {
+      /* token_usage table missing */
+    }
     return json({
       agents: {
-        busy: agents.filter(a => a.status === 'busy').length,
-        idle: agents.filter(a => a.status === 'idle').length,
-        dead: agents.filter(a => a.status === 'dead').length,
+        busy: agents.filter((a) => a.status === 'busy').length,
+        idle: agents.filter((a) => a.status === 'idle').length,
+        dead: agents.filter((a) => a.status === 'dead').length,
         total: agents.length,
       },
       tasks: {
-        done: tasks.filter(t => t.status === 'done').length,
-        active: tasks.filter(t => t.status === 'active').length,
-        queued: tasks.filter(t => t.status === 'queued').length,
-        error: tasks.filter(t => t.status === 'error').length,
+        done: tasks.filter((t) => t.status === 'done').length,
+        active: tasks.filter((t) => t.status === 'active').length,
+        queued: tasks.filter((t) => t.status === 'queued').length,
+        error: tasks.filter((t) => t.status === 'error').length,
         total: tasks.length,
       },
       cost: { total_usd: total_cost, total_input_tokens, total_output_tokens },
@@ -184,7 +222,12 @@ export async function handleApi(req: Request): Promise<Response> {
       if (r.error) return err(r.error);
     }
     if (body.capabilities !== undefined) {
-      const caps = Array.isArray(body.capabilities) ? body.capabilities : String(body.capabilities).split(',').map((s: string) => s.trim()).filter(Boolean);
+      const caps = Array.isArray(body.capabilities)
+        ? body.capabilities
+        : String(body.capabilities)
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean);
       const r = dbUpdateAgentCapabilities(name, caps);
       if (r.error) return err(r.error);
     }
@@ -194,7 +237,8 @@ export async function handleApi(req: Request): Promise<Response> {
   // DELETE /api/agents/:name
   const agentDeleteMatch = path.match(/^\/agents\/([^/]+)$/);
   if (method === 'DELETE' && agentDeleteMatch) {
-    if (url.searchParams.get('confirm') !== 'true') return err('Pass ?confirm=true to delete');
+    if (url.searchParams.get('confirm') !== 'true')
+      return err('Pass ?confirm=true to delete');
     const name = decodeURIComponent(agentDeleteMatch[1]!);
     const result = dbDeleteAgent(name);
     if (result.error) return err(result.error);
@@ -205,13 +249,20 @@ export async function handleApi(req: Request): Promise<Response> {
   if (method === 'GET' && path === '/tasks') {
     try {
       const db = getDb();
-      let sql = 'SELECT id, room, assigned_to, created_by, summary, status, created_at, updated_at FROM tasks WHERE 1=1';
+      let sql =
+        'SELECT id, room, assigned_to, created_by, summary, status, created_at, updated_at FROM tasks WHERE 1=1';
       const params: unknown[] = [];
       const room = url.searchParams.get('room');
       const status = url.searchParams.get('status');
       const limit = parseIntParam(url.searchParams.get('limit')) ?? 200;
-      if (room) { sql += ' AND room = ?'; params.push(room); }
-      if (status) { sql += ' AND status = ?'; params.push(status); }
+      if (room) {
+        sql += ' AND room = ?';
+        params.push(room);
+      }
+      if (status) {
+        sql += ' AND status = ?';
+        params.push(status);
+      }
       sql += ' ORDER BY id DESC LIMIT ?';
       params.push(limit);
       const rows = db.query(sql).all(...params);
@@ -239,7 +290,9 @@ export async function handleApi(req: Request): Promise<Response> {
       const task = db.query('SELECT * FROM tasks WHERE id = ?').get(id);
       if (!task) return err('Task not found', 404);
       let events: unknown[] = [];
-      try { events = getTaskEvents(id); } catch {}
+      try {
+        events = getTaskEvents(id);
+      } catch {}
       return json({ ...(task as object), events });
     } catch {
       return err('Task not found', 404);
@@ -249,7 +302,8 @@ export async function handleApi(req: Request): Promise<Response> {
   // POST /api/messages
   if (method === 'POST' && path === '/messages') {
     const body = await req.json().catch(() => null);
-    if (!body?.room || !body?.text || !body?.name) return err('Missing required: room, text, name');
+    if (!body?.room || !body?.text || !body?.name)
+      return err('Missing required: room, text, name');
     const result = await handleSendMessage({
       room: body.room,
       text: body.text,
@@ -265,7 +319,12 @@ export async function handleApi(req: Request): Promise<Response> {
 
   // GET /api/check
   if (method === 'GET' && path === '/check') {
-    const versions = getChangeVersions(['messages', 'agents', 'tasks', 'rooms']);
+    const versions = getChangeVersions([
+      'messages',
+      'agents',
+      'tasks',
+      'rooms',
+    ]);
     return json(versions);
   }
 
@@ -274,12 +333,19 @@ export async function handleApi(req: Request): Promise<Response> {
     try {
       const db = getDb();
       const rooms = getAllRooms();
-      const agents = getAllAgents().map(a => ({ ...a, status: getAgentDbStatus(a.name) ?? 'unknown' }));
-      const tasks = db.query('SELECT * FROM tasks ORDER BY id DESC LIMIT 500').all();
+      const agents = getAllAgents().map((a) => ({
+        ...a,
+        status: getAgentDbStatus(a.name) ?? 'unknown',
+      }));
+      const tasks = db
+        .query('SELECT * FROM tasks ORDER BY id DESC LIMIT 500')
+        .all();
       let messages: unknown[] = [];
       try {
-        const rows = db.query('SELECT * FROM messages ORDER BY id DESC LIMIT 500').all() as Record<string, unknown>[];
-        messages = rows.map(r => ({
+        const rows = db
+          .query('SELECT * FROM messages ORDER BY id DESC LIMIT 500')
+          .all() as Record<string, unknown>[];
+        messages = rows.map((r) => ({
           message_id: String(r['id']),
           from: String(r['sender'] ?? ''),
           to: (r['recipient'] as string | null) ?? null,
@@ -291,7 +357,9 @@ export async function handleApi(req: Request): Promise<Response> {
           sequence: Number(r['id']),
           reply_to: (r['reply_to'] as number | null) ?? null,
         }));
-      } catch { /* messages table may not exist */ }
+      } catch {
+        /* messages table may not exist */
+      }
       return json({ rooms, agents, tasks, messages });
     } catch (e) {
       return err(String(e));
@@ -305,7 +373,12 @@ export async function handleApi(req: Request): Promise<Response> {
   if (method === 'POST' && path === '/templates') {
     const body = await req.json().catch(() => null);
     if (!body?.name || !body?.role) return err('Missing name or role');
-    const r = dbCreateTemplate(body.name, body.role, body.persona, body.capabilities);
+    const r = dbCreateTemplate(
+      body.name,
+      body.role,
+      body.persona,
+      body.capabilities,
+    );
     return r.error ? err(r.error) : json({ ok: true }, 201);
   }
 
@@ -339,20 +412,26 @@ export async function handleApi(req: Request): Promise<Response> {
     const body = await req.json().catch(() => null);
     if (!body?.text) return err('Missing text');
     const { getQueue } = await import('../delivery/pane-queue.ts');
-    await getQueue(agent.tmux_target).enqueue({ type: 'paste', text: String(body.text) });
+    await getQueue(agent.tmux_target).enqueue({
+      type: 'paste',
+      text: String(body.text),
+    });
     return json({ ok: true });
   }
 
   // --- Room Templates CRUD ---
 
   // GET /api/room-templates
-  if (method === 'GET' && path === '/room-templates') return json(getAllRoomTemplates());
+  if (method === 'GET' && path === '/room-templates')
+    return json(getAllRoomTemplates());
 
   // POST /api/room-templates
   if (method === 'POST' && path === '/room-templates') {
     const body = await req.json().catch(() => null);
     if (!body?.name) return err('Missing name');
-    const ids = Array.isArray(body.agentTemplateIds) ? body.agentTemplateIds : [];
+    const ids = Array.isArray(body.agentTemplateIds)
+      ? body.agentTemplateIds
+      : [];
     const r = dbCreateRoomTemplate(body.name, body.topic ?? null, ids);
     return r.error ? err(r.error) : json({ ok: true }, 201);
   }
@@ -365,7 +444,10 @@ export async function handleApi(req: Request): Promise<Response> {
     if (!body) return err('Missing body');
     for (const f of ['name', 'topic', 'agent_template_ids'] as const) {
       if (body[f] !== undefined) {
-        const val = f === 'agent_template_ids' ? JSON.stringify(body[f]) : (body[f] ?? '');
+        const val =
+          f === 'agent_template_ids'
+            ? JSON.stringify(body[f])
+            : (body[f] ?? '');
         const r = dbUpdateRoomTemplate(id, f, String(val));
         if (r.error) return err(r.error);
       }

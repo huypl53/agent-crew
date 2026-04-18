@@ -1,7 +1,7 @@
 import { join } from 'path';
 import { initDb } from '../state/db.ts';
 import { handleApi } from './api.ts';
-import { wsOpen, wsClose, startWsPoller, stopWsPoller } from './ws.ts';
+import { startWsPoller, stopWsPoller, wsClose, wsOpen } from './ws.ts';
 
 export interface ServeOptions {
   port?: number;
@@ -18,7 +18,9 @@ const STATIC_PLACEHOLDER = `<!DOCTYPE html>
 </body>
 </html>`;
 
-export function startServer(opts: ServeOptions = {}): ReturnType<typeof Bun.serve> {
+export function startServer(
+  opts: ServeOptions = {},
+): ReturnType<typeof Bun.serve> {
   const port = opts.port ?? parseInt(process.env.CREW_SERVE_PORT ?? '3456', 10);
   const hostname = opts.host ?? process.env.CREW_SERVE_HOST ?? '127.0.0.1';
 
@@ -47,13 +49,16 @@ export function startServer(opts: ServeOptions = {}): ReturnType<typeof Bun.serv
       // Paths that don't resolve to a file fall back to index.html for SPA client-routing.
       const distDir = new URL('../../dist/web/', import.meta.url).pathname;
       const cleaned = url.pathname === '/' ? '/index.html' : url.pathname;
-      if (cleaned.includes('..')) return new Response('Forbidden', { status: 400 });
+      if (cleaned.includes('..'))
+        return new Response('Forbidden', { status: 400 });
       const file = Bun.file(join(distDir, cleaned));
-      return file.exists().then(async exists => {
+      return file.exists().then(async (exists) => {
         if (exists) return new Response(file);
         const index = Bun.file(join(distDir, 'index.html'));
         if (await index.exists()) return new Response(index);
-        return new Response(STATIC_PLACEHOLDER, { headers: { 'Content-Type': 'text/html' } });
+        return new Response(STATIC_PLACEHOLDER, {
+          headers: { 'Content-Type': 'text/html' },
+        });
       });
     },
 

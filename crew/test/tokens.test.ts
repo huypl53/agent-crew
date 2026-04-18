@@ -1,9 +1,16 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { getClaudePidFromPane, getSessionForPid, resolveSessionPath } from '../src/tokens/pid-mapper.ts';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { closeDb, initDb } from '../src/state/db.ts';
 import { parseJsonlUsage, sumUsageEntries } from '../src/tokens/claude-code.ts';
 import { readCodexThreads } from '../src/tokens/codex.ts';
-import { startTokenCollection, stopTokenCollection } from '../src/tokens/collector.ts';
-import { initDb, closeDb } from '../src/state/db.ts';
+import {
+  startTokenCollection,
+  stopTokenCollection,
+} from '../src/tokens/collector.ts';
+import {
+  getClaudePidFromPane,
+  getSessionForPid,
+  resolveSessionPath,
+} from '../src/tokens/pid-mapper.ts';
 
 describe('pid-mapper', () => {
   test('getClaudePidFromPane returns null for nonexistent pane', async () => {
@@ -17,7 +24,10 @@ describe('pid-mapper', () => {
   });
 
   test('resolveSessionPath builds correct JSONL path', () => {
-    const path = resolveSessionPath('abc-123', '/Users/lee/code/utils/agent-crew');
+    const path = resolveSessionPath(
+      'abc-123',
+      '/Users/lee/code/utils/agent-crew',
+    );
     expect(path).toContain('.claude/projects/');
     expect(path).toContain('abc-123');
     expect(path).toEndWith('.jsonl');
@@ -36,7 +46,9 @@ describe('pid-mapper', () => {
     const fs = require('fs');
     const sessDir = `${process.env.HOME}/.claude/sessions`;
     if (!fs.existsSync(sessDir)) return;
-    const files = fs.readdirSync(sessDir).filter((f: string) => f.endsWith('.json'));
+    const files = fs
+      .readdirSync(sessDir)
+      .filter((f: string) => f.endsWith('.json'));
     if (files.length === 0) return;
     const pid = parseInt(files[0].replace('.json', ''));
     const session = getSessionForPid(pid);
@@ -50,9 +62,28 @@ describe('pid-mapper', () => {
 describe('claude-code token collection', () => {
   test('parseJsonlUsage extracts usage from JSONL lines', () => {
     const lines = [
-      JSON.stringify({ type: 'assistant', message: { model: 'claude-opus-4-6', usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 200, cache_read_input_tokens: 300 }, stop_reason: 'end_turn' } }),
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          model: 'claude-opus-4-6',
+          usage: {
+            input_tokens: 100,
+            output_tokens: 50,
+            cache_creation_input_tokens: 200,
+            cache_read_input_tokens: 300,
+          },
+          stop_reason: 'end_turn',
+        },
+      }),
       JSON.stringify({ type: 'human', text: 'hello' }),
-      JSON.stringify({ type: 'assistant', message: { model: 'claude-opus-4-6', usage: { input_tokens: 150, output_tokens: 75 }, stop_reason: 'end_turn' } }),
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          model: 'claude-opus-4-6',
+          usage: { input_tokens: 150, output_tokens: 75 },
+          stop_reason: 'end_turn',
+        },
+      }),
     ];
     const entries = parseJsonlUsage(lines.join('\n'));
     expect(entries.length).toBe(2);
@@ -63,8 +94,20 @@ describe('claude-code token collection', () => {
 
   test('sumUsageEntries totals tokens correctly', () => {
     const entries = [
-      { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 200, cache_read_input_tokens: 0, model: 'claude-opus-4-6' },
-      { input_tokens: 150, output_tokens: 75, cache_creation_input_tokens: 0, cache_read_input_tokens: 100, model: 'claude-opus-4-6' },
+      {
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_creation_input_tokens: 200,
+        cache_read_input_tokens: 0,
+        model: 'claude-opus-4-6',
+      },
+      {
+        input_tokens: 150,
+        output_tokens: 75,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 100,
+        model: 'claude-opus-4-6',
+      },
     ];
     const totals = sumUsageEntries(entries);
     expect(totals.input_tokens).toBe(250);

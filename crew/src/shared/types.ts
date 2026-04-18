@@ -40,7 +40,14 @@ export interface RoomTemplate {
   created_at: string;
 }
 
-export type MessageKind = 'task' | 'completion' | 'question' | 'error' | 'status' | 'chat' | 'note';
+export type MessageKind =
+  | 'task'
+  | 'completion'
+  | 'question'
+  | 'error'
+  | 'status'
+  | 'chat'
+  | 'note';
 
 export interface Message {
   message_id: string;
@@ -55,7 +62,14 @@ export interface Message {
   reply_to?: number | null;
 }
 
-export type TaskStatus = 'sent' | 'queued' | 'active' | 'completed' | 'error' | 'interrupted' | 'cancelled';
+export type TaskStatus =
+  | 'sent'
+  | 'queued'
+  | 'active'
+  | 'completed'
+  | 'error'
+  | 'interrupted'
+  | 'cancelled';
 
 export interface Task {
   id: number;
@@ -91,7 +105,10 @@ export function ok(data: Record<string, unknown>): ToolResult {
 }
 
 export function err(error: string): ToolResult {
-  return { content: [{ type: 'text', text: JSON.stringify({ error }) }], isError: true };
+  return {
+    content: [{ type: 'text', text: JSON.stringify({ error }) }],
+    isError: true,
+  };
 }
 
 /* ── Token tracking ─────────────────────────────────────── */

@@ -1,7 +1,7 @@
-import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
-import { initDb, closeDb } from '../src/state/db.ts';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { closeDb, initDb } from '../src/state/db.ts';
+import { clearState, getAgent } from '../src/state/index.ts';
 import { handleJoinRoom } from '../src/tools/join-room.ts';
-import { getAgent, clearState } from '../src/state/index.ts';
 
 describe('pull-only join', () => {
   beforeEach(() => {
@@ -29,15 +29,27 @@ describe('pull-only join', () => {
   });
 
   test('agent row has null pane in state', async () => {
-    await handleJoinRoom({ room: 'test-room', role: 'worker', name: 'pull-bot' });
+    await handleJoinRoom({
+      room: 'test-room',
+      role: 'worker',
+      name: 'pull-bot',
+    });
     const agent = getAgent('pull-bot');
     expect(agent).toBeDefined();
     expect(agent!.tmux_target).toBeNull();
   });
 
   test('pull-only join tracks latest room registration', async () => {
-    await handleJoinRoom({ room: 'room-a', role: 'worker', name: 'pull-multi' });
-    await handleJoinRoom({ room: 'room-b', role: 'worker', name: 'pull-multi' });
+    await handleJoinRoom({
+      room: 'room-a',
+      role: 'worker',
+      name: 'pull-multi',
+    });
+    await handleJoinRoom({
+      room: 'room-b',
+      role: 'worker',
+      name: 'pull-multi',
+    });
     const agent = getAgent('pull-multi');
     expect(agent?.room_name).toBe('room-b');
     expect(agent?.tmux_target).toBeNull();

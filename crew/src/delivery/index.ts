@@ -1,8 +1,15 @@
-import { addMessage, getAgent, getRoom, getRoomMembers, createTask, markAgentStale } from '../state/index.ts';
-import { paneExists, paneCommandLooksAlive } from '../tmux/index.ts';
-import { getQueue } from './pane-queue.ts';
-import { dbClearAgentPane } from '../state/db-write.ts';
 import type { Message, MessageKind } from '../shared/types.ts';
+import { dbClearAgentPane } from '../state/db-write.ts';
+import {
+  addMessage,
+  createTask,
+  getAgent,
+  getRoom,
+  getRoomMembers,
+  markAgentStale,
+} from '../state/index.ts';
+import { paneCommandLooksAlive, paneExists } from '../tmux/index.ts';
+import { getQueue } from './pane-queue.ts';
 
 const NOTIFY_KINDS: MessageKind[] = ['completion', 'error', 'question'];
 
@@ -34,7 +41,7 @@ export async function deliverMessage(
   } else {
     // Broadcast: all room members except sender
     const members = roomObj ? getRoomMembers(roomObj.id) : [];
-    targets = members.filter(m => m.name !== senderName).map(m => m.name);
+    targets = members.filter((m) => m.name !== senderName).map((m) => m.name);
   }
 
   const results: DeliveryResult[] = [];
@@ -42,11 +49,26 @@ export async function deliverMessage(
   for (const to of targets) {
     // Always queue first (NFR6)
     // For broadcast (targetName=null), store each recipient's copy with their name
-    const msg = addMessage(to, senderName, room, text, mode, targetName ?? to, kind, replyTo);
+    const msg = addMessage(
+      to,
+      senderName,
+      room,
+      text,
+      mode,
+      targetName ?? to,
+      kind,
+      replyTo,
+    );
 
     let taskId: number | undefined;
     if (kind === 'task') {
-      const task = createTask(room, targetName ?? to, senderName, Number(msg.message_id), text);
+      const task = createTask(
+        room,
+        targetName ?? to,
+        senderName,
+        Number(msg.message_id),
+        text,
+      );
       taskId = task.id;
     }
 
@@ -54,11 +76,17 @@ export async function deliverMessage(
       const agent = getAgent(to);
       if (agent) {
         if (!agent.tmux_target) {
-          results.push({ message_id: msg.message_id, delivered: false, queued: true, error: 'pull-only agent: no tmux pane', task_id: taskId });
+          results.push({
+            message_id: msg.message_id,
+            delivered: false,
+            queued: true,
+            error: 'pull-only agent: no tmux pane',
+            task_id: taskId,
+          });
           continue;
         }
         // Check if pane exists before attempting delivery
-        if (!await paneExists(agent.tmux_target)) {
+        if (!(await paneExists(agent.tmux_target))) {
           dbClearAgentPane(agent.name, agent.tmux_target);
           results.push({
             message_id: msg.message_id,
@@ -72,8 +100,11 @@ export async function deliverMessage(
         // For known agent types, verify the pane is still running an agent process
         // before delivery. A plain shell means the worker restarted without refreshing
         // its registration — pasting there would inject text into the wrong terminal.
-        if (agent.agent_type === 'claude-code' || agent.agent_type === 'codex') {
-          if (!await paneCommandLooksAlive(agent.tmux_target)) {
+        if (
+          agent.agent_type === 'claude-code' ||
+          agent.agent_type === 'codex'
+        ) {
+          if (!(await paneCommandLooksAlive(agent.tmux_target))) {
             markAgentStale(agent.name);
             results.push({
               message_id: msg.message_id,
@@ -86,8 +117,16 @@ export async function deliverMessage(
           }
         }
         try {
-          await getQueue(agent.tmux_target!, { role: agent.role }).enqueue({ type: 'paste', text: fullText });
-          results.push({ message_id: msg.message_id, delivered: true, queued: true, task_id: taskId });
+          await getQueue(agent.tmux_target!, { role: agent.role }).enqueue({
+            type: 'paste',
+            text: fullText,
+          });
+          results.push({
+            message_id: msg.message_id,
+            delivered: true,
+            queued: true,
+            task_id: taskId,
+          });
         } catch (e) {
           results.push({
             message_id: msg.message_id,
@@ -98,11 +137,22 @@ export async function deliverMessage(
           });
         }
       } else {
-        results.push({ message_id: msg.message_id, delivered: false, queued: true, error: 'Agent not found', task_id: taskId });
+        results.push({
+          message_id: msg.message_id,
+          delivered: false,
+          queued: true,
+          error: 'Agent not found',
+          task_id: taskId,
+        });
       }
     } else {
       // Pull mode: queue only
-      results.push({ message_id: msg.message_id, delivered: false, queued: true, task_id: taskId });
+      results.push({
+        message_id: msg.message_id,
+        delivered: false,
+        queued: true,
+        task_id: taskId,
+      });
     }
   }
 
@@ -111,12 +161,16 @@ export async function deliverMessage(
     const sender = getAgent(senderName);
     if (sender?.role === 'worker') {
       const members = roomObj ? getRoomMembers(roomObj.id) : [];
-      const leaders = members.filter(m => m.role === 'leader' && m.name !== senderName);
+      const leaders = members.filter(
+        (m) => m.role === 'leader' && m.name !== senderName,
+      );
       const summary = text.length > 80 ? text.slice(0, 77) + '...' : text;
       const notifyText = `[system@${room}]: ${senderName} ${kind}: "${summary}"`;
 
       for (const leader of leaders) {
-        getQueue(leader.tmux_target!, { role: leader.role }).enqueue({ type: 'paste', text: notifyText }).catch(() => {});
+        getQueue(leader.tmux_target!, { role: leader.role })
+          .enqueue({ type: 'paste', text: notifyText })
+          .catch(() => {});
       }
     }
   }

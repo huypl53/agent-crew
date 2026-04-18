@@ -1,7 +1,12 @@
-import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { initDb, closeDb } from '../src/state/db.ts';
-import { addAgent, getAgent, clearState, getOrCreateRoom } from '../src/state/index.ts';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { closeDb, initDb } from '../src/state/db.ts';
+import {
+  addAgent,
+  clearState,
+  getAgent,
+  getOrCreateRoom,
+} from '../src/state/index.ts';
 
 function mkRoom(name: string) {
   return getOrCreateRoom(`/test/${name}`, name);
@@ -25,7 +30,15 @@ describe('Phase 1 schema migrations', () => {
     });
 
     test('addAgent stores persona and capabilities', () => {
-      const agent = addAgent('agent-meta', 'worker', mkRoom('room1').id, '%10', 'unknown', 'Helpful assistant', '["coding","testing"]');
+      const agent = addAgent(
+        'agent-meta',
+        'worker',
+        mkRoom('room1').id,
+        '%10',
+        'unknown',
+        'Helpful assistant',
+        '["coding","testing"]',
+      );
       expect(agent.persona).toBe('Helpful assistant');
       expect(agent.capabilities).toBe('["coding","testing"]');
     });
@@ -83,8 +96,24 @@ describe('Phase 1 schema migrations', () => {
     });
 
     test('persona/capabilities survive multiple agents', () => {
-      addAgent('a1', 'worker', mkRoom('r1').id, '%1', 'unknown', 'persona-a', '["x"]');
-      addAgent('a2', 'leader', mkRoom('r1').id, '%2', 'claude-code', 'persona-b', '["y","z"]');
+      addAgent(
+        'a1',
+        'worker',
+        mkRoom('r1').id,
+        '%1',
+        'unknown',
+        'persona-a',
+        '["x"]',
+      );
+      addAgent(
+        'a2',
+        'leader',
+        mkRoom('r1').id,
+        '%2',
+        'claude-code',
+        'persona-b',
+        '["y","z"]',
+      );
       expect(getAgent('a1')?.persona).toBe('persona-a');
       expect(getAgent('a2')?.persona).toBe('persona-b');
       expect(getAgent('a2')?.capabilities).toBe('["y","z"]');

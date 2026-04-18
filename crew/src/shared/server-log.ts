@@ -1,4 +1,10 @@
-import { appendFileSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'fs';
 import { dirname } from 'path';
 
 const STATE_DIR = process.env.CREW_STATE_DIR ?? '/tmp/crew/state';
@@ -25,11 +31,15 @@ export function logServer(level: string, msg: string): void {
 
     // Cap at 1MB — truncate to last 500 lines
     const size = (() => {
-      try { return Bun.file(_logPath).size; } catch { return 0; }
+      try {
+        return Bun.file(_logPath).size;
+      } catch {
+        return 0;
+      }
     })();
     if (size > MAX_BYTES) {
       const content = readFileSync(_logPath, 'utf8');
-      const lines = content.split('\n').filter(l => l.length > 0);
+      const lines = content.split('\n').filter((l) => l.length > 0);
       const kept = lines.slice(-TRUNCATE_LINES).join('\n') + '\n';
       writeFileSync(_logPath, kept);
     }

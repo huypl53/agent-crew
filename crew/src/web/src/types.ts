@@ -56,8 +56,18 @@ export interface Agent {
 
 export interface Stats {
   agents: { busy: number; idle: number; dead: number; total: number };
-  tasks: { done: number; active: number; queued: number; error: number; total: number };
-  cost: { total_usd: number | null; total_input_tokens: number; total_output_tokens: number };
+  tasks: {
+    done: number;
+    active: number;
+    queued: number;
+    error: number;
+    total: number;
+  };
+  cost: {
+    total_usd: number | null;
+    total_input_tokens: number;
+    total_output_tokens: number;
+  };
 }
 
 export interface Message {
@@ -73,7 +83,14 @@ export interface Message {
   reply_to?: number | null;
 }
 
-export type TaskStatus = 'sent' | 'queued' | 'active' | 'completed' | 'error' | 'cancelled' | 'interrupted';
+export type TaskStatus =
+  | 'sent'
+  | 'queued'
+  | 'active'
+  | 'completed'
+  | 'error'
+  | 'cancelled'
+  | 'interrupted';
 
 export interface Task {
   id: number;
@@ -98,23 +115,38 @@ export interface TaskEvent {
 }
 
 export interface WsEvent {
-  type: 'message' | 'task-update' | 'agent-status' | 'room-change' | 'template-change' | 'room-template-change';
+  type:
+    | 'message'
+    | 'task-update'
+    | 'agent-status'
+    | 'room-change'
+    | 'template-change'
+    | 'room-template-change';
   [key: string]: unknown;
 }
 
 export type TraceNodeKind = 'root' | 'room' | 'agent' | 'task' | 'message';
-export type TraceNodeStatus = 'queued' | 'active' | 'done' | 'error' | 'idle' | 'busy' | 'dead' | 'note' | null;
+export type TraceNodeStatus =
+  | 'queued'
+  | 'active'
+  | 'done'
+  | 'error'
+  | 'idle'
+  | 'busy'
+  | 'dead'
+  | 'note'
+  | null;
 export interface TraceNode {
-  id: string;                    // unique, e.g. 'room:crew', 'agent:wk-01', 'task:42', 'msg:abc'
+  id: string; // unique, e.g. 'room:crew', 'agent:wk-01', 'task:42', 'msg:abc'
   kind: TraceNodeKind;
-  iconKey: string;               // maps to kind: 'root' | 'room' | 'agent' | 'task' | 'message'
+  iconKey: string; // maps to kind: 'root' | 'room' | 'agent' | 'task' | 'message'
   label: string;
   status: TraceNodeStatus;
-  timestamp: number | null;      // unix seconds of node's primary time
-  durationMs: number | null;     // null if unknown
-  tokensIn: number | null;       // aggregated input tokens (null if unknown)
-  tokensOut: number | null;      // aggregated output tokens (null if unknown)
-  cost: number | null;           // aggregated cost in USD (null if unknown)
+  timestamp: number | null; // unix seconds of node's primary time
+  durationMs: number | null; // null if unknown
+  tokensIn: number | null; // aggregated input tokens (null if unknown)
+  tokensOut: number | null; // aggregated output tokens (null if unknown)
+  cost: number | null; // aggregated cost in USD (null if unknown)
   children: TraceNode[];
   meta: Record<string, unknown>; // raw backing row (Room / AgentInfo / Task / Message)
 }

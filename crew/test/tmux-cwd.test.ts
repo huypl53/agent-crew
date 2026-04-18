@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 import { getPaneCwd } from '../src/tmux/index.ts';
 
 describe('getPaneCwd', () => {
@@ -7,10 +7,13 @@ describe('getPaneCwd', () => {
     expect(result).toBeNull();
   });
 
-  it.skipIf(!process.env.TMUX_PANE)('returns CWD for current pane', async () => {
-    const pane = process.env.TMUX_PANE!;
-    const result = await getPaneCwd(pane);
-    expect(result).not.toBeNull();
-    expect(result!.startsWith('/')).toBe(true);
-  });
+  it.skipIf(!process.env.TMUX_PANE)(
+    'returns CWD for current pane',
+    async () => {
+      const pane = process.env.TMUX_PANE!;
+      const result = await getPaneCwd(pane);
+      expect(result).not.toBeNull();
+      expect(result!.startsWith('/')).toBe(true);
+    },
+  );
 });

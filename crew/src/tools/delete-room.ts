@@ -1,5 +1,5 @@
-import { ok, err } from '../shared/types.ts';
 import type { ToolResult } from '../shared/types.ts';
+import { err, ok } from '../shared/types.ts';
 import { getDb } from '../state/db.ts';
 import { getRoom, getRoomMembers } from '../state/index.ts';
 
@@ -19,8 +19,12 @@ export function handleDeleteRoom(params: DeleteRoomParams): ToolResult {
 
   const members = getRoomMembers(roomData.id);
   const db = getDb();
-  const { count: msgCount } = db.query('SELECT COUNT(*) as count FROM messages WHERE room_id = ?').get(roomData.id) as { count: number };
-  const { count: taskCount } = db.query('SELECT COUNT(*) as count FROM tasks WHERE room_id = ?').get(roomData.id) as { count: number };
+  const { count: msgCount } = db
+    .query('SELECT COUNT(*) as count FROM messages WHERE room_id = ?')
+    .get(roomData.id) as { count: number };
+  const { count: taskCount } = db
+    .query('SELECT COUNT(*) as count FROM tasks WHERE room_id = ?')
+    .get(roomData.id) as { count: number };
 
   if (!confirm) {
     return err(
@@ -31,5 +35,11 @@ export function handleDeleteRoom(params: DeleteRoomParams): ToolResult {
   // CASCADE on rooms table handles agents, messages, tasks, cursors
   db.run('DELETE FROM rooms WHERE id = ?', [roomData.id]);
 
-  return ok({ deleted: true, room, removed_members: members.map(a => a.name), messages_deleted: msgCount, tasks_deleted: taskCount });
+  return ok({
+    deleted: true,
+    room,
+    removed_members: members.map((a) => a.name),
+    messages_deleted: msgCount,
+    tasks_deleted: taskCount,
+  });
 }

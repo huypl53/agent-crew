@@ -1,22 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import RoomsSidebar from './components/RoomsSidebar.tsx';
-import MessageFeed from './components/MessageFeed.tsx';
-import KindFilter from './components/KindFilter.tsx';
+import React, { useEffect, useState } from 'react';
+import AgentEditModal from './components/AgentEditModal.tsx';
 import AgentInspector from './components/AgentInspector.tsx';
+import Composer from './components/Composer.tsx';
 import HeaderStats from './components/HeaderStats.tsx';
+import KindFilter from './components/KindFilter.tsx';
+import MessageFeed from './components/MessageFeed.tsx';
+import type { View } from './components/NavBar.tsx';
 import NavBar from './components/NavBar.tsx';
+import RoomModal from './components/RoomModal.tsx';
+import RoomsSidebar from './components/RoomsSidebar.tsx';
 import TaskBoard from './components/TaskBoard.tsx';
+import TemplatesPanel from './components/TemplatesPanel.tsx';
 import TimelineView from './components/TimelineView.tsx';
 import TraceView from './components/TraceView.tsx';
-import TemplatesPanel from './components/TemplatesPanel.tsx';
-import Composer from './components/Composer.tsx';
-import RoomModal from './components/RoomModal.tsx';
-import AgentEditModal from './components/AgentEditModal.tsx';
-import { useWebSocket } from './hooks/useWebSocket.ts';
-import { useMessages } from './hooks/useMessages.ts';
 import { get, post } from './hooks/useApi.ts';
+import { useMessages } from './hooks/useMessages.ts';
+import { useWebSocket } from './hooks/useWebSocket.ts';
 import type { Agent, AgentTemplate, Message, Room } from './types.ts';
-import type { View } from './components/NavBar.tsx';
 
 const ALL_KINDS = ['task', 'completion', 'error', 'question', 'status', 'chat'];
 
@@ -35,21 +35,27 @@ export default function App() {
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [roomModal, setRoomModal] = useState<RoomModalState | null>(null);
   const [agentEditTarget, setAgentEditTarget] = useState<Agent | null>(null);
-  const [enabledKinds, setEnabledKinds] = useState<Set<string>>(new Set(ALL_KINDS));
+  const [enabledKinds, setEnabledKinds] = useState<Set<string>>(
+    new Set(ALL_KINDS),
+  );
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
 
   // Fetch templates on mount and refresh on template-change WS event
   useEffect(() => {
-    get<AgentTemplate[]>('/templates').then(setTemplates).catch(() => undefined);
+    get<AgentTemplate[]>('/templates')
+      .then(setTemplates)
+      .catch(() => undefined);
   }, []);
   useEffect(() => {
     return subscribe('template-change', () => {
-      get<AgentTemplate[]>('/templates').then(setTemplates).catch(() => undefined);
+      get<AgentTemplate[]>('/templates')
+        .then(setTemplates)
+        .catch(() => undefined);
     });
   }, [subscribe]);
 
   const toggleKind = (kind: string) => {
-    setEnabledKinds(prev => {
+    setEnabledKinds((prev) => {
       const next = new Set(prev);
       next.has(kind) ? next.delete(kind) : next.add(kind);
       return next;
@@ -57,10 +63,16 @@ export default function App() {
   };
 
   const handleCloneRoom = async (room: Room) => {
-    const templateName = prompt(`Save room "${room.name}" as template. Enter template name:`);
+    const templateName = prompt(
+      `Save room "${room.name}" as template. Enter template name:`,
+    );
     if (!templateName?.trim()) return;
     try {
-      await post('/room-templates', { name: templateName.trim(), topic: room.topic ?? null, agentTemplateIds: [] });
+      await post('/room-templates', {
+        name: templateName.trim(),
+        topic: room.topic ?? null,
+        agentTemplateIds: [],
+      });
     } catch (e) {
       alert(`Failed to clone: ${(e as Error).message}`);
     }
@@ -77,14 +89,22 @@ export default function App() {
             selectedRoom={selectedRoom}
             onSelect={setSelectedRoom}
             onCreateRoom={() => setRoomModal({ mode: 'create' })}
-            onDeleteRoom={room => setRoomModal({ mode: 'delete-confirm', room })}
-            onEditTopic={room => setRoomModal({ mode: 'edit-topic', room })}
-            onEditCast={room => setRoomModal({ mode: 'edit-cast', room })}
-            onCloneRoom={room => void handleCloneRoom(room)}
+            onDeleteRoom={(room) =>
+              setRoomModal({ mode: 'delete-confirm', room })
+            }
+            onEditTopic={(room) => setRoomModal({ mode: 'edit-topic', room })}
+            onEditCast={(room) => setRoomModal({ mode: 'edit-cast', room })}
+            onCloneRoom={(room) => void handleCloneRoom(room)}
           />
           <main className="flex-1 flex flex-col min-w-0">
             <header className="px-4 py-2 border-b border-slate-700 text-sm text-slate-400 flex-shrink-0">
-              {selectedRoom ? <span className="text-slate-200 font-medium">#{selectedRoom}</span> : 'Crew Dashboard'}
+              {selectedRoom ? (
+                <span className="text-slate-200 font-medium">
+                  #{selectedRoom}
+                </span>
+              ) : (
+                'Crew Dashboard'
+              )}
             </header>
             <KindFilter enabledKinds={enabledKinds} onToggle={toggleKind} />
             <MessageFeed
@@ -96,10 +116,17 @@ export default function App() {
               onReplySelect={setReplyTarget}
             />
             <div className="border-t border-slate-700 flex-shrink-0">
-              <Composer room={selectedRoom} replyTarget={replyTarget} onClearReply={() => setReplyTarget(null)} />
+              <Composer
+                room={selectedRoom}
+                replyTarget={replyTarget}
+                onClearReply={() => setReplyTarget(null)}
+              />
             </div>
           </main>
-          <AgentInspector room={selectedRoom} onEditAgent={setAgentEditTarget} />
+          <AgentInspector
+            room={selectedRoom}
+            onEditAgent={setAgentEditTarget}
+          />
         </div>
       )}
 

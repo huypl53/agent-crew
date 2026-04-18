@@ -1,8 +1,8 @@
-import { ok, err } from '../shared/types.ts';
-import type { ToolResult } from '../shared/types.ts';
-import { getAgent, getRoom } from '../state/index.ts';
-import { deliverMessage } from '../delivery/index.ts';
 import { config } from '../config.ts';
+import { deliverMessage } from '../delivery/index.ts';
+import type { ToolResult } from '../shared/types.ts';
+import { err, ok } from '../shared/types.ts';
+import { getAgent, getRoom } from '../state/index.ts';
 
 interface SendMessageParams {
   room: string;
@@ -14,7 +14,9 @@ interface SendMessageParams {
   reply_to?: number;
 }
 
-export async function handleSendMessage(params: SendMessageParams): Promise<ToolResult> {
+export async function handleSendMessage(
+  params: SendMessageParams,
+): Promise<ToolResult> {
   const { room, text, to, mode = 'push', name, kind, reply_to } = params;
 
   if (!room || !text || !name) {
@@ -49,7 +51,9 @@ export async function handleSendMessage(params: SendMessageParams): Promise<Tool
   }
 
   if (kind === 'task' && !to) {
-    return err('Task messages require a "to" param — broadcast tasks are not supported');
+    return err(
+      'Task messages require a "to" param — broadcast tasks are not supported',
+    );
   }
 
   // Validate target if directed message
@@ -63,24 +67,34 @@ export async function handleSendMessage(params: SendMessageParams): Promise<Tool
     }
   }
 
-  const results = await deliverMessage(name, room, text, to ?? null, mode, kind as any, reply_to);
+  const results = await deliverMessage(
+    name,
+    room,
+    text,
+    to ?? null,
+    mode,
+    kind as any,
+    reply_to,
+  );
 
   if (results.length === 1) {
     return ok({
       message_id: results[0]!.message_id,
       delivered: results[0]!.delivered,
       queued: results[0]!.queued,
-      ...(results[0]!.task_id !== undefined && { task_id: results[0]!.task_id }),
+      ...(results[0]!.task_id !== undefined && {
+        task_id: results[0]!.task_id,
+      }),
     });
   }
 
   // Broadcast: return summary
-  const delivered = results.filter(r => r.delivered).length;
+  const delivered = results.filter((r) => r.delivered).length;
   return ok({
     broadcast: true,
     recipients: results.length,
     delivered,
     queued: results.length,
-    message_ids: results.map(r => r.message_id),
+    message_ids: results.map((r) => r.message_id),
   });
 }

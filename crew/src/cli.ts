@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
+import { formatError, formatHelp, formatResult } from './cli/formatter.ts';
 import { parseArgs } from './cli/parse.ts';
 import { COMMANDS } from './cli/router.ts';
-import { formatResult, formatError, formatHelp } from './cli/formatter.ts';
-import { initDb } from './state/db.ts';
 import { initServerLog } from './shared/server-log.ts';
+import { initDb } from './state/db.ts';
 
 initServerLog();
 
@@ -20,11 +20,21 @@ if (parsed.command === 'wait-idle') {
   const { handleWaitIdle } = await import('./tools/wait-idle.ts');
   await handleWaitIdle({
     target: String(parsed.flags.target ?? parsed.positional[0] ?? ''),
-    stable_count: parsed.flags['stable-count'] ? parseInt(String(parsed.flags['stable-count']), 10) : undefined,
-    idle_seconds: parsed.flags['idle-seconds'] ? parseInt(String(parsed.flags['idle-seconds']), 10) : undefined,
-    poll_interval: parsed.flags['poll-interval'] ? parseInt(String(parsed.flags['poll-interval']), 10) : undefined,
-    timeout: parsed.flags.timeout ? parseInt(String(parsed.flags.timeout), 10) : undefined,
-    lines: parsed.flags.lines ? parseInt(String(parsed.flags.lines), 10) : undefined,
+    stable_count: parsed.flags['stable-count']
+      ? parseInt(String(parsed.flags['stable-count']), 10)
+      : undefined,
+    idle_seconds: parsed.flags['idle-seconds']
+      ? parseInt(String(parsed.flags['idle-seconds']), 10)
+      : undefined,
+    poll_interval: parsed.flags['poll-interval']
+      ? parseInt(String(parsed.flags['poll-interval']), 10)
+      : undefined,
+    timeout: parsed.flags.timeout
+      ? parseInt(String(parsed.flags.timeout), 10)
+      : undefined,
+    lines: parsed.flags.lines
+      ? parseInt(String(parsed.flags.lines), 10)
+      : undefined,
   });
   process.exit(0);
 }
@@ -32,14 +42,22 @@ if (parsed.command === 'wait-idle') {
 // 'serve' is handled before initDb() since startServer() calls initDb() itself
 if (parsed.command === 'serve') {
   const { startServer } = await import('./server/index.ts');
-  const port = parsed.flags.port ? parseInt(String(parsed.flags.port), 10) : undefined;
-  const host = typeof parsed.flags.host === 'string' ? parsed.flags.host : undefined;
+  const port = parsed.flags.port
+    ? parseInt(String(parsed.flags.port), 10)
+    : undefined;
+  const host =
+    typeof parsed.flags.host === 'string' ? parsed.flags.host : undefined;
   const server = startServer({ port, host });
-  console.log(`Crew dashboard listening on http://${server.hostname}:${server.port}`);
+  console.log(
+    `Crew dashboard listening on http://${server.hostname}:${server.port}`,
+  );
   console.log(`API: http://${server.hostname}:${server.port}/api/rooms`);
   console.log(`WS:  ws://${server.hostname}:${server.port}/ws`);
   // keep alive until Ctrl-C
-  process.on('SIGINT', () => { server.stop(true); process.exit(0); });
+  process.on('SIGINT', () => {
+    server.stop(true);
+    process.exit(0);
+  });
   await new Promise(() => {}); // block forever
 }
 
@@ -47,7 +65,9 @@ initDb();
 
 const cmd = COMMANDS[parsed.command];
 if (!cmd) {
-  console.error(`Unknown command: ${parsed.command}. Run 'crew help' for usage.`);
+  console.error(
+    `Unknown command: ${parsed.command}. Run 'crew help' for usage.`,
+  );
   process.exit(1);
 }
 

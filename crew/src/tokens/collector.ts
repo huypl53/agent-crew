@@ -1,7 +1,7 @@
+import { logServer } from '../shared/server-log.ts';
 import { getAllAgents } from '../state/index.ts';
 import { collectClaudeCodeTokens } from './claude-code.ts';
 import { collectCodexTokens } from './codex.ts';
-import { logServer } from '../shared/server-log.ts';
 
 const COLLECT_INTERVAL_MS = 30_000;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -38,11 +38,17 @@ export async function collectAllTokens(): Promise<void> {
 export function startTokenCollection(): void {
   if (intervalHandle) return; // already running
   collectAllTokens().catch((e) => {
-    logServer('ERROR', `Token collection first-run failed: ${e instanceof Error ? e.message : String(e)}`);
+    logServer(
+      'ERROR',
+      `Token collection first-run failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
   });
   intervalHandle = setInterval(() => {
     collectAllTokens().catch((e) => {
-      logServer('ERROR', `Token collection interval failed: ${e instanceof Error ? e.message : String(e)}`);
+      logServer(
+        'ERROR',
+        `Token collection interval failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
     });
   }, COLLECT_INTERVAL_MS);
 }

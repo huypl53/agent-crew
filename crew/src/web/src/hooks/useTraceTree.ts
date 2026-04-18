@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Agent, Message, Room, Task, TraceNode, TraceNodeStatus } from '../types.ts';
+import type {
+  Agent,
+  Message,
+  Room,
+  Task,
+  TraceNode,
+  TraceNodeStatus,
+} from '../types.ts';
 
 // Extended Task shape from DB (includes message_id not in the frontend Task type)
 type RawTask = Task & { message_id: number | null };
@@ -13,15 +20,24 @@ interface TracePayload {
 
 function toTaskStatus(s: string): TraceNodeStatus {
   const map: Record<string, TraceNodeStatus> = {
-    queued: 'queued', active: 'active', completed: 'done', done: 'done',
-    error: 'error', sent: 'note', cancelled: null, interrupted: null,
+    queued: 'queued',
+    active: 'active',
+    completed: 'done',
+    done: 'done',
+    error: 'error',
+    sent: 'note',
+    cancelled: null,
+    interrupted: null,
   };
   return map[s] ?? null;
 }
 
 function toAgentStatus(s: string): TraceNodeStatus {
   const map: Record<string, TraceNodeStatus> = {
-    busy: 'busy', idle: 'idle', dead: 'dead', unknown: null,
+    busy: 'busy',
+    idle: 'idle',
+    dead: 'dead',
+    unknown: null,
   };
   return map[s] ?? null;
 }
@@ -59,8 +75,8 @@ function buildTree(payload: TracePayload): TraceNode {
   }
 
   // assign each message to a task (via root) or fall back to agent by sender
-  const msgsByTask = new Map<number, Message[]>();   // task.id → messages
-  const msgsByAgent = new Map<string, Message[]>();  // agent.name → unassigned messages
+  const msgsByTask = new Map<number, Message[]>(); // task.id → messages
+  const msgsByAgent = new Map<string, Message[]>(); // agent.name → unassigned messages
 
   for (const msg of messages) {
     const rootId = findRoot(Number(msg.message_id), parentOf);
@@ -77,7 +93,7 @@ function buildTree(payload: TracePayload): TraceNode {
   }
 
   // task.id → task node (memoised to avoid duplication across rooms)
-  const agentSet = new Map<string, Agent>(agents.map(a => [a.name, a]));
+  const agentSet = new Map<string, Agent>(agents.map((a) => [a.name, a]));
 
   function makeMessageNode(msg: Message): TraceNode {
     return {
@@ -99,11 +115,14 @@ function buildTree(payload: TracePayload): TraceNode {
   function makeTaskNode(task: RawTask): TraceNode {
     const createdMs = Date.parse(task.created_at);
     const updatedMs = Date.parse(task.updated_at);
-    const durationMs = !isNaN(createdMs) && !isNaN(updatedMs) ? updatedMs - createdMs : null;
+    const durationMs =
+      !isNaN(createdMs) && !isNaN(updatedMs) ? updatedMs - createdMs : null;
     const msgs = (msgsByTask.get(task.id) ?? []).map(makeMessageNode);
     // Aggregate tokens from children (messages) - currently all null but structured for future
-    const tokensIn = msgs.reduce((sum, m) => sum + (m.tokensIn ?? 0), 0) || null;
-    const tokensOut = msgs.reduce((sum, m) => sum + (m.tokensOut ?? 0), 0) || null;
+    const tokensIn =
+      msgs.reduce((sum, m) => sum + (m.tokensIn ?? 0), 0) || null;
+    const tokensOut =
+      msgs.reduce((sum, m) => sum + (m.tokensOut ?? 0), 0) || null;
     const cost = msgs.reduce((sum, m) => sum + (m.cost ?? 0), 0) || null;
     return {
       id: `task:${task.id}`,
@@ -123,23 +142,33 @@ function buildTree(payload: TracePayload): TraceNode {
 
   function makeAgentNode(agent: Agent, roomName: string): TraceNode {
     const agentTasks = tasks
-      .filter(t => t.assigned_to === agent.name && t.room === roomName)
+      .filter((t) => t.assigned_to === agent.name && t.room === roomName)
       .map(makeTaskNode);
     // append unassigned messages for this agent in this room
     const unassigned = (msgsByAgent.get(agent.name) ?? [])
-      .filter(m => m.room === roomName)
+      .filter((m) => m.room === roomName)
       .map(makeMessageNode);
     const allChildren = [...agentTasks, ...unassigned];
     // Aggregate tokens: start with agent.token_usage if available, then add children sums
     const agentTokensIn = agent.token_usage?.input_tokens ?? null;
     const agentTokensOut = agent.token_usage?.output_tokens ?? null;
     const agentCost = agent.token_usage?.cost_usd ?? null;
-    const childrenTokensIn = allChildren.reduce((sum, c) => sum + (c.tokensIn ?? 0), 0) || null;
-    const childrenTokensOut = allChildren.reduce((sum, c) => sum + (c.tokensOut ?? 0), 0) || null;
-    const childrenCost = allChildren.reduce((sum, c) => sum + (c.cost ?? 0), 0) || null;
-    const tokensIn = agentTokensIn != null ? agentTokensIn + (childrenTokensIn ?? 0) : childrenTokensIn;
-    const tokensOut = agentTokensOut != null ? agentTokensOut + (childrenTokensOut ?? 0) : childrenTokensOut;
-    const cost = agentCost != null ? agentCost + (childrenCost ?? 0) : childrenCost;
+    const childrenTokensIn =
+      allChildren.reduce((sum, c) => sum + (c.tokensIn ?? 0), 0) || null;
+    const childrenTokensOut =
+      allChildren.reduce((sum, c) => sum + (c.tokensOut ?? 0), 0) || null;
+    const childrenCost =
+      allChildren.reduce((sum, c) => sum + (c.cost ?? 0), 0) || null;
+    const tokensIn =
+      agentTokensIn != null
+        ? agentTokensIn + (childrenTokensIn ?? 0)
+        : childrenTokensIn;
+    const tokensOut =
+      agentTokensOut != null
+        ? agentTokensOut + (childrenTokensOut ?? 0)
+        : childrenTokensOut;
+    const cost =
+      agentCost != null ? agentCost + (childrenCost ?? 0) : childrenCost;
     return {
       id: `agent:${roomName}:${agent.name}`,
       kind: 'agent',
@@ -156,11 +185,13 @@ function buildTree(payload: TracePayload): TraceNode {
     };
   }
 
-  const roomNodes: TraceNode[] = rooms.map(room => {
-    const roomAgents = agents.filter(a => a.room_name === room.name);
-    const agentNodes = roomAgents.map(a => makeAgentNode(a, room.name));
-    const tokensIn = agentNodes.reduce((sum, a) => sum + (a.tokensIn ?? 0), 0) || null;
-    const tokensOut = agentNodes.reduce((sum, a) => sum + (a.tokensOut ?? 0), 0) || null;
+  const roomNodes: TraceNode[] = rooms.map((room) => {
+    const roomAgents = agents.filter((a) => a.room_name === room.name);
+    const agentNodes = roomAgents.map((a) => makeAgentNode(a, room.name));
+    const tokensIn =
+      agentNodes.reduce((sum, a) => sum + (a.tokensIn ?? 0), 0) || null;
+    const tokensOut =
+      agentNodes.reduce((sum, a) => sum + (a.tokensOut ?? 0), 0) || null;
     const cost = agentNodes.reduce((sum, a) => sum + (a.cost ?? 0), 0) || null;
     return {
       id: `room:${room.name}`,
@@ -178,8 +209,10 @@ function buildTree(payload: TracePayload): TraceNode {
     };
   });
 
-  const tokensIn = roomNodes.reduce((sum, r) => sum + (r.tokensIn ?? 0), 0) || null;
-  const tokensOut = roomNodes.reduce((sum, r) => sum + (r.tokensOut ?? 0), 0) || null;
+  const tokensIn =
+    roomNodes.reduce((sum, r) => sum + (r.tokensIn ?? 0), 0) || null;
+  const tokensOut =
+    roomNodes.reduce((sum, r) => sum + (r.tokensOut ?? 0), 0) || null;
   const cost = roomNodes.reduce((sum, r) => sum + (r.cost ?? 0), 0) || null;
   return {
     id: 'root',
@@ -197,7 +230,11 @@ function buildTree(payload: TracePayload): TraceNode {
   };
 }
 
-export function useTraceTree(): { tree: TraceNode | null; loading: boolean; error: string | null } {
+export function useTraceTree(): {
+  tree: TraceNode | null;
+  loading: boolean;
+  error: string | null;
+} {
   const [payload, setPayload] = useState<TracePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -207,13 +244,27 @@ export function useTraceTree(): { tree: TraceNode | null; loading: boolean; erro
     mountedRef.current = true;
     const load = () => {
       fetch('/api/trace')
-        .then(r => r.json() as Promise<TracePayload>)
-        .then(data => { if (mountedRef.current) { setPayload(data); setLoading(false); setError(null); } })
-        .catch(e => { if (mountedRef.current) { setError(String(e)); setLoading(false); } });
+        .then((r) => r.json() as Promise<TracePayload>)
+        .then((data) => {
+          if (mountedRef.current) {
+            setPayload(data);
+            setLoading(false);
+            setError(null);
+          }
+        })
+        .catch((e) => {
+          if (mountedRef.current) {
+            setError(String(e));
+            setLoading(false);
+          }
+        });
     };
     load();
     const id = setInterval(load, 10000);
-    return () => { mountedRef.current = false; clearInterval(id); };
+    return () => {
+      mountedRef.current = false;
+      clearInterval(id);
+    };
   }, []);
 
   const tree = useMemo(() => (payload ? buildTree(payload) : null), [payload]);

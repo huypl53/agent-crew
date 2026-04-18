@@ -39,9 +39,13 @@ function assert(condition: boolean, label: string, detail?: string) {
 }
 
 async function capturePaneFull(): Promise<string> {
-  const proc = Bun.spawn(['tmux', 'capture-pane', '-p', '-J', '-t', paneId, '-S', '-500'], {
-    stdout: 'pipe', stderr: 'pipe',
-  });
+  const proc = Bun.spawn(
+    ['tmux', 'capture-pane', '-p', '-J', '-t', paneId, '-S', '-500'],
+    {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
   const text = await new Response(proc.stdout).text();
   await proc.exited;
   return text;
@@ -56,7 +60,10 @@ function isIdle(paneText: string): boolean {
 }
 
 // Wait until expectedMarker appears in pane AND Claude Code returns to idle
-async function waitForResponse(expectedMarker: string, timeoutMs = 120_000): Promise<{ idle: boolean; found: boolean }> {
+async function waitForResponse(
+  expectedMarker: string,
+  timeoutMs = 120_000,
+): Promise<{ idle: boolean; found: boolean }> {
   const deadline = Date.now() + timeoutMs;
   // Give Claude Code a moment to start processing
   await Bun.sleep(2000);
@@ -74,7 +81,9 @@ async function waitForResponse(expectedMarker: string, timeoutMs = 120_000): Pro
     if (isIdle(text) && !foundMarker) {
       // Idle but marker not found — either Enter didn't fire or Claude gave unexpected response
       // Check if our message text is stuck in the input area
-      const inputLine = lines.find(l => l.includes('❯') && l.trim().length > 2);
+      const inputLine = lines.find(
+        (l) => l.includes('❯') && l.trim().length > 2,
+      );
       if (inputLine && inputLine.length > 10) {
         // Something in the input — might be stuck
         return { idle: true, found: false };
@@ -98,17 +107,20 @@ interface TestCase {
 const testCases: TestCase[] = [
   {
     name: 'Short message',
-    message: 'What is 2+2? Reply with ONLY this format: "RESULT-SHORT: <number>"',
+    message:
+      'What is 2+2? Reply with ONLY this format: "RESULT-SHORT: <number>"',
     expectInPane: 'RESULT-SHORT',
   },
   {
     name: 'Medium message (100+ chars)',
-    message: 'Count the number of exported functions in src/tmux/index.ts. Reply with ONLY this format: "RESULT-MEDIUM: <count> functions". Do not include any other text.',
+    message:
+      'Count the number of exported functions in src/tmux/index.ts. Reply with ONLY this format: "RESULT-MEDIUM: <count> functions". Do not include any other text.',
     expectInPane: 'RESULT-MEDIUM',
   },
   {
     name: 'Long message (200+ chars, typical crew task)',
-    message: '[lead-1@frontend]: This is a simulated crew task message. I need you to read the file src/tmux/index.ts and tell me what constant value is used for PASTE_SETTLE_MS. Reply with ONLY this format: "RESULT-LONG: <value>ms". Do not include any other text or explanation. This is important for verifying our send reliability fix.',
+    message:
+      '[lead-1@frontend]: This is a simulated crew task message. I need you to read the file src/tmux/index.ts and tell me what constant value is used for PASTE_SETTLE_MS. Reply with ONLY this format: "RESULT-LONG: <value>ms". Do not include any other text or explanation. This is important for verifying our send reliability fix.',
     expectInPane: 'RESULT-LONG',
   },
   {
@@ -131,20 +143,29 @@ console.log();
 // Verify Claude Code is idle before starting
 const initialText = await capturePaneFull();
 if (!initialText.includes('❯')) {
-  console.error('ERROR: Claude Code does not appear to be at the idle prompt (❯)');
+  console.error(
+    'ERROR: Claude Code does not appear to be at the idle prompt (❯)',
+  );
   process.exit(1);
 }
 console.log('Claude Code is idle at ❯ prompt. Starting tests...\n');
 
 for (const tc of testCases) {
   console.log(`Test: ${tc.name}`);
-  console.log(`  Message: "${tc.message.slice(0, 70)}${tc.message.length > 70 ? '...' : ''}"`);
-  console.log(`  Length: ${tc.message.length} chars, ${tc.message.split('\n').length} line(s)`);
+  console.log(
+    `  Message: "${tc.message.slice(0, 70)}${tc.message.length > 70 ? '...' : ''}"`,
+  );
+  console.log(
+    `  Length: ${tc.message.length} chars, ${tc.message.split('\n').length} line(s)`,
+  );
 
   // Send the message via our sendKeys function
   const result = await sendKeys(paneId, tc.message);
-  assert(result.delivered, 'sendKeys() returned delivered=true',
-    result.delivered ? undefined : result.error);
+  assert(
+    result.delivered,
+    'sendKeys() returned delivered=true',
+    result.delivered ? undefined : result.error,
+  );
 
   if (!result.delivered) {
     console.log('  ⚠ Skipping — delivery failed\n');
@@ -153,19 +174,28 @@ for (const tc of testCases) {
 
   // Wait for Claude Code to process and respond
   console.log(`  Waiting for response marker "${tc.expectInPane}"...`);
-  const { idle, found } = await waitForResponse(tc.expectInPane, tc.timeoutMs || 120_000);
+  const { idle, found } = await waitForResponse(
+    tc.expectInPane,
+    tc.timeoutMs || 120_000,
+  );
 
   if (!found && idle) {
     // Check if message is stuck in the input buffer (Enter didn't fire)
     const paneText = await capturePaneFull();
     const lines = paneText.split('\n');
-    const promptLines = lines.filter(l => l.includes('❯')).slice(-1);
+    const promptLines = lines.filter((l) => l.includes('❯')).slice(-1);
     if (promptLines.length && promptLines[0].length > 5) {
-      assert(false, 'Enter key submitted the message',
-        `Text stuck in input buffer: "${promptLines[0].slice(0, 80)}..."`);
+      assert(
+        false,
+        'Enter key submitted the message',
+        `Text stuck in input buffer: "${promptLines[0].slice(0, 80)}..."`,
+      );
     } else {
-      assert(false, `Response contains "${tc.expectInPane}"`,
-        'Claude Code responded but marker not found (unexpected response format)');
+      assert(
+        false,
+        `Response contains "${tc.expectInPane}"`,
+        'Claude Code responded but marker not found (unexpected response format)',
+      );
     }
   } else if (!found && !idle) {
     assert(false, 'Claude Code responded in time', 'Timed out');
