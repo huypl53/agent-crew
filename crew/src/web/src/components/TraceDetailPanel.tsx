@@ -61,7 +61,7 @@ function RoomPanel({ node }: { node: TraceNode }) {
       <div className="text-base font-semibold text-slate-200 mb-3">#{node.label}</div>
       {room.topic && <Field label="Topic">{room.topic}</Field>}
       <Field label="Members">
-        {room.members?.length ? room.members.join(', ') : '—'}
+        {room.member_count ?? '—'}
       </Field>
       <Field label="Message count">{node.children.filter(c => c.kind === 'message').length || '—'}</Field>
       {room.created_at && <Field label="Created">{fmtTs(room.created_at)}</Field>}

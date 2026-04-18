@@ -49,7 +49,7 @@ export default function RoomsSidebar({ selectedRoom, onSelect, onCreateRoom, onD
               {/* Room name — extra right padding to clear icon buttons */}
               <div className="truncate pr-24 font-medium">#{room.name}</div>
               <div className="text-xs text-slate-500 truncate">
-                {room.members.length} member{room.members.length !== 1 ? 's' : ''}
+                {room.member_count ?? 0} member{(room.member_count ?? 0) !== 1 ? 's' : ''}
               </div>
               {room.topic && (
                 <p className="text-xs text-slate-500 truncate">{room.topic}</p>

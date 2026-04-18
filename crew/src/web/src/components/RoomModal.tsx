@@ -155,7 +155,7 @@ export default function RoomModal({ mode, room, templates = [], onClose, onSucce
           <>
             <h2 className="text-slate-100 font-semibold">Delete #{room?.name}?</h2>
             <p className="text-sm text-slate-400">
-              This will remove {room?.members.length ?? 0} member{(room?.members.length ?? 0) !== 1 ? 's' : ''} and all messages.
+              This will remove {room?.member_count ?? 0} member{(room?.member_count ?? 0) !== 1 ? 's' : ''} and all messages.
             </p>
           </>
         )}

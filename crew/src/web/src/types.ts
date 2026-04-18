@@ -1,6 +1,8 @@
 export interface Room {
+  id: number;
+  path: string;
   name: string;
-  members: string[];
+  member_count: number;
   topic?: string;
   created_at: string;
   template_names?: string[];
