@@ -1,7 +1,8 @@
 import { ok, err } from '../shared/types.ts';
 import type { ToolResult } from '../shared/types.ts';
-import { refreshAgent } from '../state/index.ts';
-import { paneExists } from '../tmux/index.ts';
+import { getRoomByPath, refreshAgent } from '../state/index.ts';
+import { paneExists, getPaneCwd } from '../tmux/index.ts';
+import { normalizePath } from '../shared/path-utils.ts';
 
 interface RefreshParams {
   name: string;
@@ -31,17 +32,29 @@ export async function handleRefresh(params: RefreshParams): Promise<ToolResult> 
     return err(`tmux pane ${target} does not exist`);
   }
 
-  const agent = await refreshAgent(name, target);
+  const cwd = await getPaneCwd(target);
+  if (!cwd) {
+    return err(`Could not determine CWD for pane ${target}`);
+  }
+
+  const normalizedPath = normalizePath(cwd);
+  const room = getRoomByPath(normalizedPath);
+
+  if (!room) {
+    return err(`Room not found for path: ${normalizedPath}. Use 'crew join' to register first.`);
+  }
+
+  const agent = await refreshAgent(room.id, name, target);
   if (!agent) {
-    return err(`Agent "${name}" not found in database or legacy state`);
+    return err(`Agent "${name}" not found in room "${room.name}". Use 'crew join' to register first.`);
   }
 
   return ok({
     agent_id: agent.agent_id,
     name: agent.name,
     role: agent.role,
-    rooms: agent.rooms,
+    room: agent.room_name,
+    room_path: agent.room_path,
     tmux_target: agent.tmux_target,
-    migrated: false,
   });
 }

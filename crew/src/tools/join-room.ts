@@ -1,8 +1,8 @@
 import { ok, err } from '../shared/types.ts';
 import type { ToolResult, AgentRole } from '../shared/types.ts';
-import { addAgent, getAgent, getAllAgents, isNameTakenInRoom, removeAgentFully } from '../state/index.ts';
-import { getDb } from '../state/db.ts';
-import { paneExists } from '../tmux/index.ts';
+import { addAgent, getAgentByRoomAndName, getAllAgents, getOrCreateRoom, removeAgentFully } from '../state/index.ts';
+import { paneExists, getPaneCwd } from '../tmux/index.ts';
+import { normalizePath } from '../shared/path-utils.ts';
 import { logServer } from '../shared/server-log.ts';
 
 const VALID_ROLES: AgentRole[] = ['boss', 'leader', 'worker'];
@@ -81,66 +81,58 @@ export async function handleJoinRoom(params: JoinRoomParams): Promise<ToolResult
     target = pane && pane.trim() ? pane.trim() : null;
   }
 
-  if (target === null) {
-    // Pull-only join: no tmux pane — register with null pane, skip all tmux steps
-    const agent = addAgent(name, role as AgentRole, room, null, 'unknown');
-    return ok({
-      agent_id: agent.agent_id,
-      name: agent.name,
-      role: agent.role,
-      room,
-      tmux_target: null,
-      pull_only: true,
-    });
+  let cwd: string;
+  if (target) {
+    const exists = await paneExists(target);
+    if (!exists) {
+      return err(`tmux pane ${target} does not exist`);
+    }
+    const paneCwd = await getPaneCwd(target);
+    if (!paneCwd) {
+      return err(`Could not determine CWD for pane ${target}`);
+    }
+    cwd = paneCwd;
+  } else {
+    cwd = process.cwd();
   }
 
-  // Validate pane exists
-  const exists = await paneExists(target);
-  if (!exists) {
-    return err(`tmux pane ${target} does not exist`);
-  }
+  const normalizedPath = normalizePath(cwd);
+  const roomObj = getOrCreateRoom(normalizedPath, room);
 
-  // Evict any stale agent occupying the same pane under a different name
   for (const agent of getAllAgents()) {
     if (agent.tmux_target === target && agent.name !== name) {
       removeAgentFully(agent.name);
     }
   }
 
-  // Check duplicate name — allow overwrite if old pane is dead
-  if (isNameTakenInRoom(name, room)) {
-    const existing = getAgent(name);
-    if (existing) {
-      const oldPaneAlive = existing.tmux_target ? await paneExists(existing.tmux_target) : false;
-      if (oldPaneAlive && existing.tmux_target !== target) {
-        return err(`Name "${name}" is already taken in room "${room}" by a live agent (pane ${existing.tmux_target})`);
-      }
+  const existing = getAgentByRoomAndName(roomObj.id, name);
+  if (existing && existing.tmux_target && target && existing.tmux_target !== target) {
+    const oldPaneAlive = await paneExists(existing.tmux_target);
+    if (oldPaneAlive) {
+      return err(`Name "${name}" is already taken in room "${roomObj.name}" by a live agent (pane ${existing.tmux_target})`);
     }
-    // Old pane is dead, same pane re-registering, or orphaned member row — overwrite
   }
 
-  const agentType = await detectAgentType(target);
-  const agent = addAgent(name, role as AgentRole, room, target, agentType);
+  const agentType = target ? await detectAgentType(target) : 'unknown';
+  const agent = addAgent(name, role as AgentRole, roomObj.id, target, agentType);
 
-  // Inject room topic into agent pane — failure must NOT fail the join
   try {
-    const roomRow = getDb().query<{ topic: string | null }, [string]>(
-      'SELECT topic FROM rooms WHERE name = ?'
-    ).get(room);
-    if (roomRow?.topic) {
+    if (roomObj.topic && target) {
       const { getQueue } = await import('../delivery/pane-queue.ts');
       await getQueue(target, { role: role as AgentRole })
-        .enqueue({ type: 'paste', text: `Room topic: ${roomRow.topic}` });
+        .enqueue({ type: 'paste', text: `Room topic: ${roomObj.topic}` });
     }
   } catch (e) {
-    logServer('WARN', `topic inject failed for ${name} in ${room}: ${e instanceof Error ? e.message : String(e)}`);
+    logServer('WARN', `topic inject failed for ${name} in ${roomObj.name}: ${e instanceof Error ? e.message : String(e)}`);
   }
 
   return ok({
     agent_id: agent.agent_id,
     name: agent.name,
     role: agent.role,
-    room,
+    room: roomObj.name,
+    room_path: roomObj.path,
     tmux_target: agent.tmux_target,
+    pull_only: target === null,
   });
 }
