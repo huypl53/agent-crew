@@ -49,7 +49,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
   status: (d) => {
     const task = d.current_task ? ` task:#${d.current_task.id}(${d.current_task.status})` : '';
     const queued = d.queued_tasks?.length ? ` queued:${d.queued_tasks.length}` : '';
-    return `${d.name} ${d.status} ${d.tmux_target} ${d.rooms?.join(',')}${task}${queued}`;
+    return `${d.name} ${d.status} ${d.tmux_target} ${d.room_name ?? d.room ?? ''}${task}${queued}`;
   },
 
   rooms: (d) => {
@@ -81,7 +81,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
 
   join: (d) => `Joined ${d.room} as ${d.name} (${d.role}) pane:${d.tmux_target}`,
   leave: () => 'Left room',
-  refresh: (d) => `Refreshed ${d.name} rooms:${d.rooms?.join(',')} pane:${d.tmux_target}`,
+  refresh: (d) => `Refreshed ${d.name} room:${d.room ?? d.room_name ?? ''} pane:${d.tmux_target}`,
   topic: (d) => `Topic set: ${d.topic}`,
   'update-task': (d) => `task:#${d.task_id} → ${d.status}`,
   interrupt: (d) => `Interrupted task:#${d.task_id} (was ${d.previous_status})`,

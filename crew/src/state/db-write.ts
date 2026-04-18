@@ -97,16 +97,9 @@ export function dbUpdateAgentCapabilities(name: string, capabilities: string[]):
 
 export function dbRemoveAgentFromRoom(agentName: string, room: string): { error?: string } {
   const { error } = withDb(db => {
-    db.run('DELETE FROM members WHERE agent = ? AND room = ?', [agentName, room]);
-    const agentRooms = (db.query('SELECT COUNT(*) as c FROM members WHERE agent = ?').get(agentName) as { c: number }).c;
-    if (agentRooms === 0) {
-      db.run('DELETE FROM agents WHERE name = ?', [agentName]);
-      db.run('DELETE FROM cursors WHERE agent = ?', [agentName]);
-    }
-    const roomMembers = (db.query('SELECT COUNT(*) as c FROM members WHERE room = ?').get(room) as { c: number }).c;
-    if (roomMembers === 0) {
-      db.run('DELETE FROM rooms WHERE name = ?', [room]);
-    }
+    const roomRow = db.query('SELECT id FROM rooms WHERE name = ? ORDER BY id LIMIT 1').get(room) as { id: number } | null;
+    if (!roomRow) return;
+    db.run('DELETE FROM agents WHERE name = ? AND room_id = ?', [agentName, roomRow.id]);
   });
   return error ? { error } : {};
 }
@@ -114,13 +107,14 @@ export function dbRemoveAgentFromRoom(agentName: string, room: string): { error?
 export function dbDeleteAgent(name: string): { removed_from_rooms: string[]; error?: string } {
   let removed_from_rooms: string[] = [];
   const { error } = withDb(db => {
-    removed_from_rooms = (db.query('SELECT room FROM members WHERE agent = ?').all(name) as { room: string }[]).map(r => r.room);
-    db.run('DELETE FROM members WHERE agent = ?', [name]);
-    db.run('DELETE FROM cursors WHERE agent = ?', [name]);
-    db.run('DELETE FROM agents WHERE name = ?', [name]);
-    for (const room of removed_from_rooms) {
-      const count = (db.query('SELECT COUNT(*) as c FROM members WHERE room = ?').get(room) as { c: number }).c;
-      if (count === 0) db.run('DELETE FROM rooms WHERE name = ?', [room]);
+    const agentRow = db.query(`
+      SELECT a.id, r.name as room_name
+      FROM agents a JOIN rooms r ON r.id = a.room_id
+      WHERE a.name = ?
+    `).get(name) as { id: number; room_name: string } | null;
+    if (agentRow) {
+      removed_from_rooms = [agentRow.room_name];
+      db.run('DELETE FROM agents WHERE id = ?', [agentRow.id]);
     }
   });
   return error ? { removed_from_rooms: [], error } : { removed_from_rooms };
