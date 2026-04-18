@@ -26,14 +26,18 @@ export async function handleSendMessage(params: SendMessageParams): Promise<Tool
     return err(`Sender "${name}" is not registered`);
   }
 
-  if (!sender.rooms.includes(room)) {
+  const r = getRoom(room);
+  if (!r) {
+    return err(`Room "${room}" does not exist`);
+  }
+
+  if (sender.room_id !== r.id) {
     return err(`Sender "${name}" is not a member of room "${room}"`);
   }
 
   // Sender verification: compare claimed sender's registered pane against the
   // tmux pane that originated this call (available via $TMUX_PANE in the process env).
   if (config.senderVerification !== 'off') {
-    // $TMUX_PANE is set by tmux in any shell/process running inside a pane (%N format).
     const callerPane = process.env.TMUX_PANE ?? null;
     if (callerPane && sender.tmux_target && callerPane !== sender.tmux_target) {
       const msg = `Sender mismatch: claimed "${name}" (pane ${sender.tmux_target}) but caller is pane ${callerPane}`;
@@ -42,11 +46,6 @@ export async function handleSendMessage(params: SendMessageParams): Promise<Tool
       }
       console.warn(`[sender-verification] ${msg}`);
     }
-  }
-
-  const r = getRoom(room);
-  if (!r) {
-    return err(`Room "${room}" does not exist`);
   }
 
   if (kind === 'task' && !to) {
@@ -59,7 +58,7 @@ export async function handleSendMessage(params: SendMessageParams): Promise<Tool
     if (!target) {
       return err(`Target agent "${to}" is not registered`);
     }
-    if (!target.rooms.includes(room)) {
+    if (target.room_id !== r.id) {
       return err(`Target "${to}" is not a member of room "${room}"`);
     }
   }
