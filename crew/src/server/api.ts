@@ -473,7 +473,11 @@ export async function handleApi(req: Request): Promise<Response> {
   const onboardMatch = path.match(/^\/room-templates\/(\d+)\/onboard$/);
   if (method === 'POST' && onboardMatch) {
     const body = await req.json().catch(() => null);
+    if (!body?.name) return err('Missing name');
     if (!body?.path) return err('Missing path');
+    if (/\s/.test(body.name)) return err('Room name must not contain spaces');
+    if (body.name.length > 32)
+      return err('Room name must be 32 characters or fewer');
     const templateId = parseInt(onboardMatch[1]!, 10);
     const tplDef = getRoomTemplateDefinition(templateId);
     if (!tplDef) return err('Room template not found', 404);
@@ -495,8 +499,12 @@ export async function handleApi(req: Request): Promise<Response> {
     if (agentTpls.length === 0)
       return err('No agent templates in this room template');
 
+    // Check room name collision
+    const roomName = body.name.replace(/[^a-zA-Z0-9_-]/g, '-');
+    const existingRoom = getRoom(roomName);
+    if (existingRoom) return err(`Room "${roomName}" already exists`);
+
     // Create room with real path
-    const roomName = tplDef.name.replace(/[^a-zA-Z0-9_-]/g, '-');
     const createResult = dbCreateRoom(
       roomName,
       tplDef.topic ?? undefined,
@@ -505,10 +513,11 @@ export async function handleApi(req: Request): Promise<Response> {
     );
     if (createResult.error) return err(createResult.error);
 
-    // Create tmux session and spawn panes
-    const { createSession, splitPane, sendKeys } = await import(
+    // Create tmux session — kill existing session if name collides
+    const { createSession, splitPane, sendKeys, killSession } = await import(
       '../tmux/index.ts'
     );
+    await killSession(roomName);
     const paneIds: string[] = [];
     try {
       const firstPane = await createSession(roomName, normalizedPath);

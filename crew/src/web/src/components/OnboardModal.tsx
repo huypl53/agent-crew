@@ -20,6 +20,7 @@ export default function OnboardModal({
   agentTemplates,
   onClose,
 }: Props) {
+  const [roomName, setRoomName] = useState(template.name);
   const [path, setPath] = useState('');
   const [step, setStep] = useState<'input' | 'review' | 'result'>('input');
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +32,10 @@ export default function OnboardModal({
     .filter(Boolean) as AgentTemplate[];
 
   const handleReview = () => {
+    if (!roomName.trim()) {
+      setError('Room name is required');
+      return;
+    }
     if (!path.trim()) {
       setError('Project path is required');
       return;
@@ -47,7 +52,10 @@ export default function OnboardModal({
         ok: boolean;
         room: string;
         agents: OnboardResult[];
-      }>(`/room-templates/${template.id}/onboard`, { path: path.trim() });
+      }>(`/room-templates/${template.id}/onboard`, {
+        name: roomName.trim(),
+        path: path.trim(),
+      });
       setResults(res.agents);
       setStep('result');
     } catch (e) {
@@ -72,6 +80,17 @@ export default function OnboardModal({
 
         {step === 'input' && (
           <>
+            <div>
+              <label className="text-xs text-slate-400 uppercase tracking-widest">
+                Room Name
+              </label>
+              <input
+                value={roomName}
+                onChange={(e) => setRoomName(e.target.value)}
+                className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none"
+                placeholder="my-room"
+              />
+            </div>
             <div>
               <label className="text-xs text-slate-400 uppercase tracking-widest">
                 Project Path
@@ -107,6 +126,10 @@ export default function OnboardModal({
         {step === 'review' && (
           <>
             <div className="space-y-2">
+              <div className="text-xs text-slate-400">
+                <span className="uppercase tracking-widest">Room</span>
+                <p className="text-slate-300 mt-0.5">{roomName}</p>
+              </div>
               <div className="text-xs text-slate-400">
                 <span className="uppercase tracking-widest">Path</span>
                 <p className="font-mono text-slate-300 mt-0.5">{path}</p>
