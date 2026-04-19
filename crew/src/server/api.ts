@@ -563,7 +563,7 @@ export async function handleApi(req: Request): Promise<Response> {
         const queue = getQueue(paneId, { role: at.role });
         await queue.enqueue({
           type: 'paste',
-          text: `/crew:join-room ${roomName} ${at.name} ${at.role}`,
+          text: `crew join --room ${roomName} --role ${at.role} --name ${at.name}`,
         });
 
         results.push({

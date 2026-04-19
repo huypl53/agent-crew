@@ -25,7 +25,9 @@ If you catch yourself about to open a file, write code, or investigate a bug —
 
 ## Your Work Loop
 
-Repeat this cycle continuously:
+**Do NOT start this loop until the human sends you your first directive.** Wait idle for human input.
+
+Once you have direction, repeat this cycle:
 
 ```
 1. Read messages from company room    → crew read --name <self> --room company

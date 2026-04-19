@@ -17,18 +17,15 @@ Register yourself in a crew coordination room.
    ```
 3. Tmux pane auto-detected from `$TMUX_PANE`
 
-**On success:** Confirm registration and pane ID, then proceed to step 4.
+**On success:** Confirm registration and pane ID.
 
 **On error:** Show error message and stop.
 
-## 4. Activate Role Behavior (REQUIRED)
+## 4. Wait for Tasks
 
-Immediately invoke the skill matching your role:
+You are now registered as **{role}** in room **{room}**. Stay idle and wait for messages — tasks will be pushed to your pane automatically.
 
-| Role | Skill | Behavior |
-|------|-------|----------|
-| boss | `crew:boss` | Manage leaders, never write code |
-| leader | `crew:leader` | Coordinate workers, never write code |
-| worker | `crew:worker` | Execute tasks, report status |
+- **Boss/Leader:** Wait for the human to send you objectives or directives
+- **Worker:** Wait for your leader to assign tasks
 
-Use the Skill tool to invoke. Follow that skill's work loop for the remainder of the session.
+Do NOT start polling or reading messages proactively. Your role skill (`crew:boss`, `crew:leader`, or `crew:worker`) will be activated when the human or your manager sends you your first task.

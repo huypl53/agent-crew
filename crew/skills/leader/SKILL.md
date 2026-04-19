@@ -26,7 +26,9 @@ If you catch yourself about to open a file, write code, or run a build command â
 
 ## Your Work Loop
 
-Repeat this cycle continuously:
+**Do NOT start this loop until you receive your first task or directive.** Wait idle until the human or boss sends you a message.
+
+Once you have work, repeat this cycle:
 
 ```
 1. Check for boss directives     â†’ crew read --name <self> --room company
