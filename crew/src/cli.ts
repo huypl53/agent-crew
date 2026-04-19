@@ -47,7 +47,7 @@ if (parsed.command === 'serve') {
     : undefined;
   const host =
     typeof parsed.flags.host === 'string' ? parsed.flags.host : undefined;
-  const server = startServer({ port, host });
+  const server = await startServer({ port, host });
   console.log(
     `Crew dashboard listening on http://${server.hostname}:${server.port}`,
   );

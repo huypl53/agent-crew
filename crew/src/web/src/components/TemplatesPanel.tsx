@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { del, get } from '../hooks/useApi.ts';
 import { useWebSocket } from '../hooks/useWebSocket.ts';
 import type { AgentTemplate, RoomTemplate } from '../types.ts';
+import OnboardModal from './OnboardModal.tsx';
 import RoomTemplateModal from './RoomTemplateModal.tsx';
 import TemplateModal from './TemplateModal.tsx';
 
@@ -14,6 +15,7 @@ export default function TemplatesPanel() {
   const [roomTplModal, setRoomTplModal] = useState<
     RoomTemplate | 'create' | null
   >(null);
+  const [onboardTpl, setOnboardTpl] = useState<RoomTemplate | null>(null);
 
   const loadAgentTemplates = () =>
     get<AgentTemplate[]>('/templates')
@@ -121,6 +123,11 @@ export default function TemplatesPanel() {
                       {t.capabilities}
                     </p>
                   )}
+                  {t.start_command && t.start_command !== 'claude' && (
+                    <p className="text-xs text-slate-500 font-mono truncate mt-0.5">
+                      $ {t.start_command}
+                    </p>
+                  )}
                 </div>
                 <button
                   onClick={() => setModal(t)}
@@ -183,6 +190,12 @@ export default function TemplatesPanel() {
                   Edit
                 </button>
                 <button
+                  onClick={() => setOnboardTpl(rt)}
+                  className="text-xs text-slate-500 hover:text-blue-400 px-2 py-1"
+                >
+                  Onboard
+                </button>
+                <button
                   onClick={() => void handleDeleteRoom(rt)}
                   className="text-xs text-slate-500 hover:text-red-400 px-2 py-1"
                 >
@@ -217,6 +230,13 @@ export default function TemplatesPanel() {
             setRoomTplModal(null);
             void loadRoomTemplates();
           }}
+        />
+      )}
+      {onboardTpl && (
+        <OnboardModal
+          template={onboardTpl}
+          agentTemplates={templates}
+          onClose={() => setOnboardTpl(null)}
         />
       )}
     </div>

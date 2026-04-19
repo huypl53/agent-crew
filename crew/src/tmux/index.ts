@@ -380,3 +380,57 @@ export async function paneCommandLooksAlive(target: string): Promise<boolean> {
   if (!cmd) return false;
   return AGENT_PROC_RE.test(cmd);
 }
+
+export async function createSession(
+  name: string,
+  cwd: string,
+): Promise<string> {
+  const result = await run('new-session', '-d', '-c', cwd, '-s', name);
+  if (!result.success) throw new Error(result.stderr || 'createSession failed');
+  // -F doesn't output for new-session in tmux 3.x; query separately
+  const panes = await run('list-panes', '-t', name, '-F', '#{pane_id}');
+  if (!panes.success || !panes.stdout.trim())
+    throw new Error('failed to get pane ID for new session');
+  return panes.stdout.trim().split('\n')[0]!;
+}
+
+export async function splitPane(target: string, cwd: string): Promise<string> {
+  // Get panes before split
+  const sessionQuery = await run(
+    'list-panes',
+    '-t',
+    target,
+    '-F',
+    '#{session_name} #{pane_id}',
+  );
+  if (!sessionQuery.success) throw new Error('failed to query session');
+  const before = new Set(
+    sessionQuery.stdout
+      .trim()
+      .split('\n')
+      .map((l) => l.split(' ')[1]!),
+  );
+
+  const result = await run('split-window', '-t', target, '-c', cwd);
+  if (!result.success) throw new Error(result.stderr || 'splitPane failed');
+
+  // Find the new pane by diffing pane lists
+  const sessionName = sessionQuery.stdout.trim().split('\n')[0]!.split(' ')[0]!;
+  const afterQuery = await run(
+    'list-panes',
+    '-t',
+    sessionName,
+    '-F',
+    '#{pane_id}',
+  );
+  if (!afterQuery.success) throw new Error('failed to list panes after split');
+  const after = afterQuery.stdout.trim().split('\n');
+  const newPane = after.find((id) => !before.has(id));
+  if (!newPane) throw new Error('could not identify new pane after split');
+  return newPane;
+}
+
+export async function killSession(name: string): Promise<boolean> {
+  const result = await run('kill-session', '-t', name);
+  return result.success;
+}

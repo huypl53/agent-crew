@@ -1045,6 +1045,31 @@ export function getAllRoomTemplates(): RoomTemplate[] {
   }));
 }
 
+export function getRoomTemplateDefinition(
+  id: number,
+): RoomTemplate | undefined {
+  const row = getDb()
+    .query('SELECT * FROM room_template_definitions WHERE id = ?')
+    .get(id) as {
+    id: number;
+    name: string;
+    topic: string | null;
+    agent_template_ids: string;
+    created_at: string;
+  } | null;
+  if (!row) return undefined;
+  return {
+    ...row,
+    agent_template_ids: JSON.parse(row.agent_template_ids) as number[],
+  };
+}
+
+export function getAgentTemplateById(id: number): AgentTemplate | undefined {
+  return getDb().query('SELECT * FROM agent_templates WHERE id = ?').get(id) as
+    | AgentTemplate
+    | undefined;
+}
+
 // --- Test helpers ---
 
 export function clearState(): void {

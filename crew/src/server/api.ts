@@ -19,6 +19,7 @@ import {
   getAgentDbStatus,
   getAgentMessageCounts,
   getAgentTaskStats,
+  getAgentTemplateById,
   getAllAgents,
   getAllRooms,
   getAllRoomTemplates,
@@ -29,6 +30,7 @@ import {
   getRoom,
   getRoomMembers,
   getRoomMessages,
+  getRoomTemplateDefinition,
   getRoomTemplateNames,
   getTaskEvents,
   searchTasks,
@@ -378,6 +380,7 @@ export async function handleApi(req: Request): Promise<Response> {
       body.role,
       body.persona,
       body.capabilities,
+      body.start_command,
     );
     return r.error ? err(r.error) : json({ ok: true }, 201);
   }
@@ -388,7 +391,13 @@ export async function handleApi(req: Request): Promise<Response> {
     const id = parseInt(tplMatch[1]!, 10);
     const body = await req.json().catch(() => null);
     if (!body) return err('Missing body');
-    for (const f of ['name', 'role', 'persona', 'capabilities'] as const) {
+    for (const f of [
+      'name',
+      'role',
+      'persona',
+      'capabilities',
+      'start_command',
+    ] as const) {
       if (body[f] !== undefined) {
         const r = dbUpdateTemplate(id, f, String(body[f]));
         if (r.error) return err(r.error);
@@ -458,6 +467,113 @@ export async function handleApi(req: Request): Promise<Response> {
     const id = parseInt(roomTplMatch[1]!, 10);
     const r = dbDeleteRoomTemplate(id);
     return r.error ? err(r.error) : json({ ok: true });
+  }
+
+  // POST /api/room-templates/:id/onboard
+  const onboardMatch = path.match(/^\/room-templates\/(\d+)\/onboard$/);
+  if (method === 'POST' && onboardMatch) {
+    const body = await req.json().catch(() => null);
+    if (!body?.path) return err('Missing path');
+    const templateId = parseInt(onboardMatch[1]!, 10);
+    const tplDef = getRoomTemplateDefinition(templateId);
+    if (!tplDef) return err('Room template not found', 404);
+
+    // Validate and normalize path
+    const { realpathSync, existsSync } = await import('fs');
+    if (!existsSync(body.path)) return err('Path does not exist');
+    const normalizedPath = realpathSync(body.path);
+
+    // Resolve agent templates
+    const agentTpls = tplDef.agent_template_ids
+      .map((id: number) => getAgentTemplateById(id))
+      .filter(Boolean) as Array<{
+      id: number;
+      name: string;
+      role: string;
+      start_command?: string;
+    }>;
+    if (agentTpls.length === 0)
+      return err('No agent templates in this room template');
+
+    // Create room with real path
+    const roomName = tplDef.name.replace(/[^a-zA-Z0-9_-]/g, '-');
+    const createResult = dbCreateRoom(
+      roomName,
+      tplDef.topic ?? undefined,
+      tplDef.agent_template_ids,
+      normalizedPath,
+    );
+    if (createResult.error) return err(createResult.error);
+
+    // Create tmux session and spawn panes
+    const { createSession, splitPane, sendKeys } = await import(
+      '../tmux/index.ts'
+    );
+    const paneIds: string[] = [];
+    try {
+      const firstPane = await createSession(roomName, normalizedPath);
+      paneIds.push(firstPane);
+      for (let i = 1; i < agentTpls.length; i++) {
+        const paneId = await splitPane(firstPane, normalizedPath);
+        paneIds.push(paneId);
+      }
+    } catch (e) {
+      return err(
+        `tmux setup failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    // Launch agents and send join commands
+    const { getQueue } = await import('../delivery/pane-queue.ts');
+    const results: Array<{
+      name: string;
+      role: string;
+      pane: string;
+      status: string;
+    }> = [];
+
+    for (let i = 0; i < agentTpls.length; i++) {
+      const at = agentTpls[i]!;
+      const paneId = paneIds[i]!;
+      const cmd = at.start_command || 'claude';
+
+      try {
+        // Send start command
+        const sendResult = await sendKeys(paneId, cmd);
+        if (!sendResult.delivered) {
+          results.push({
+            name: at.name,
+            role: at.role,
+            pane: paneId,
+            status: `start_failed: ${sendResult.error}`,
+          });
+          continue;
+        }
+
+        // Wait for agent to become idle, then send join command
+        const queue = getQueue(paneId, { role: at.role });
+        await queue.enqueue({
+          type: 'paste',
+          text: `/crew:join-room ${roomName} ${at.name} ${at.role}`,
+        });
+
+        results.push({
+          name: at.name,
+          role: at.role,
+          pane: paneId,
+          status: 'started',
+        });
+      } catch (e) {
+        results.push({
+          name: at.name,
+          role: at.role,
+          pane: paneId,
+          status: `error: ${e instanceof Error ? e.message : String(e)}`,
+        });
+      }
+    }
+
+    return json({ ok: true, room: roomName, agents: results }, 201);
   }
 
   return err('Not found', 404);

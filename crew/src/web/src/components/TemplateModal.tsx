@@ -17,6 +17,9 @@ export default function TemplateModal({ template, onClose, onSuccess }: Props) {
   const [capabilities, setCapabilities] = useState(
     template?.capabilities ?? '',
   );
+  const [startCommand, setStartCommand] = useState(
+    template?.start_command ?? 'claude',
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -33,6 +36,7 @@ export default function TemplateModal({ template, onClose, onSuccess }: Props) {
         role,
         persona: persona || undefined,
         capabilities: capabilities || undefined,
+        start_command: startCommand || 'claude',
       };
       if (template) {
         await patch(`/templates/${template.id}`, body);
@@ -108,6 +112,20 @@ export default function TemplateModal({ template, onClose, onSuccess }: Props) {
               placeholder='["coding", "testing"]'
               className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 resize-none focus:outline-none"
             />
+          </div>
+          <div>
+            <label className="text-xs text-slate-400 uppercase tracking-widest">
+              Start Command
+            </label>
+            <input
+              value={startCommand}
+              onChange={(e) => setStartCommand(e.target.value)}
+              className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none font-mono"
+              placeholder="claude"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Command to launch the agent (default: claude)
+            </p>
           </div>
         </div>
         {error && <div className="text-xs text-red-400">{error}</div>}

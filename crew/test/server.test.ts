@@ -16,7 +16,7 @@ function mkRoom(name: string) {
   return getOrCreateRoom(`/test/${name}`, name);
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   mkdirSync(TEST_STATE_DIR, { recursive: true });
   process.env.CREW_STATE_DIR = TEST_STATE_DIR;
 
@@ -26,7 +26,7 @@ beforeAll(() => {
   addAgent('alice', 'leader', mkRoom('general').id, '%1', 'claude-code');
   addAgent('bob', 'worker', mkRoom('general').id, '%2', 'claude-code');
 
-  server = startServer({ port: PORT, host: '127.0.0.1' });
+  server = await startServer({ port: PORT, host: '127.0.0.1' });
   base = `http://127.0.0.1:${PORT}`;
   wsBase = `ws://127.0.0.1:${PORT}`;
 });

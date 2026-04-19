@@ -104,6 +104,7 @@ const SCHEMA = `
     role TEXT NOT NULL DEFAULT 'worker',
     persona TEXT,
     capabilities TEXT,
+    start_command TEXT NOT NULL DEFAULT 'claude',
     created_at TEXT NOT NULL
   );
 
@@ -227,6 +228,17 @@ export function initDb(path?: string): void {
   }>;
   if (!taskCols.some((c) => c.name === 'context')) {
     _db.exec('ALTER TABLE tasks ADD COLUMN context TEXT');
+  }
+
+  const tplCols = _db
+    .query('PRAGMA table_info(agent_templates)')
+    .all() as Array<{
+    name: string;
+  }>;
+  if (!tplCols.some((c) => c.name === 'start_command')) {
+    _db.exec(
+      "ALTER TABLE agent_templates ADD COLUMN start_command TEXT NOT NULL DEFAULT 'claude'",
+    );
   }
 
   const scopes = ['agents', 'messages', 'tasks', 'templates', 'room-templates'];

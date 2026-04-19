@@ -60,15 +60,17 @@ export function dbCreateTemplate(
   role: string,
   persona?: string,
   capabilities?: string,
+  startCommand?: string,
 ): { error?: string } {
   const { error } = withDb((db) => {
     db.run(
-      'INSERT INTO agent_templates (name, role, persona, capabilities, created_at) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO agent_templates (name, role, persona, capabilities, start_command, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       [
         name,
         role,
         persona ?? null,
         capabilities ?? null,
+        startCommand || 'claude',
         new Date().toISOString(),
       ],
     );
@@ -78,10 +80,10 @@ export function dbCreateTemplate(
 
 export function dbUpdateTemplate(
   id: number,
-  field: 'name' | 'role' | 'persona' | 'capabilities',
+  field: 'name' | 'role' | 'persona' | 'capabilities' | 'start_command',
   value: string,
 ): { error?: string } {
-  const allowed = ['name', 'role', 'persona', 'capabilities'];
+  const allowed = ['name', 'role', 'persona', 'capabilities', 'start_command'];
   if (!allowed.includes(field)) return { error: 'Invalid field' };
   const { error } = withDb((db) => {
     db.run(`UPDATE agent_templates SET ${field} = ? WHERE id = ?`, [value, id]);

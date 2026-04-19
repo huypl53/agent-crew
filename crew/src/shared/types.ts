@@ -29,6 +29,7 @@ export interface AgentTemplate {
   role: AgentRole;
   persona?: string;
   capabilities?: string;
+  start_command?: string;
   created_at: string;
 }
 

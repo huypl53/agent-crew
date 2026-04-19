@@ -1,3 +1,4 @@
+import { existsSync } from 'fs';
 import { join } from 'path';
 import { initDb } from '../state/db.ts';
 import { handleApi } from './api.ts';
@@ -18,13 +19,25 @@ const STATIC_PLACEHOLDER = `<!DOCTYPE html>
 </body>
 </html>`;
 
-export function startServer(
+export async function startServer(
   opts: ServeOptions = {},
 ): ReturnType<typeof Bun.serve> {
   const port = opts.port ?? parseInt(process.env.CREW_SERVE_PORT ?? '3456', 10);
   const hostname = opts.host ?? process.env.CREW_SERVE_HOST ?? '127.0.0.1';
 
   initDb();
+
+  // Auto-build web app if dist/web/ is missing
+  const distDir = new URL('../../dist/web/', import.meta.url).pathname;
+  if (!existsSync(join(distDir, 'index.html'))) {
+    console.log('[crew] Web app not built. Running build:web...');
+    const proc = Bun.spawn(['bun', 'run', 'build:web'], {
+      cwd: join(import.meta.dir, '../..'),
+      stdout: 'inherit',
+      stderr: 'inherit',
+    });
+    await proc.exited;
+  }
 
   const server = Bun.serve({
     port,

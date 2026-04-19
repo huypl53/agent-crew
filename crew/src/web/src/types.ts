@@ -14,6 +14,7 @@ export interface AgentTemplate {
   role: 'boss' | 'leader' | 'worker';
   persona?: string;
   capabilities?: string;
+  start_command?: string;
   created_at: string;
 }
 
