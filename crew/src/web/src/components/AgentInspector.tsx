@@ -1,7 +1,13 @@
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import { get, post } from '../hooks/useApi.ts';
-import type { Agent, Room } from '../types.ts';
+import type {
+  Agent,
+  AgentTemplate,
+  Room,
+  TmuxWindowInfo,
+  TmuxWindowsResponse,
+} from '../types.ts';
 
 const STATUS_COLORS: Record<string, string> = {
   busy: 'text-yellow-400',
@@ -58,12 +64,27 @@ function activeFor(joinedAt: string): string {
   return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
+function renderWindowPreview(window: TmuxWindowInfo): string {
+  if (window.panes.length === 0) return '[empty]';
+  return window.panes
+    .map(
+      (pane) =>
+        `${pane.active ? '●' : '○'}${pane.pane_index}:${pane.title || pane.pane_id}`,
+    )
+    .join(' | ');
+}
+
 interface Props {
   room: string | null;
+  templates: AgentTemplate[];
   onEditAgent?: (agent: Agent) => void;
 }
 
-export default function AgentInspector({ room, onEditAgent }: Props) {
+export default function AgentInspector({
+  room,
+  templates,
+  onEditAgent,
+}: Props) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [roomInfo, setRoomInfo] = useState<Room | null>(null);
   const [selected, setSelected] = useState<Agent | null>(null);
@@ -74,6 +95,15 @@ export default function AgentInspector({ room, onEditAgent }: Props) {
   const [sendText, setSendText] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [onboardOpen, setOnboardOpen] = useState(false);
+  const [tmuxWindows, setTmuxWindows] = useState<TmuxWindowsResponse | null>(
+    null,
+  );
+  const [onboardTemplateId, setOnboardTemplateId] = useState<number | ''>('');
+  const [onboardName, setOnboardName] = useState('');
+  const [onboardWindow, setOnboardWindow] = useState<number | null>(null);
+  const [onboardLoading, setOnboardLoading] = useState(false);
+  const [onboardError, setOnboardError] = useState<string | null>(null);
 
   // Reset send state when selected agent changes
   useEffect(() => {
@@ -96,6 +126,50 @@ export default function AgentInspector({ room, onEditAgent }: Props) {
       setSendError((e as Error).message);
     } finally {
       setSending(false);
+    }
+  };
+
+  const openOnboardModal = async () => {
+    if (!room) return;
+    setOnboardOpen(true);
+    setOnboardError(null);
+    setOnboardLoading(true);
+    try {
+      const data = await get<TmuxWindowsResponse>(
+        `/rooms/${encodeURIComponent(room)}/tmux-windows`,
+      );
+      setTmuxWindows(data);
+      setOnboardWindow(data.active_window_index);
+      if (templates.length > 0) setOnboardTemplateId(templates[0]!.id);
+    } catch (e) {
+      setOnboardError((e as Error).message);
+      setTmuxWindows(null);
+      setOnboardWindow(null);
+    } finally {
+      setOnboardLoading(false);
+    }
+  };
+
+  const handleOnboard = async () => {
+    if (!room || onboardTemplateId === '' || onboardWindow === null) return;
+    setOnboardLoading(true);
+    setOnboardError(null);
+    try {
+      await post(`/rooms/${encodeURIComponent(room)}/onboard-agent`, {
+        templateId: onboardTemplateId,
+        name: onboardName.trim() || undefined,
+        windowIndex: onboardWindow,
+      });
+      const members = await get<Agent[]>(
+        `/rooms/${encodeURIComponent(room)}/members`,
+      );
+      setAgents(members);
+      setOnboardOpen(false);
+      setOnboardName('');
+    } catch (e) {
+      setOnboardError((e as Error).message);
+    } finally {
+      setOnboardLoading(false);
     }
   };
 
@@ -140,8 +214,17 @@ export default function AgentInspector({ room, onEditAgent }: Props) {
 
   return (
     <aside className="w-64 flex-shrink-0 bg-slate-800 border-l border-slate-700 flex flex-col">
-      <div className="px-3 py-2 text-xs font-semibold uppercase tracking-widest text-slate-400 border-b border-slate-700">
-        Agents {room ? `· #${room}` : ''}
+      <div className="px-3 py-2 text-xs font-semibold uppercase tracking-widest text-slate-400 border-b border-slate-700 flex items-center gap-2">
+        <span className="flex-1">Agents {room ? `· #${room}` : ''}</span>
+        {room && (
+          <button
+            onClick={() => void openOnboardModal()}
+            className="px-1.5 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-[10px] text-slate-200"
+            title="Onboard agent from template"
+          >
+            + Agent
+          </button>
+        )}
       </div>
       {error && <div className="p-2 text-xs text-red-400">{error}</div>}
       <ul className="border-b border-slate-700 overflow-y-auto max-h-48">
@@ -392,6 +475,115 @@ export default function AgentInspector({ room, onEditAgent }: Props) {
       {!selected && (
         <div className="flex-1 flex items-center justify-center text-slate-600 text-xs">
           Click an agent to inspect
+        </div>
+      )}
+
+      {onboardOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+          onClick={() => setOnboardOpen(false)}
+        >
+          <div
+            className="bg-slate-800 rounded p-4 w-[30rem] max-h-[80vh] overflow-y-auto space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold text-slate-100">
+              Onboard agent to #{room}
+            </h3>
+
+            <div>
+              <label className="text-xs text-slate-400 uppercase tracking-widest">
+                Template
+              </label>
+              <select
+                value={onboardTemplateId}
+                onChange={(e) => setOnboardTemplateId(Number(e.target.value))}
+                className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-sm text-slate-200"
+              >
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.role})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs text-slate-400 uppercase tracking-widest">
+                Agent name (optional)
+              </label>
+              <input
+                value={onboardName}
+                onChange={(e) => setOnboardName(e.target.value)}
+                placeholder="Default: template name"
+                className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-sm text-slate-200"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-slate-400 uppercase tracking-widest">
+                Target window
+              </label>
+              {onboardLoading && !tmuxWindows ? (
+                <p className="mt-1 text-xs text-slate-500">Loading windows…</p>
+              ) : (
+                <div className="mt-1 space-y-2">
+                  {tmuxWindows?.windows.map((window) => (
+                    <button
+                      key={window.index}
+                      onClick={() => setOnboardWindow(window.index)}
+                      className={`w-full text-left p-2 rounded border ${onboardWindow === window.index ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 bg-slate-900/40 hover:bg-slate-700/40'}`}
+                    >
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-slate-200 font-medium">
+                          [{window.index}] {window.name || 'window'}
+                        </span>
+                        {window.active && (
+                          <span className="text-[10px] px-1 py-0.5 rounded bg-emerald-900 text-emerald-300">
+                            active
+                          </span>
+                        )}
+                        <span className="text-slate-500">
+                          {window.pane_count} panes
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[11px] text-slate-400 font-mono break-words">
+                        {renderWindowPreview(window)}
+                      </div>
+                    </button>
+                  ))}
+                  {!tmuxWindows?.windows.length && (
+                    <p className="text-xs text-slate-500">No windows found</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {onboardError && (
+              <p className="text-xs text-red-400">{onboardError}</p>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => setOnboardOpen(false)}
+                className="px-3 py-1.5 rounded text-sm text-slate-400 hover:text-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleOnboard()}
+                disabled={
+                  onboardLoading ||
+                  onboardTemplateId === '' ||
+                  onboardWindow === null ||
+                  !room
+                }
+                className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 disabled:opacity-40 rounded text-sm text-white"
+              >
+                {onboardLoading ? '…' : 'Onboard'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </aside>

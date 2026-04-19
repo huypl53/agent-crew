@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { startServer, stopServer } from '../src/server/index.ts';
 import { closeDb, initDb } from '../src/state/db.ts';
 import { addAgent, getOrCreateRoom } from '../src/state/index.ts';
 
 const TEST_STATE_DIR = `/tmp/crew-server-test-${process.pid}`;
+const TEST_TMUX_SOCKET = `crew-server-test-${process.pid}`;
 const PORT = 34560 + (process.pid % 1000); // unique port per test run
 
 let server: ReturnType<typeof startServer>;
@@ -19,22 +20,40 @@ function mkRoom(name: string) {
 beforeAll(async () => {
   mkdirSync(TEST_STATE_DIR, { recursive: true });
   process.env.CREW_STATE_DIR = TEST_STATE_DIR;
+  process.env.CREW_TMUX_SOCKET = TEST_TMUX_SOCKET;
+
+  // Isolated tmux server/socket for deterministic onboarding tests
+  await Bun.spawn([
+    'tmux',
+    '-L',
+    TEST_TMUX_SOCKET,
+    'new-session',
+    '-d',
+    '-s',
+    'general',
+    '-c',
+    '/tmp',
+  ]).exited;
 
   initDb(); // creates file at TEST_STATE_DIR/crew.db
 
-  // Seed some data
-  addAgent('alice', 'leader', mkRoom('general').id, '%1', 'claude-code');
-  addAgent('bob', 'worker', mkRoom('general').id, '%2', 'claude-code');
+  // Seed room-scoped agents mapped to isolated tmux session
+  addAgent('alice', 'leader', mkRoom('general').id, '%0', 'claude-code');
+  addAgent('bob', 'worker', mkRoom('general').id, '%1', 'claude-code');
 
   server = await startServer({ port: PORT, host: '127.0.0.1' });
   base = `http://127.0.0.1:${PORT}`;
   wsBase = `ws://127.0.0.1:${PORT}`;
 });
 
-afterAll(() => {
+afterAll(async () => {
   stopServer(server);
   closeDb();
+  await Bun.spawn(['tmux', '-L', TEST_TMUX_SOCKET, 'kill-server']).exited.catch(
+    () => undefined,
+  );
   delete process.env.CREW_STATE_DIR;
+  delete process.env.CREW_TMUX_SOCKET;
   rmSync(TEST_STATE_DIR, { recursive: true, force: true });
 });
 
@@ -106,6 +125,23 @@ describe('GET /api/rooms/:name/messages', () => {
   });
 });
 
+// ── GET /api/rooms/:name/tmux-windows ───────────────────────────────────────
+
+describe('GET /api/rooms/:name/tmux-windows', () => {
+  test('returns 404 for unknown room', async () => {
+    const { status } = await get('/api/rooms/no-such-room/tmux-windows');
+    expect(status).toBe(404);
+  });
+
+  test('returns window list with active window metadata', async () => {
+    const { status, body } = await get('/api/rooms/general/tmux-windows');
+    expect(status).toBe(200);
+    expect(Array.isArray(body.windows)).toBe(true);
+    expect(typeof body.session).toBe('string');
+    expect(body.active_window_index).not.toBeNull();
+  });
+});
+
 // ── POST /api/rooms ──────────────────────────────────────────────────────────
 
 describe('POST /api/rooms', () => {
@@ -131,6 +167,106 @@ describe('POST /api/rooms', () => {
   test('returns 400 when name missing', async () => {
     const { status } = await post('/api/rooms', { topic: 'no name' });
     expect(status).toBe(400);
+  });
+});
+
+// ── POST /api/rooms/:name/onboard-agent ─────────────────────────────────────
+
+describe('POST /api/rooms/:name/onboard-agent', () => {
+  test('returns 404 for unknown room', async () => {
+    const { status } = await post('/api/rooms/no-room/onboard-agent', {
+      templateId: 1,
+    });
+    expect(status).toBe(404);
+  });
+
+  test('returns 400 when templateId missing', async () => {
+    const { status } = await post('/api/rooms/general/onboard-agent', {
+      name: 'wk-new',
+    });
+    expect(status).toBe(400);
+  });
+
+  test('returns 404 when template not found', async () => {
+    const { status } = await post('/api/rooms/general/onboard-agent', {
+      templateId: 999999,
+    });
+    expect(status).toBe(404);
+  });
+
+  test('returns 400 when windowIndex invalid', async () => {
+    await post('/api/templates', {
+      name: 'onboard-worker-template',
+      role: 'worker',
+    });
+    const templatesRes = await get('/api/templates');
+    const templateId = templatesRes.body.find(
+      (t: any) => t.name === 'onboard-worker-template',
+    )?.id;
+    expect(templateId).toBeDefined();
+
+    const { status } = await post('/api/rooms/general/onboard-agent', {
+      templateId,
+      windowIndex: 'abc',
+    });
+    expect(status).toBe(400);
+  });
+
+  test('onboards successfully with explicit windowIndex', {
+    timeout: 15000,
+  }, async () => {
+    await post('/api/templates', {
+      name: 'onboard-worker-success-template',
+      role: 'worker',
+    });
+    const templatesRes = await get('/api/templates');
+    const templateId = templatesRes.body.find(
+      (t: any) => t.name === 'onboard-worker-success-template',
+    )?.id;
+    expect(templateId).toBeDefined();
+
+    const windowsRes = await get('/api/rooms/general/tmux-windows');
+    expect(windowsRes.status).toBe(200);
+    const explicitWindowIndex = windowsRes.body.windows[0]?.index;
+    expect(typeof explicitWindowIndex).toBe('number');
+
+    const { status, body } = await post('/api/rooms/general/onboard-agent', {
+      templateId,
+      windowIndex: explicitWindowIndex,
+    });
+    expect(status).toBe(201);
+    expect(body.ok).toBe(true);
+    expect(body.target_window.index).toBe(explicitWindowIndex);
+    expect(body.agent.role).toBe('worker');
+    expect(typeof body.agent.name).toBe('string');
+    expect(typeof body.agent.pane).toBe('string');
+  });
+
+  test('onboards successfully with active-window fallback', {
+    timeout: 15000,
+  }, async () => {
+    await post('/api/templates', {
+      name: 'onboard-worker-fallback-template',
+      role: 'worker',
+    });
+    const templatesRes = await get('/api/templates');
+    const templateId = templatesRes.body.find(
+      (t: any) => t.name === 'onboard-worker-fallback-template',
+    )?.id;
+    expect(templateId).toBeDefined();
+
+    const windowsRes = await get('/api/rooms/general/tmux-windows');
+    expect(windowsRes.status).toBe(200);
+    const activeWindowIndex = windowsRes.body.active_window_index;
+
+    const { status, body } = await post('/api/rooms/general/onboard-agent', {
+      templateId,
+      name: 'wk-fallback',
+    });
+    expect(status).toBe(201);
+    expect(body.ok).toBe(true);
+    expect(body.target_window.index).toBe(activeWindowIndex);
+    expect(body.agent.name).toBe('wk-fallback');
   });
 });
 

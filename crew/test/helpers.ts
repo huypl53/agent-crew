@@ -26,7 +26,7 @@ export async function createTestSession(
   // Kill existing session if any
   await runTmux('kill-session', '-t', session).catch(() => {});
 
-  // Create new session with a simple shell
+  // Create new session with /bin/sh to avoid zsh/oh-my-zsh init race
   const proc = Bun.spawn(
     [
       'tmux',
@@ -40,6 +40,7 @@ export async function createTestSession(
       '120',
       '-y',
       '40',
+      '/bin/sh',
     ],
     {
       stdout: 'pipe',

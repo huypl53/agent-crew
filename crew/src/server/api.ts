@@ -1,3 +1,4 @@
+import { randomSuffix } from '../shared/types.ts';
 import { getDb } from '../state/db.ts';
 import {
   dbCreateRoom,
@@ -16,6 +17,7 @@ import {
 } from '../state/db-write.ts';
 import {
   getAgent,
+  getAgentByRoomAndName,
   getAgentDbStatus,
   getAgentMessageCounts,
   getAgentTaskStats,
@@ -52,6 +54,10 @@ function parseIntParam(v: string | null): number | undefined {
   if (!v) return undefined;
   const n = parseInt(v, 10);
   return isNaN(n) ? undefined : n;
+}
+
+function shellQuote(input: string): string {
+  return `'${String(input).replace(/'/g, `'"'"'`)}'`;
 }
 
 export async function handleApi(req: Request): Promise<Response> {
@@ -97,6 +103,35 @@ export async function handleApi(req: Request): Promise<Response> {
     const offset = parseIntParam(url.searchParams.get('offset')) ?? 0;
     const msgs = getRoomMessages(name, offset, limit);
     return json(msgs);
+  }
+
+  // GET /api/rooms/:name/tmux-windows
+  const roomWindowsMatch = path.match(/^\/rooms\/([^/]+)\/tmux-windows$/);
+  if (method === 'GET' && roomWindowsMatch) {
+    const name = decodeURIComponent(roomWindowsMatch[1]!);
+    const room = getRoom(name);
+    if (!room) return err('Room not found', 404);
+    const members = getRoomMembers(room.id).filter((m) => !!m.tmux_target);
+    if (members.length === 0) return err('No tmux agents in room', 400);
+
+    const { getPaneSessionName, listSessionWindows } = await import(
+      '../tmux/index.ts'
+    );
+
+    const sessionName = await getPaneSessionName(members[0]!.tmux_target!);
+    if (!sessionName) return err('Could not resolve tmux session', 400);
+
+    const windows = await listSessionWindows(sessionName).catch(() => null);
+    if (!windows) return err('Failed to list tmux windows', 400);
+
+    const activeWindowIndex =
+      windows.find((window) => window.active)?.index ?? null;
+
+    return json({
+      session: sessionName,
+      active_window_index: activeWindowIndex,
+      windows,
+    });
   }
 
   // POST /api/rooms
@@ -467,6 +502,103 @@ export async function handleApi(req: Request): Promise<Response> {
     const id = parseInt(roomTplMatch[1]!, 10);
     const r = dbDeleteRoomTemplate(id);
     return r.error ? err(r.error) : json({ ok: true });
+  }
+
+  // POST /api/rooms/:name/onboard-agent
+  const onboardAgentMatch = path.match(/^\/rooms\/([^/]+)\/onboard-agent$/);
+  if (method === 'POST' && onboardAgentMatch) {
+    const roomName = decodeURIComponent(onboardAgentMatch[1]!);
+    const room = getRoom(roomName);
+    if (!room) return err('Room not found', 404);
+
+    const body = await req.json().catch(() => null);
+    if (!body?.templateId) return err('Missing templateId');
+    const templateId = Number(body.templateId);
+    if (!Number.isInteger(templateId) || templateId <= 0)
+      return err('Invalid templateId');
+
+    const template = getAgentTemplateById(templateId);
+    if (!template) return err('Agent template not found', 404);
+
+    const members = getRoomMembers(room.id).filter((m) => !!m.tmux_target);
+    if (members.length === 0) return err('No tmux agents in room', 400);
+
+    const {
+      getPaneSessionName,
+      splitPaneInWindow,
+      listSessionWindows,
+      sendKeys,
+      killPane,
+    } = await import('../tmux/index.ts');
+
+    const basePane = members[0]!.tmux_target!;
+    const sessionName = await getPaneSessionName(basePane);
+    if (!sessionName) return err('Could not resolve tmux session', 400);
+
+    const windows = await listSessionWindows(sessionName).catch(() => null);
+    if (!windows || windows.length === 0)
+      return err('No tmux windows found', 400);
+
+    let targetWindowIndex: number | null = null;
+    if (body.windowIndex !== undefined && body.windowIndex !== null) {
+      const parsedWindow = Number(body.windowIndex);
+      if (!Number.isInteger(parsedWindow)) return err('Invalid windowIndex');
+      targetWindowIndex = parsedWindow;
+    } else {
+      targetWindowIndex =
+        windows.find((window) => window.active)?.index ?? null;
+    }
+    if (targetWindowIndex === null)
+      return err('Could not resolve target window', 400);
+
+    const window = windows.find((w) => w.index === targetWindowIndex);
+    if (!window) return err('Window not found', 400);
+
+    let finalName =
+      (typeof body.name === 'string' && body.name.trim()) || template.name;
+    while (getAgentByRoomAndName(room.id, finalName)) {
+      finalName = `${finalName}-${randomSuffix()}`;
+    }
+
+    const paneId = await splitPaneInWindow(
+      sessionName,
+      targetWindowIndex,
+      room.path,
+    ).catch(() => null);
+    if (!paneId) return err('Failed to create pane in target window', 400);
+
+    const cmd = template.start_command || 'claude';
+    const sendResult = await sendKeys(paneId, cmd);
+    if (!sendResult.delivered) {
+      await killPane(paneId).catch(() => undefined);
+      return err(`start_failed: ${sendResult.error ?? 'unknown error'}`, 400);
+    }
+
+    const { getQueue } = await import('../delivery/pane-queue.ts');
+    try {
+      await getQueue(paneId, { role: template.role }).enqueue({
+        type: 'paste',
+        text: `crew join --room ${shellQuote(roomName)} --role ${shellQuote(template.role)} --name ${shellQuote(finalName)}`,
+      });
+    } catch {
+      await killPane(paneId).catch(() => undefined);
+      return err('Failed to send join command', 400);
+    }
+
+    return json(
+      {
+        ok: true,
+        room: roomName,
+        target_window: { index: window.index, name: window.name },
+        agent: {
+          name: finalName,
+          role: template.role,
+          pane: paneId,
+          status: 'started',
+        },
+      },
+      201,
+    );
   }
 
   // POST /api/room-templates/:id/onboard

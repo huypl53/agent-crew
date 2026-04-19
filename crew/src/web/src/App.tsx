@@ -125,6 +125,7 @@ export default function App() {
           </main>
           <AgentInspector
             room={selectedRoom}
+            templates={templates}
             onEditAgent={setAgentEditTarget}
           />
         </div>

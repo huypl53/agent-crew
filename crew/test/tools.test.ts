@@ -10,9 +10,11 @@ import { config } from '../src/config.ts';
 import type { Task, TaskStatus } from '../src/shared/types.ts';
 import { closeDb, initDb } from '../src/state/db.ts';
 import {
+  addAgent,
   clearState,
   createTask,
   getOrCreateRoom,
+  getRoom,
   updateTaskStatus,
 } from '../src/state/index.ts';
 import { handleClearWorkerSession } from '../src/tools/clear-worker-session.ts';
@@ -84,6 +86,48 @@ describe('MCP tools', () => {
       expect(data.name).toBe('boss-1');
       expect(data.role).toBe('boss');
       expect(data.room).toBe('company');
+    });
+
+    test('generates random name when not provided', async () => {
+      const result = await handleJoinRoom({
+        room: 'company',
+        role: 'worker',
+        tmux_target: testPaneA,
+      });
+      expect(result.isError).toBeUndefined();
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.name).toMatch(/^agent-[a-z0-9]{4}$/);
+    });
+
+    test('generates random name when empty string', async () => {
+      const result = await handleJoinRoom({
+        room: 'company',
+        role: 'worker',
+        name: '',
+        tmux_target: testPaneA,
+      });
+      expect(result.isError).toBeUndefined();
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.name).toMatch(/^agent-[a-z0-9]{4}$/);
+    });
+
+    test('rejoin same name same pane updates in place', async () => {
+      await handleJoinRoom({
+        room: 'company',
+        role: 'worker',
+        name: 'agent-x',
+        tmux_target: testPaneA,
+      });
+      const result = await handleJoinRoom({
+        room: 'company',
+        role: 'leader',
+        name: 'agent-x',
+        tmux_target: testPaneA,
+      });
+      expect(result.isError).toBeUndefined();
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.name).toBe('agent-x');
+      expect(data.role).toBe('leader');
     });
 
     test('adds suffix for duplicate name in same room with different pane', async () => {
@@ -529,6 +573,73 @@ describe('MCP tools', () => {
         kind: 'task',
       });
       expect(result.isError).toBe(true);
+    });
+
+    test('parallel broadcast delivers to all members', async () => {
+      // Use pull mode so delivery is DB-only (no pane queue timing issues).
+      // Verifies that Promise.allSettled parallel delivery produces correct results
+      // for every recipient, not just the first.
+      await handleJoinRoom({
+        room: 'parallel-test',
+        role: 'leader',
+        name: 'lead',
+        tmux_target: testPaneA,
+      });
+      await handleJoinRoom({
+        room: 'parallel-test',
+        role: 'worker',
+        name: 'w1',
+        tmux_target: testPaneB,
+      });
+      // Get the room created by join-room (based on test pane CWD)
+      const room = getRoom('parallel-test')!;
+      // Add w2/w3 directly via addAgent (fake panes, pull-only)
+      addAgent('w2', 'worker', room.id, '%99991', 'unknown');
+      addAgent('w3', 'worker', room.id, '%99992', 'unknown');
+
+      // Broadcast from lead to w1 + w2 + w3 (pull mode = instant, no pane delivery)
+      const result = await handleSendMessage({
+        room: 'parallel-test',
+        text: 'Hello team',
+        name: 'lead',
+        mode: 'pull',
+      });
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.broadcast).toBe(true);
+      expect(data.recipients).toBe(3);
+      expect(data.delivered).toBe(0); // pull mode
+      expect(data.queued).toBe(3);
+
+      // Verify each worker can read the message
+      const w1Read = await handleReadMessages({
+        name: 'w1',
+        room: 'parallel-test',
+      });
+      const w1Data = JSON.parse(w1Read.content[0]!.text);
+      expect(w1Data.messages.length).toBeGreaterThanOrEqual(1);
+      expect(w1Data.messages.some((m: any) => m.text === 'Hello team')).toBe(
+        true,
+      );
+
+      const w2Read = await handleReadMessages({
+        name: 'w2',
+        room: 'parallel-test',
+      });
+      const w2Data = JSON.parse(w2Read.content[0]!.text);
+      expect(w2Data.messages.length).toBeGreaterThanOrEqual(1);
+      expect(w2Data.messages.some((m: any) => m.text === 'Hello team')).toBe(
+        true,
+      );
+
+      const w3Read = await handleReadMessages({
+        name: 'w3',
+        room: 'parallel-test',
+      });
+      const w3Data = JSON.parse(w3Read.content[0]!.text);
+      expect(w3Data.messages.length).toBeGreaterThanOrEqual(1);
+      expect(w3Data.messages.some((m: any) => m.text === 'Hello team')).toBe(
+        true,
+      );
     });
   });
 

@@ -26,6 +26,27 @@ export interface RoomTemplate {
   created_at: string;
 }
 
+export interface TmuxWindowPane {
+  pane_id: string;
+  pane_index: number;
+  title: string;
+  active: boolean;
+}
+
+export interface TmuxWindowInfo {
+  index: number;
+  name: string;
+  active: boolean;
+  pane_count: number;
+  panes: TmuxWindowPane[];
+}
+
+export interface TmuxWindowsResponse {
+  session: string;
+  active_window_index: number | null;
+  windows: TmuxWindowInfo[];
+}
+
 export interface TokenUsage {
   agent_name: string;
   session_id: string | null;

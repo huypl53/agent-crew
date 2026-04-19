@@ -395,39 +395,151 @@ export async function createSession(
 }
 
 export async function splitPane(target: string, cwd: string): Promise<string> {
-  // Get panes before split
-  const sessionQuery = await run(
-    'list-panes',
+  const result = await run(
+    'split-window',
+    '-P',
+    '-F',
+    '#{pane_id}',
     '-t',
     target,
-    '-F',
-    '#{session_name} #{pane_id}',
+    '-c',
+    cwd,
   );
-  if (!sessionQuery.success) throw new Error('failed to query session');
-  const before = new Set(
-    sessionQuery.stdout
-      .trim()
-      .split('\n')
-      .map((l) => l.split(' ')[1]!),
-  );
-
-  const result = await run('split-window', '-t', target, '-c', cwd);
   if (!result.success) throw new Error(result.stderr || 'splitPane failed');
+  const paneId = result.stdout.trim();
+  if (!paneId) throw new Error('failed to get pane ID after split');
+  return paneId;
+}
 
-  // Find the new pane by diffing pane lists
-  const sessionName = sessionQuery.stdout.trim().split('\n')[0]!.split(' ')[0]!;
-  const afterQuery = await run(
+export interface TmuxWindowPane {
+  pane_id: string;
+  pane_index: number;
+  title: string;
+  active: boolean;
+}
+
+export interface TmuxWindowInfo {
+  index: number;
+  name: string;
+  active: boolean;
+  pane_count: number;
+  panes: TmuxWindowPane[];
+}
+
+export async function getPaneSessionName(
+  target: string,
+): Promise<string | null> {
+  const result = await run(
+    'display-message',
+    '-t',
+    target,
+    '-p',
+    '#{session_name}',
+  );
+  if (!result.success) return null;
+  const session = result.stdout.trim();
+  return session || null;
+}
+
+export async function listSessionWindows(
+  sessionName: string,
+): Promise<TmuxWindowInfo[]> {
+  const winRes = await run(
+    'list-windows',
+    '-t',
+    sessionName,
+    '-F',
+    '#{window_index}\t#{window_name}\t#{window_active}',
+  );
+  if (!winRes.success) {
+    throw new Error(winRes.stderr || 'failed to list windows');
+  }
+
+  const paneRes = await run(
     'list-panes',
     '-t',
     sessionName,
     '-F',
-    '#{pane_id}',
+    '#{window_index}\t#{pane_id}\t#{pane_index}\t#{pane_active}\t#{pane_title}',
   );
-  if (!afterQuery.success) throw new Error('failed to list panes after split');
-  const after = afterQuery.stdout.trim().split('\n');
-  const newPane = after.find((id) => !before.has(id));
-  if (!newPane) throw new Error('could not identify new pane after split');
-  return newPane;
+  if (!paneRes.success) {
+    throw new Error(paneRes.stderr || 'failed to list panes');
+  }
+
+  const windowMap = new Map<number, TmuxWindowInfo>();
+  for (const line of winRes.stdout.split('\n').filter(Boolean)) {
+    const [indexRaw, name, activeRaw] = line.split('\t');
+    const index = parseInt(indexRaw ?? '', 10);
+    if (Number.isNaN(index)) continue;
+    windowMap.set(index, {
+      index,
+      name: name ?? '',
+      active: activeRaw === '1',
+      pane_count: 0,
+      panes: [],
+    });
+  }
+
+  for (const line of paneRes.stdout.split('\n').filter(Boolean)) {
+    const [windowRaw, paneId, paneIndexRaw, paneActiveRaw, paneTitle] =
+      line.split('\t');
+    const windowIndex = parseInt(windowRaw ?? '', 10);
+    const paneIndex = parseInt(paneIndexRaw ?? '', 10);
+    if (Number.isNaN(windowIndex) || Number.isNaN(paneIndex) || !paneId)
+      continue;
+    const window = windowMap.get(windowIndex);
+    if (!window) continue;
+    window.panes.push({
+      pane_id: paneId,
+      pane_index: paneIndex,
+      title: paneTitle ?? '',
+      active: paneActiveRaw === '1',
+    });
+  }
+
+  const windows = Array.from(windowMap.values()).sort(
+    (a, b) => a.index - b.index,
+  );
+  for (const w of windows) {
+    w.panes.sort((a, b) => a.pane_index - b.pane_index);
+    w.pane_count = w.panes.length;
+  }
+  return windows;
+}
+
+export async function getActiveWindowIndex(
+  sessionName: string,
+): Promise<number | null> {
+  const windows = await listSessionWindows(sessionName);
+  const active = windows.find((w) => w.active);
+  return active ? active.index : null;
+}
+
+export async function splitPaneInWindow(
+  sessionName: string,
+  windowIndex: number,
+  cwd: string,
+): Promise<string> {
+  const target = `${sessionName}:${windowIndex}`;
+  const split = await run(
+    'split-window',
+    '-P',
+    '-F',
+    '#{pane_id}',
+    '-t',
+    target,
+    '-c',
+    cwd,
+  );
+  if (!split.success) throw new Error(split.stderr || 'split-window failed');
+  const paneId = split.stdout.trim();
+  if (!paneId) throw new Error('failed to get pane ID after split');
+  return paneId;
+}
+
+export async function killPane(target: string): Promise<boolean> {
+  const result = await run('kill-pane', '-t', target);
+  return result.success;
 }
 
 export async function killSession(name: string): Promise<boolean> {

@@ -979,7 +979,7 @@ Default: `127.0.0.1:3456`. Configurable via `CREW_SERVE_PORT` / `CREW_SERVE_HOST
   - `/ws` → WebSocket upgrade
   - `/api/*` → REST handlers
   - `/` → static SPA (from `dist/web/`) or placeholder if not built
-- `src/server/api.ts` — 13 REST endpoints. Thin wrappers over `src/state/` and `src/state/db-write.ts`. No business logic lives here.
+- `src/server/api.ts` — 15 REST endpoints. Thin wrappers over `src/state/` and `src/state/db-write.ts` (plus tmux wrappers for onboarding). No business logic lives here.
 - `src/server/ws.ts` — WebSocket broadcast. Maintains a `Set<ServerWebSocket>` of connected clients. A 500ms `setInterval` polls `change_log` version numbers; on any scope bump it queries the delta and broadcasts JSON events to all clients.
 
 ### REST API
@@ -989,6 +989,7 @@ Default: `127.0.0.1:3456`. Configurable via `CREW_SERVE_PORT` / `CREW_SERVE_HOST
 | GET | `/api/rooms` | List all rooms |
 | GET | `/api/rooms/:name/members` | Room member list |
 | GET | `/api/rooms/:name/messages?limit=&offset=` | Paginated messages |
+| GET | `/api/rooms/:name/tmux-windows` | List tmux windows for the room's session (includes active window + pane previews) |
 | POST | `/api/rooms` | Create room `{name, topic}` |
 | DELETE | `/api/rooms/:name?confirm=true` | Delete room |
 | GET | `/api/agents` | All agents + DB status |
@@ -998,6 +999,7 @@ Default: `127.0.0.1:3456`. Configurable via `CREW_SERVE_PORT` / `CREW_SERVE_HOST
 | GET | `/api/tasks?room=&status=` | Filtered task list |
 | GET | `/api/tasks/:id` | Task details |
 | POST | `/api/messages` | Send message (uses `handleSendMessage` — preserves delivery guards) |
+| POST | `/api/rooms/:name/onboard-agent` | Start a new pane in a selected tmux window and send `crew join` from a template |
 | GET | `/api/check` | Version snapshot (change_log) |
 
 ### WebSocket Protocol
