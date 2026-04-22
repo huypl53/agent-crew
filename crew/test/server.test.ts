@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
-import { startServer, stopServer } from '../src/server/index.ts';
+import { startServer } from '../src/server/index.ts';
 import { closeDb, initDb } from '../src/state/db.ts';
 import { addAgent, getOrCreateRoom } from '../src/state/index.ts';
 
@@ -47,7 +47,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  stopServer(server);
+  server.shutdown();
   closeDb();
   await Bun.spawn(['tmux', '-L', TEST_TMUX_SOCKET, 'kill-server']).exited.catch(
     () => undefined,

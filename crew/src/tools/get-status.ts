@@ -64,7 +64,13 @@ export async function handleGetStatus(
   // Hash + PID based status — no DB fallback (DB status is unreliable, agents don't self-report)
   let status: AgentStatus;
   try {
-    const result = await getPaneStatus(agent.tmux_target);
+    let result = await getPaneStatus(agent.tmux_target);
+    // First call in a fresh process has no baseline → returns 'unknown'.
+    // Wait for the stable threshold to pass, then re-check to get a definitive answer.
+    if (result.status === 'unknown') {
+      await Bun.sleep(3500);
+      result = await getPaneStatus(agent.tmux_target);
+    }
     status = result.status;
     if (result.contentChanged) {
       touchAgentActivity(targetName);

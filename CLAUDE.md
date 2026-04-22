@@ -19,12 +19,12 @@ Run these from `crew/` subdirectory:
 
 - **tmux delivery** uses `paste-buffer -dp` (bracketed paste), NOT `send-keys -l`. See `crew/docs/architecture.md` "tmux Delivery" section for rationale.
 - **State** is SQLite with WAL mode. No JSON files, no in-memory cache.
-- **MCP server** is the same `crew/src/index.ts` for both Claude Code and Codex CLI.
+- **CLI** is `crew/src/cli.ts` — agents invoke `crew <cmd>` via Bash.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **agent-crew** (1688 symbols, 3581 relationships, 121 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **agent-crew** (1812 symbols, 3837 relationships, 126 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

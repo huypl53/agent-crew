@@ -1,7 +1,7 @@
 /**
  * Write operations for the dashboard UI.
  * Opens short-lived write connections with WAL + busy_timeout to handle concurrency
- * with the MCP server process.
+ * with the CLI process.
  */
 import { Database } from 'bun:sqlite';
 import { existsSync } from 'fs';

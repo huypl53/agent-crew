@@ -203,7 +203,7 @@ Real tmux panes are shell panes (not Claude Code). Push delivery works but paste
 
 1. Create `src/tools/my-command.ts` exporting `handleMyCommand(params): Promise<ToolResult>`
 2. Add route in `src/cli/router.ts`
-3. Add MCP tool definition in `src/index.ts` (tools array)
+3. Add CLI arg parsing in `src/cli/parse.ts` if needed
 4. Add to `skills/help/SKILL.md` if user-facing
 
 All tool handlers follow the same pattern:
@@ -319,7 +319,6 @@ This is a fire-and-forget push — `deliverMessage` returns before the notificat
 | tmux wrappers | `src/tmux/index.ts` |
 | Tool handlers | `src/tools/*.ts` |
 | CLI routing | `src/cli/router.ts` |
-| MCP tool defs | `src/index.ts` |
 | REST API | `src/server/api.ts` |
 | Web state polling | `src/web/src/hooks/useStateReader.ts` |
 | Shared types | `src/shared/types.ts` |

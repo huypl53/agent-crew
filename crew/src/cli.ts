@@ -47,15 +47,22 @@ if (parsed.command === 'serve') {
     : undefined;
   const host =
     typeof parsed.flags.host === 'string' ? parsed.flags.host : undefined;
-  const server = await startServer({ port, host });
-  console.log(
-    `Crew dashboard listening on http://${server.hostname}:${server.port}`,
-  );
-  console.log(`API: http://${server.hostname}:${server.port}/api/rooms`);
-  console.log(`WS:  ws://${server.hostname}:${server.port}/ws`);
+  const headless = Boolean(parsed.flags.headless);
+  const server = await startServer({ port, host, headless });
+
+  if (headless) {
+    console.log('Crew headless watcher running (Ctrl-C to stop)');
+  } else {
+    console.log(
+      `Crew dashboard listening on http://${server.hostname}:${server.port}`,
+    );
+    console.log(`API: http://${server.hostname}:${server.port}/api/rooms`);
+    console.log(`WS:  ws://${server.hostname}:${server.port}/ws`);
+  }
+
   // keep alive until Ctrl-C
   process.on('SIGINT', () => {
-    server.stop(true);
+    server.shutdown();
     process.exit(0);
   });
   await new Promise(() => {}); // block forever
@@ -75,7 +82,7 @@ try {
   const params = cmd.buildParams(parsed.flags, parsed.positional);
   const result = await cmd.handler(params);
 
-  // MCP tool results have content[0].text with JSON
+  // Handlers return MCP-shaped results — unwrap the envelope
   const data = JSON.parse(result.content[0].text);
 
   if (result.isError) {

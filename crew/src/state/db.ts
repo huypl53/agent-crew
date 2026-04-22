@@ -229,6 +229,12 @@ export function initDb(path?: string): void {
   if (!taskCols.some((c) => c.name === 'context')) {
     _db.exec('ALTER TABLE tasks ADD COLUMN context TEXT');
   }
+  if (!taskCols.some((c) => c.name === 'last_notified_at')) {
+    _db.exec('ALTER TABLE tasks ADD COLUMN last_notified_at TEXT');
+    _db.exec(
+      'CREATE INDEX IF NOT EXISTS idx_tasks_notified ON tasks(last_notified_at)',
+    );
+  }
 
   const tplCols = _db
     .query('PRAGMA table_info(agent_templates)')

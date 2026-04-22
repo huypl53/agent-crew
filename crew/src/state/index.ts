@@ -673,6 +673,32 @@ export function getTasksForAgent(
   );
 }
 
+/** Batch-fetch queued/sent tasks for multiple workers (avoids N+1 in sweep). */
+export function getStaleTasksForWorkers(
+  agentNames: string[],
+  staleBefore: string,
+): Task[] {
+  if (agentNames.length === 0) return [];
+  const db = getDb();
+  const placeholders = agentNames.map(() => '?').join(',');
+  const rows = db
+    .query(
+      `SELECT * FROM tasks
+       WHERE assigned_to IN (${placeholders})
+         AND status IN ('sent', 'queued')
+         AND (last_notified_at IS NULL OR last_notified_at < ?)
+       ORDER BY id`,
+    )
+    .all(...agentNames, staleBefore) as Record<string, unknown>[];
+  return rows.map(rowToTask);
+}
+
+/** Mark a task as notified (dedup — prevents repeated notifications). */
+export function touchTaskNotified(taskId: number): void {
+  const db = getDb();
+  db.run('UPDATE tasks SET last_notified_at = ? WHERE id = ?', [now(), taskId]);
+}
+
 const VALID_TRANSITIONS: Record<string, TaskStatus[]> = {
   sent: ['queued', 'active', 'error'],
   queued: ['active', 'cancelled', 'error'],

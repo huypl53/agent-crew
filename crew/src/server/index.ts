@@ -2,11 +2,13 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { initDb } from '../state/db.ts';
 import { handleApi } from './api.ts';
+import { startSweep, stopSweep } from './sweep.ts';
 import { startWsPoller, stopWsPoller, wsClose, wsOpen } from './ws.ts';
 
 export interface ServeOptions {
   port?: number;
   host?: string;
+  headless?: boolean;
 }
 
 const STATIC_PLACEHOLDER = `<!DOCTYPE html>
@@ -19,13 +21,27 @@ const STATIC_PLACEHOLDER = `<!DOCTYPE html>
 </body>
 </html>`;
 
+export type ServerHandle = ReturnType<typeof Bun.serve> & {
+  headless: boolean;
+  shutdown(): void;
+};
+
 export async function startServer(
   opts: ServeOptions = {},
-): ReturnType<typeof Bun.serve> {
+): Promise<ServerHandle> {
   const port = opts.port ?? parseInt(process.env.CREW_SERVE_PORT ?? '3456', 10);
   const hostname = opts.host ?? process.env.CREW_SERVE_HOST ?? '127.0.0.1';
 
   initDb();
+
+  // Headless mode: no HTTP/WS, just the sweep loop
+  if (opts.headless) {
+    startSweep();
+    return {
+      headless: true,
+      shutdown: () => stopSweep(),
+    } as unknown as ServerHandle;
+  }
 
   // Auto-build web app if dist/web/ is missing
   const distDir = new URL('../../dist/web/', import.meta.url).pathname;
@@ -58,8 +74,6 @@ export async function startServer(
       }
 
       // Static file serving from crew/dist/web/
-      // Bun.file derives Content-Type from file extension (JS, CSS, etc.)
-      // Paths that don't resolve to a file fall back to index.html for SPA client-routing.
       const distDir = new URL('../../dist/web/', import.meta.url).pathname;
       const cleaned = url.pathname === '/' ? '/index.html' : url.pathname;
       if (cleaned.includes('..'))
@@ -78,15 +92,18 @@ export async function startServer(
     websocket: {
       open: wsOpen,
       close: wsClose,
-      message() {}, // clients don't send; reads/actions go over REST
+      message() {},
     },
   });
 
   startWsPoller();
-  return server;
-}
-
-export function stopServer(server: ReturnType<typeof Bun.serve>): void {
-  stopWsPoller();
-  server.stop(true);
+  startSweep();
+  return Object.assign(server, {
+    headless: false,
+    shutdown() {
+      stopWsPoller();
+      stopSweep();
+      server.stop(true);
+    },
+  });
 }
