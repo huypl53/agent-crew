@@ -38,6 +38,7 @@ import {
   searchTasks,
 } from '../state/index.ts';
 import { handleSendMessage } from '../tools/send-message.ts';
+import { getWorkerSweepStates } from './sweep.ts';
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -178,9 +179,11 @@ export async function handleApi(req: Request): Promise<Response> {
 
   // GET /api/agents
   if (method === 'GET' && path === '/agents') {
+    const sweepStates = getWorkerSweepStates();
     const agents = getAllAgents().map((a) => ({
       ...a,
       status: getAgentDbStatus(a.name) ?? 'unknown',
+      sweep: sweepStates[a.name] ?? null,
     }));
     return json(agents);
   }
@@ -199,12 +202,14 @@ export async function handleApi(req: Request): Promise<Response> {
     }
     const message_stats = getAgentMessageCounts(name);
     const task_stats = getAgentTaskStats(name);
+    const sweepStates = getWorkerSweepStates();
     return json({
       ...agent,
       status: getAgentDbStatus(name) ?? 'unknown',
       token_usage,
       message_stats,
       task_stats,
+      sweep: sweepStates[name] ?? null,
     });
   }
 

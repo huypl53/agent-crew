@@ -154,6 +154,25 @@ async function maybeNotify(
   logServer('SWEEP', `Worker ${w.name} ${reason}, notifying leaders`);
 }
 
+export function getWorkerSweepStates(): Record<
+  string,
+  { content_stable_ms: number; last_notified_at: string | null }
+> {
+  const now = Date.now();
+  const result: Record<
+    string,
+    { content_stable_ms: number; last_notified_at: string | null }
+  > = {};
+  for (const [name, state] of workerStates) {
+    const last = lastNotified.get(name);
+    result[name] = {
+      content_stable_ms: now - state.stableSince,
+      last_notified_at: last ? new Date(last).toISOString() : null,
+    };
+  }
+  return result;
+}
+
 export function startSweep(): void {
   if (intervalId) return;
   runSweep();

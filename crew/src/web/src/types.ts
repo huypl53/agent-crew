@@ -74,6 +74,10 @@ export interface Agent {
   token_usage?: TokenUsage | null;
   message_stats?: { sent: number; received: number };
   task_stats?: { done: number; active: number; queued: number; error: number };
+  sweep?: {
+    content_stable_ms: number;
+    last_notified_at: string | null;
+  } | null;
 }
 
 export interface Stats {

@@ -64,6 +64,15 @@ function activeFor(joinedAt: string): string {
   return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
+function formatDuration(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
 function renderWindowPreview(window: TmuxWindowInfo): string {
   if (window.panes.length === 0) return '[empty]';
   return window.panes
@@ -362,6 +371,25 @@ export default function AgentInspector({
                 </div>
               )}
             </>
+          )}
+
+          {selected.sweep && (
+            <div className="space-y-1.5 pl-1">
+              <Field label="Content stable">
+                <div className="text-slate-300">
+                  {formatDuration(selected.sweep.content_stable_ms)}
+                </div>
+              </Field>
+              {selected.sweep.last_notified_at && (
+                <Field label="Last notified">
+                  <div className="text-amber-400 text-[11px]">
+                    {new Date(
+                      selected.sweep.last_notified_at,
+                    ).toLocaleTimeString()}
+                  </div>
+                </Field>
+              )}
+            </div>
           )}
 
           {hasCost && (
