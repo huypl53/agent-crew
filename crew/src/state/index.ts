@@ -213,6 +213,15 @@ export function removeAgent(name: string, room: string): boolean {
 
 export function removeAgentFully(name: string): void {
   const db = getDb();
+  // Clear pane snapshot before deleting agent record
+  const agentRow = db
+    .query('SELECT pane FROM agents WHERE name = ? LIMIT 1')
+    .get(name) as { pane: string | null } | undefined;
+  if (agentRow?.pane) {
+    import('../shared/pane-status.ts').then(({ clearPaneSnapshot }) =>
+      clearPaneSnapshot(agentRow.pane!),
+    );
+  }
   const roomIds = (
     db
       .query('SELECT DISTINCT room_id FROM agents WHERE name = ?')

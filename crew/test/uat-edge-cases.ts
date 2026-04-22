@@ -10,7 +10,6 @@
 process.env.CREW_TMUX_SOCKET = 'crew-uat-edge';
 
 import { getPollingInterval, PaneQueue } from '../src/delivery/pane-queue.ts';
-import { matchStatusLine } from '../src/shared/status-patterns.ts';
 import { sendKeys as tmuxSendKeys } from '../src/tmux/index.ts';
 import { setupTestDb, teardownTestDb } from './lib/db-test-helpers.ts';
 import {
@@ -257,25 +256,33 @@ async function testE7_BusyTimeout() {
   );
 }
 
-// ─── E8: Status line buried under verbose output ──────────────────────────────
+// ─── E8: Hash-based status detects idle on stable pane ──────────────────────────
 
-async function testE8_BuriedStatus() {
-  console.log('\nE8: Status buried under 200 lines of output');
+async function testE8_HashBasedIdleDetection() {
+  console.log('\nE8: Hash-based status detects idle on stable pane');
 
-  // Build a synthetic pane output: 200 noisy lines followed by an idle prompt.
-  // Tests that matchStatusLine correctly finds the prompt in the last 20 lines.
-  const lines: string[] = [];
-  for (let i = 1; i <= 200; i++) {
-    lines.push(`line-${i}`);
-  }
-  lines.push('❯ ');
-  const content = lines.join('\n');
+  const { getPaneStatus } = await import('../src/shared/pane-status.ts');
+  const pane = await createTestPane(`bash ${FIXTURES} e8-agent`);
+  await Bun.sleep(1000); // let shell settle
 
-  const status = matchStatusLine(content);
+  // First call seeds baseline (returns unknown)
+  const first = await getPaneStatus(pane);
   ok(
-    status === 'idle',
-    `Detected idle despite 200 lines above (got: ${status})`,
+    first.status === 'unknown' || first.status === 'idle',
+    `First call returned unknown or idle (got: ${first.status})`,
   );
+
+  // Wait for stable threshold (3s)
+  await Bun.sleep(3500);
+
+  // Second call should detect idle (content unchanged)
+  const second = await getPaneStatus(pane);
+  ok(
+    second.status === 'idle',
+    `Detected idle after content stable (got: ${second.status})`,
+  );
+
+  await killPane(pane);
 }
 
 // ─── E9: Queue 20 messages ────────────────────────────────────────────────────
@@ -760,7 +767,7 @@ async function main() {
     // E6-E8: Status detection (E7 is slow — ~10s timeout)
     await testE6_UnstableContent();
     await testE7_BusyTimeout();
-    await testE8_BuriedStatus();
+    await testE8_HashBasedIdleDetection();
 
     // E9-E11: Queue/polling
     await testE9_QueueBacklog();

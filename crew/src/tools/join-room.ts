@@ -1,3 +1,4 @@
+import { getPaneStatus } from '../shared/pane-status.ts';
 import { normalizePath } from '../shared/path-utils.ts';
 import { logServer } from '../shared/server-log.ts';
 import type { AgentRole, ToolResult } from '../shared/types.ts';
@@ -162,6 +163,16 @@ export async function handleJoinRoom(
     target,
     agentType,
   );
+
+  // Pre-seed pane status snapshot so first getPaneStatus call has a baseline
+  if (target) {
+    await getPaneStatus(target).catch((e) => {
+      logServer(
+        'WARN',
+        `Pre-seed status capture failed for ${target}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    });
+  }
 
   try {
     if (roomObj.topic && target) {

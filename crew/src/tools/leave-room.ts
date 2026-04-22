@@ -1,3 +1,4 @@
+import { clearPaneSnapshot } from '../shared/pane-status.ts';
 import type { ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
 import { getAgent, removeAgent } from '../state/index.ts';
@@ -26,6 +27,11 @@ export async function handleLeaveRoom(
   }
 
   removeAgent(name, room);
+
+  // Clean up pane status snapshot
+  if (agent.tmux_target) {
+    clearPaneSnapshot(agent.tmux_target);
+  }
 
   return ok({ success: true });
 }

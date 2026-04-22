@@ -1,14 +1,8 @@
 import { config } from '../config.ts';
+import { getPaneStatus } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
-import { matchStatusLine } from '../shared/status-patterns.ts';
 import type { AgentRole } from '../shared/types.ts';
-import {
-  capturePane,
-  paneExists,
-  sendClear,
-  sendEscape,
-  sendKeys,
-} from '../tmux/index.ts';
+import { paneExists, sendClear, sendEscape, sendKeys } from '../tmux/index.ts';
 
 export type QueueItem =
   | { type: 'paste'; text: string }
@@ -23,17 +17,6 @@ interface QueueEntry {
 
 const MAX_WAIT_MS = 10_000;
 const HEARTBEAT_STALE_MS = 30_000;
-const UNKNOWN_STABLE_REQUIRED = 2; // consecutive polls with same content before treating unknown as ready
-
-function simpleHash(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return hash;
-}
 
 // Role-based intervals for 'reduced' profile (ms)
 const POLL_INTERVALS: Record<string, number> = {
@@ -131,28 +114,9 @@ export class PaneQueue {
 
   private async waitForReady(): Promise<void> {
     const start = Date.now();
-    let lastHash = 0;
-    let stableCount = 0;
     while (Date.now() - start < MAX_WAIT_MS) {
-      const output = await capturePane(this.target);
-      if (output !== null) {
-        const status = matchStatusLine(output);
-        if (status === 'idle') return;
-        if (status === 'unknown') {
-          const currentHash = simpleHash(output);
-          if (currentHash === lastHash) {
-            stableCount++;
-            if (stableCount >= UNKNOWN_STABLE_REQUIRED) return; // content stable — ready
-          } else {
-            stableCount = 0;
-            lastHash = currentHash;
-          }
-        } else {
-          // 'busy' — reset stability tracking and keep polling
-          stableCount = 0;
-          lastHash = 0;
-        }
-      }
+      const result = await getPaneStatus(this.target);
+      if (result.status === 'idle') return;
       await Bun.sleep(getPollingInterval(this.role, this.lastActivityMs));
     }
     // Timeout — deliver anyway (best effort)

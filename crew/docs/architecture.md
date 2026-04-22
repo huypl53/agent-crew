@@ -52,7 +52,7 @@ State is stored in `${CREW_STATE_DIR}/crew.db` (default `/tmp/crew/state/crew.db
 
 The original architecture used 4 JSON files (`agents.json`, `rooms.json`, `messages.json`, `room-messages.json`) with an in-memory primary store and async read-merge-write flush pattern. This had three problems:
 
-1. **Cross-process races** — Multiple MCP server processes (one per CC session) could flush concurrently, causing data loss even with per-process flush locks
+1. **Cross-process races** — Multiple CLI processes (one per agent session) could flush concurrently, causing data loss even with per-process flush locks
 2. **Write amplification** — Every mutation rewrote all 4 files
 3. **Merge complexity** — ~200 lines of dedup-by-message-id, set-union membership, generation counters, and ESM import hoisting workarounds
 
@@ -109,7 +109,7 @@ idx_tasks_room         ON tasks(room_id, status)
 
 `CREATE TABLE IF NOT EXISTS` does NOT add new columns to existing tables. When new columns are added to the schema in `db.ts`, existing databases keep the old schema. Two mechanisms handle this:
 
-1. **MCP server (read-write):** `initDb()` runs `ALTER TABLE ... ADD COLUMN` with try/catch after executing the schema DDL. This migrates the running DB when the MCP server starts.
+1. **CLI (read-write):** `initDb()` runs `ALTER TABLE ... ADD COLUMN` with try/catch after executing the schema DDL. This migrates the running DB when the CLI starts.
 
 2. **Dashboard (read-only):** `useStateReader.readAll()` uses fallback queries. If a query fails due to a missing column (e.g., `agent_type`), it retries with only the core columns that always exist. This prevents the dashboard from breaking on older DBs it can't migrate.
 
@@ -129,7 +129,7 @@ The dashboard opens the DB in read-only mode. Every table query in `readAll()` i
 - Missing tables → empty data (dashboard renders but shows nothing)
 - Missing columns → fallback query without that column
 - DB doesn't exist → `readAll()` returns null → "Waiting for cc-tmux..." screen
-- Once the MCP server creates/migrates tables, the next poll (500ms) picks up data automatically
+- Once the CLI creates/migrates tables, the next poll (500ms) picks up data automatically
 
 **React state sync in useTree:** The `selectedIdRef` must be updated synchronously whenever `selectedId` changes (inside setState updaters and useEffect hooks). If only synced via useEffect (async, post-render), rapid keyboard input (navigate then Enter) reads stale ref values. Always assign `selectedIdRef.current = newId` in the same call that updates `setSelectedId`.
 
@@ -286,17 +286,17 @@ The wait loop runs inside `crew wait-idle`, not in the leader's context window, 
 
 ## Liveness Sweep
 
-The MCP server runs a periodic liveness check every 30 seconds. When an agent's tmux pane is detected as dead, the server automatically:
+A periodic liveness check runs every 30 seconds (started by `crew serve` or the token collector). When an agent's tmux pane is detected as dead, the system automatically:
 
 1. Cleans up the agent's pending tasks (marks active/queued tasks as error with note "agent pane died")
 2. Removes the agent from the agents table and all room memberships
 3. Logs "Swept dead agent: <name>" to stderr
 
-This prevents "ghost" agents from accumulating in the dashboard after disconnection. The sweep is triggered at server startup and then on a 30-second interval via `setInterval`.
+This prevents "ghost" agents from accumulating in the dashboard after disconnection. The sweep is triggered at startup and then on a 30-second interval via `setInterval`.
 
 ## Server Stability & Crash Guards
 
-The MCP server (`src/index.ts`) includes several mechanisms to survive long-running sessions on macOS:
+The `crew serve` server (`src/server/index.ts`) includes several mechanisms to survive long-running sessions on macOS:
 
 **Root causes of shutdown (pre-fix):** SIGHUP from macOS when terminal sleeps, stdin EOF when parent disconnects, unhandled exceptions/rejections crashing the process.
 
@@ -320,35 +320,11 @@ The MCP server (`src/index.ts`) includes several mechanisms to survive long-runn
 
 ## CLI Architecture
 
-The `crew` CLI binary is an alternative interface to the same tool handlers used by the MCP server. Instead of MCP tool calls (which send 17 schemas per turn), agents invoke shell commands via Bash — cutting token overhead by 50-80%.
+The `crew` CLI binary is the primary interface. Agents invoke shell commands via Bash — low token overhead since the Bash tool is always in context.
 
-### CLI vs MCP Comparison
+### Token Cost Savings (vs the old MCP server)
 
-| Aspect | MCP Server | CLI |
-|--------|-----------|-----|
-| Interface | JSON-RPC tool calls | Shell commands (`crew <cmd>`) |
-| Token overhead | ~3,700 tokens (17 schemas) per turn + ~150/call | ~15-20 tokens per Bash call |
-| Output format | JSON wrapped in MCP `content[0].text` | Plain text by default, `--json` for raw JSON |
-| Shared state | SQLite at `$CREW_STATE_DIR/crew.db` | Same SQLite file |
-| Tool handlers | Called via MCP dispatcher in `src/index.ts` | Called directly by `src/cli/router.ts` |
-| Availability | Requires MCP client (Claude Code, Codex) | Any shell — `bun src/cli.ts` or `crew` |
-
-Both interfaces call the **same `src/tools/` handlers** and the **same `src/state/` functions**. No conflict — SQLite WAL mode handles concurrent access from both processes.
-
-### Token Cost Savings
-
-MCP overhead per agent turn:
-- Schema transmission: 17 tool schemas × ~220 tokens = **~3,740 tokens** (sent every turn)
-- Per-call overhead: ~150 tokens (tool use block + result block)
-
-CLI overhead per agent turn:
-- No schema transmission (Bash tool is always in context)
-- Per-call overhead: ~15-20 tokens (command string + text output)
-
-During a 100-tool-call session, switching from MCP to CLI saves approximately:
-- Schema savings: 100 turns × 3,740 = **374,000 tokens**
-- Per-call savings: 100 × 130 = **13,000 tokens**
-- **Total: ~387,000 fewer tokens per 100-call session**
+The original MCP server sent 17 tool schemas (~3,740 tokens) every turn plus ~150 tokens per call overhead. The CLI costs only ~15-20 tokens per call (command string + text output). During a 100-tool-call session, this saves approximately **~387,000 tokens**.
 
 ### Entry Point
 
@@ -357,8 +333,8 @@ src/cli.ts  (#!/usr/bin/env bun shebang, chmod +x)
   ├── initServerLog() + initDb()
   ├── parseArgs(process.argv.slice(2))   → src/cli/parse.ts
   ├── COMMANDS[command].buildParams()    → src/cli/router.ts
-  ├── handler(params)                    → src/tools/<handler>.ts  (same as MCP)
-  ├── JSON.parse(result.content[0].text) ← unwrap MCP envelope
+  ├── handler(params)                    → src/tools/<handler>.ts
+  ├── JSON.parse(result.content[0].text) ← unwrap handler envelope
   └── formatResult(command, data)        → src/cli/formatter.ts
 ```
 
@@ -427,7 +403,7 @@ bun /path/to/crew/src/cli.ts <command>
 
 ## Key Patterns
 
-- **Naming:** snake_case for MCP (tools, params, JSON), camelCase for TS, kebab-case for files
+- **Naming:** snake_case for CLI flags and JSON params, camelCase for TS, kebab-case for files
 - **Messages:** Written to messages table, then push delivery if mode=push
 - **Broadcast:** One message per recipient with `recipient` set to each target's name
 - **Push format:** `[sender@room]: text` via `tmux paste-buffer -dp` (bracketed paste)
@@ -593,7 +569,7 @@ claude plugins install crew@crew-plugins   → copies to plugin cache, enables i
 
 - Plugin cache: `~/.claude/plugins/cache/crew-plugins/crew/0.2.0/`
 - Skills namespaced as `/crew:{boss,join-room,leader,worker,refresh}`
-- MCP server launched via `.mcp.json` (stdio transport, `bun run ./src/index.ts`)
+- Agents invoke `crew` CLI via Bash for all operations
 
 ### OpenAI Codex CLI
 
@@ -602,29 +578,22 @@ Uses the Codex plugin system (`.codex-plugin/` manifests):
 ```
 git clone → ~/.crew/  (plugin is in ~/.crew/crew/ subdirectory)
 cd ~/.crew/crew && bun install
-codex mcp add crew -- bun run ~/.crew/crew/src/index.ts → registers MCP server
-ln -s ~/.crew/crew ~/.codex/.tmp/plugins/plugins/crew   → makes plugin discoverable
-+ add entry to marketplace.json                          → Codex reads plugin metadata
 ```
 
-- Plugin appears in `/plugins` TUI as "Crew" (Installed)
 - Skills namespaced as `crew:{boss,join-room,leader,worker,refresh}`
-- MCP tools registered in `~/.codex/config.toml` as STDIO server
-
-**Standalone MCP (no skills):** `codex mcp add crew -- bun run ~/.crew/src/index.ts`
+- Agents invoke `crew` CLI via Bash for all operations
 
 ### Plugin Structure (shared)
 
 ```
 .claude-plugin/       # Claude Code plugin manifest + marketplace.json
 .codex-plugin/        # Codex CLI plugin manifest
-.mcp.json             # MCP server config (shared by both platforms)
 skills/               # 5 bundled skills (SKILL.md format, used by both)
 ```
 
 ### Cross-Platform Compatibility
 
-Both Claude Code and Codex CLI use the MCP protocol (stdio transport). The same `src/index.ts` server works for both — no adapter layer needed. Skills use identical `SKILL.md` format with YAML frontmatter. Platform-specific references (slash commands, `@` mentions) are avoided in bundled skills.
+Both Claude Code and Codex CLI invoke `crew` CLI commands via Bash. Skills use identical `SKILL.md` format with YAML frontmatter. Platform-specific references (slash commands, `@` mentions) are avoided in bundled skills.
 
 ## tmux Delivery — Bracketed Paste
 
@@ -654,7 +623,7 @@ The `-p` flag wraps the text in `\e[200~...\e[201~` escape sequences. Terminal a
 
 ## Multi-process Architecture
 
-Each CC session spawns its own MCP server subprocess (via stdio transport). All share a single SQLite database file with WAL mode:
+Each agent session runs its own CLI subprocess. All share a single SQLite database file with WAL mode:
 
 - Writes are serialized by SQLite's internal locking (`busy_timeout = 5000ms`)
 - Reads never block — WAL allows concurrent readers
@@ -664,7 +633,7 @@ Each CC session spawns its own MCP server subprocess (via stdio transport). All 
 ## Test Architecture
 
 - **Unit tests** (`test/state.test.ts`): Use `:memory:` SQLite DB, test state operations in isolation
-- **Tool tests** (`test/tools.test.ts`): Use `:memory:` DB + real tmux sessions, test MCP tool handlers end-to-end
+- **Tool tests** (`test/tools.test.ts`): Use `:memory:` DB + real tmux sessions, test tool handlers end-to-end
 - **Dashboard hook tests** (`test/dashboard-hooks.test.ts`): Unit tests for `buildTree` pure function (ID-based selection, multi-room agents, unassigned section, collapse)
 - **Dashboard component tests** (`test/dashboard-ink.test.tsx`): Ink component tests via `ink-testing-library` — TreePanel, MessageFeedPanel, DetailsPanel, StatusBar, HelpOverlay
 
@@ -710,7 +679,7 @@ Example context: "Explored src/auth.ts. Found JWT validation in middleware.ts li
 
 ### Context Query Tools
 
-Two new MCP tools allow workers and leaders to share knowledge:
+Two CLI commands allow workers and leaders to share knowledge:
 
 - **`get_task_details`** — Returns full task record including context
   - Used to read what a previous worker learned
@@ -796,7 +765,7 @@ CREATE TABLE task_events (
 
 ## Dashboard Interactive Controls
 
-The dashboard provides direct operator control over agents and tasks, bypassing the MCP tool layer. Controls call state/tmux functions directly — no role checks, since the human operator is the ultimate authority.
+The dashboard provides direct operator control over agents and tasks. Controls call state/tmux functions directly — no role checks, since the human operator is the ultimate authority.
 
 ### Agent Actions (Dashboard view — select agent in tree)
 
@@ -1040,7 +1009,7 @@ Hooks:
 ### Key Design Decisions
 
 - **No new runtime deps**: Bun native HTTP+WS only. No Express, ws, socket.io.
-- **Thin API layer**: handlers call existing state/tool functions directly. The MCP server and REST server share the same state module — no duplication.
+- **Thin API layer**: handlers call existing state/tool functions directly. The REST server shares the same state module — no duplication.
 - **change_log polling** at 500ms is cheap (single `SELECT` on a tiny table). WebSocket push avoids polling from the browser.
 - **Local-only default** (`127.0.0.1`): no auth for MVP. Set `--host 0.0.0.0` for LAN access; document that this is unauthenticated.
 - **Static path**: server checks for `dist/web/index.html` at startup. If absent (pre-build), serves a text placeholder so the API is still usable.
