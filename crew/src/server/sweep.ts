@@ -7,8 +7,8 @@ import {
   paneCommandLooksAlive,
 } from '../tmux/index.ts';
 
-const SWEEP_INTERVAL_MS = 30_000;
-const IDLE_THRESHOLD_MS = 5 * 60_000; // 5 min unchanged content = genuinely idle
+const SWEEP_INTERVAL_MS = 5_000;
+const IDLE_THRESHOLD_MS = 60_000; // 1 min unchanged content = genuinely idle
 const NOTIFY_THROTTLE_MS = 30 * 60_000; // 30 min per worker
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -158,7 +158,7 @@ export function startSweep(): void {
   if (intervalId) return;
   runSweep();
   intervalId = setInterval(runSweep, SWEEP_INTERVAL_MS);
-  logServer('START', 'Worker sweep started (30s interval, 5m idle threshold)');
+  logServer('START', 'Worker sweep started (5s interval, 1m idle threshold)');
 }
 
 export function stopSweep(): void {
