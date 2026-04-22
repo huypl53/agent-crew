@@ -1,16 +1,39 @@
 import { getQueue } from '../delivery/pane-queue.ts';
 import { logServer } from '../shared/server-log.ts';
 import { getAllAgents, getRoomMembers } from '../state/index.ts';
-import { capturePaneTail, paneCommandLooksAlive } from '../tmux/index.ts';
+import {
+  capturePane,
+  capturePaneTail,
+  paneCommandLooksAlive,
+} from '../tmux/index.ts';
 
 const SWEEP_INTERVAL_MS = 30_000;
+const IDLE_THRESHOLD_MS = 5 * 60_000; // 5 min unchanged content = genuinely idle
 const NOTIFY_THROTTLE_MS = 30 * 60_000; // 30 min per worker
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let sweeping = false;
 
-// In-memory throttle — skip re-notifying about the same dead worker
+// Per-worker content stability tracking
+interface WorkerState {
+  hash: number;
+  stableSince: number; // epoch ms when content last changed
+}
+
+const workerStates = new Map<string, WorkerState>();
+
+// Per-worker notification throttle
 const lastNotified = new Map<string, number>();
+
+function simpleHash(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash;
+  }
+  return hash;
+}
 
 async function runSweep(): Promise<void> {
   if (sweeping) return;
@@ -23,46 +46,41 @@ async function runSweep(): Promise<void> {
     const notificationsByLeader = new Map<string, string[]>();
 
     for (const w of workers) {
-      const target = w.tmux_target!;
+      const target = w.tmux_target as string;
       const alive = await paneCommandLooksAlive(target);
-      if (alive) {
-        // Worker process running — clear any previous throttle
+
+      // Condition 1: process dead
+      if (!alive) {
+        workerStates.delete(w.name);
+        await maybeNotify(w, 'process exited', notificationsByLeader);
+        continue;
+      }
+
+      // Condition 2: process alive — check content stability
+      const content = await capturePane(target);
+      if (content === null) continue;
+
+      const hash = simpleHash(content);
+      const prev = workerStates.get(w.name);
+      const now = Date.now();
+
+      if (!prev || prev.hash !== hash) {
+        // Content changed (or first check) — reset stability timer
+        workerStates.set(w.name, { hash, stableSince: now });
+        // Worker producing output — clear throttle
         lastNotified.delete(w.name);
         continue;
       }
 
-      // Process dead — check throttle
-      const last = lastNotified.get(w.name);
-      if (last && Date.now() - last < NOTIFY_THROTTLE_MS) continue;
-
-      lastNotified.set(w.name, Date.now());
-
-      // Capture pane context (last 20 lines)
-      let context = '';
-      const tail = await capturePaneTail(target, 20).catch(() => null);
-      if (tail) {
-        const flat = tail
-          .split('\n')
-          .map((l) => l.trim())
-          .filter(Boolean)
-          .join(' | ');
-        if (flat) context = ` [context: ${flat}]`;
+      // Content unchanged — check if stable long enough
+      const stableMs = now - prev.stableSince;
+      if (stableMs >= IDLE_THRESHOLD_MS) {
+        await maybeNotify(
+          w,
+          `idle (${Math.round(stableMs / 60_000)}m)`,
+          notificationsByLeader,
+        );
       }
-
-      const notifyText = `[system@${w.room_name}]: ${w.name} process exited${context}`;
-
-      const roomMembers = getRoomMembers(w.room_id);
-      const leaders = roomMembers.filter(
-        (m) => m.role === 'leader' && m.tmux_target,
-      );
-
-      for (const leader of leaders) {
-        const msgs = notificationsByLeader.get(leader.tmux_target!) ?? [];
-        msgs.push(notifyText);
-        notificationsByLeader.set(leader.tmux_target!, msgs);
-      }
-
-      logServer('SWEEP', `Worker ${w.name} process exited, notifying leaders`);
     }
 
     // Deliver batched notifications
@@ -90,11 +108,57 @@ async function runSweep(): Promise<void> {
   }
 }
 
+async function maybeNotify(
+  w: {
+    name: string;
+    room_id: number;
+    room_name: string;
+    tmux_target: string | null;
+  },
+  reason: string,
+  notificationsByLeader: Map<string, string[]>,
+): Promise<void> {
+  // Throttle — skip if already notified about this worker recently
+  const last = lastNotified.get(w.name);
+  if (last && Date.now() - last < NOTIFY_THROTTLE_MS) return;
+
+  lastNotified.set(w.name, Date.now());
+
+  // Capture pane context
+  let context = '';
+  const tail = await capturePaneTail(w.tmux_target as string, 20).catch(
+    () => null,
+  );
+  if (tail) {
+    const flat = tail
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .join(' | ');
+    if (flat) context = ` [context: ${flat}]`;
+  }
+
+  const notifyText = `[system@${w.room_name}]: ${w.name} ${reason}${context}`;
+
+  const roomMembers = getRoomMembers(w.room_id);
+  const leaders = roomMembers.filter(
+    (m) => m.role === 'leader' && m.tmux_target,
+  );
+
+  for (const leader of leaders) {
+    const msgs = notificationsByLeader.get(leader.tmux_target as string) ?? [];
+    msgs.push(notifyText);
+    notificationsByLeader.set(leader.tmux_target as string, msgs);
+  }
+
+  logServer('SWEEP', `Worker ${w.name} ${reason}, notifying leaders`);
+}
+
 export function startSweep(): void {
   if (intervalId) return;
   runSweep();
   intervalId = setInterval(runSweep, SWEEP_INTERVAL_MS);
-  logServer('START', 'Process-death sweep started (30s interval)');
+  logServer('START', 'Worker sweep started (30s interval, 5m idle threshold)');
 }
 
 export function stopSweep(): void {
