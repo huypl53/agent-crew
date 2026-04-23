@@ -156,6 +156,44 @@ export async function sendKeys(
   }
 }
 
+/**
+ * Send a single-line CLI command via send-keys -l (no bracketed paste).
+ * Use for /rename, /clear, /crew:refresh — single-line commands where
+ * paste-buffer is overkill and can cause adjacent commands to merge.
+ */
+export async function sendCommand(
+  target: string,
+  text: string,
+): Promise<{ delivered: boolean; error?: string }> {
+  try {
+    // Send the command text literally
+    const textResult = await run('send-keys', '-t', target, '-l', text);
+    if (!textResult.success) {
+      return {
+        delivered: false,
+        error: textResult.stderr || 'send-keys -l failed',
+      };
+    }
+    // Small settle for the text to appear in the input line
+    await Bun.sleep(100);
+    // Press Enter to submit
+    const enterResult = await run('send-keys', '-t', target, 'Enter');
+    if (!enterResult.success) {
+      return {
+        delivered: false,
+        error: enterResult.stderr || 'send-keys Enter failed',
+      };
+    }
+    return { delivered: true };
+  } catch (e) {
+    logServer(
+      'ERROR',
+      `command delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return { delivered: false, error: 'command delivery failed' };
+  }
+}
+
 export async function sendEscape(
   target: string,
 ): Promise<{ delivered: boolean; error?: string }> {
