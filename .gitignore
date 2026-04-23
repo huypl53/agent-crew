@@ -52,3 +52,11 @@ repomix*
 docs
 crew/docs
 crew.db
+
+# generated / dead code
+release-manifest.json
+AGENTS.md
+tmux_cli_controller.py
+src/web/
+crew/src/web/package-lock.json
+crew/AGENTS.md
