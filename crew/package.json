@@ -1,0 +1,40 @@
+{
+  "name": "crew",
+  "version": "0.2.0",
+  "module": "src/cli.ts",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "crew": "src/cli.ts"
+  },
+  "scripts": {
+    "test": "bun test --timeout 15000",
+    "postinstall": "bash scripts/patch-string-width.sh",
+    "build:web": "cd src/web && npx vite build",
+    "dev:web": "cd src/web && npx vite dev",
+    "lint": "bunx biome check src/ test/ scripts/",
+    "lint:fix": "bunx biome check --write src/ test/ scripts/",
+    "format": "bunx biome format --write src/ test/ scripts/"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.12",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14",
+    "ink-testing-library": "^4.0.0",
+    "jsdom": "^29.0.2",
+    "vitest": "^4.1.4"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@inkjs/ui": "^2.0.0",
+    "ink": "^6.8.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.2.4",
+    "react-devtools-core": "^7.0.1",
+    "strip-ansi": "^7.2.0"
+  }
+}
