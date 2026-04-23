@@ -195,7 +195,7 @@ export async function handleJoinRoom(
       const { getQueue } = await import('../delivery/pane-queue.ts');
       await getQueue(target, { role: role as AgentRole }).enqueue({
         type: 'command',
-        text: `/rename ${name}`,
+        text: `/rename ${name}@${roomObj.name}`,
       });
     }
   } catch {
