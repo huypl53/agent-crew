@@ -1,0 +1,11 @@
+{
+  "name": "crew",
+  "description": "Room-based coordination for AI coding agents via tmux. Agents self-register into rooms, send messages, track tasks, and monitor status.",
+  "version": "0.2.0",
+  "author": {
+    "name": "crew contributors"
+  },
+  "repository": "https://github.com/huypham/crew",
+  "license": "MIT",
+  "keywords": ["tmux", "agents", "coordination", "mcp", "multi-agent"]
+}

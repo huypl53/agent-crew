@@ -1,0 +1,13 @@
+#!/bin/sh
+# Run Biome lint on staged TS/TSX files before commit
+set -e
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx)$' | grep '^crew/' || true)
+
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+
+echo "Running Biome lint on staged files..."
+cd "$(git rev-parse --show-toplevel)/crew"
+echo "$STAGED" | sed 's|^crew/||' | xargs bunx biome check --reporter=summary
