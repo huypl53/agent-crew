@@ -1,6 +1,8 @@
 # crew
 
-A plugin for AI coding agents that turns your terminal into an AI development team. Multiple agents work in parallel, coordinated through tmux rooms. Works with **Claude Code** and **OpenAI Codex CLI**.
+Multi-agent coordination for AI coding agents via tmux rooms. Works with **Claude Code** and **OpenAI Codex CLI**.
+
+**GitHub:** [https://github.com/huypl53/agent-crew](https://github.com/huypl53/agent-crew)
 
 ## How it works
 
