@@ -2,7 +2,13 @@ import { config } from '../config.ts';
 import { getPaneStatus } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
 import type { AgentRole } from '../shared/types.ts';
-import { paneExists, sendClear, sendEscape, sendKeys } from '../tmux/index.ts';
+import {
+  paneExists,
+  sendClear,
+  sendCommand,
+  sendEscape,
+  sendKeys,
+} from '../tmux/index.ts';
 
 export type QueueItem =
   | { type: 'paste'; text: string } // content message — gets role suffix
@@ -151,7 +157,7 @@ export class PaneQueue {
         break;
       }
       case 'command': {
-        const r = await sendKeys(this.target, item.text);
+        const r = await sendCommand(this.target, item.text);
         if (!r.delivered) throw new Error(r.error ?? 'command delivery failed');
         break;
       }
