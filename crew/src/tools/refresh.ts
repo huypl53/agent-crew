@@ -79,7 +79,7 @@ export async function handleRefresh(
       void getQueue(oldPane, { role: agent.role })
         .enqueue({
           type: 'command',
-          text: `/rename ${staleName}`,
+          text: `/rename ${staleName}@${agent.room_name}`,
         })
         .catch(() => undefined);
     }
@@ -87,7 +87,7 @@ export async function handleRefresh(
     void getQueue(target, { role: agent.role })
       .enqueue({
         type: 'command',
-        text: `/rename ${name}`,
+        text: `/rename ${name}@${agent.room_name}`,
       })
       .catch(() => undefined);
   } catch {

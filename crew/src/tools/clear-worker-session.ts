@@ -70,7 +70,7 @@ export async function handleClearWorkerSession(
   try {
     await getQueue(worker.tmux_target, { role: 'worker' }).enqueue({
       type: 'command',
-      text: `/rename ${worker_name}`,
+      text: `/rename ${worker_name}@${room}`,
     });
   } catch {
     // Non-critical — ignore failure

@@ -44,15 +44,36 @@ export async function startServer(
   }
 
   // Auto-build web app if dist/web/ is missing
+  const projectRoot = join(import.meta.dir, '../..');
+  const webRoot = join(projectRoot, 'src/web');
   const distDir = new URL('../../dist/web/', import.meta.url).pathname;
   if (!existsSync(join(distDir, 'index.html'))) {
+    const webNodeModules = join(webRoot, 'node_modules');
+    if (!existsSync(webNodeModules)) {
+      console.log(
+        '[crew] Missing src/web dependencies. Running bun install...',
+      );
+      const installProc = Bun.spawn(['bun', 'install'], {
+        cwd: webRoot,
+        stdout: 'inherit',
+        stderr: 'inherit',
+      });
+      const installExit = await installProc.exited;
+      if (installExit !== 0) {
+        throw new Error('[crew] Failed to install src/web dependencies');
+      }
+    }
+
     console.log('[crew] Web app not built. Running build:web...');
     const proc = Bun.spawn(['bun', 'run', 'build:web'], {
-      cwd: join(import.meta.dir, '../..'),
+      cwd: projectRoot,
       stdout: 'inherit',
       stderr: 'inherit',
     });
-    await proc.exited;
+    const buildExit = await proc.exited;
+    if (buildExit !== 0) {
+      throw new Error('[crew] Failed to build web app');
+    }
   }
 
   const server = Bun.serve({
