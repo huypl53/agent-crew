@@ -1,5 +1,6 @@
-import { getQueue } from '../delivery/pane-queue.ts';
-import { getPaneStatus, parsePaneInputSection } from '../shared/pane-status.ts';import { logServer } from '../shared/server-log.ts';
+import { getQueue, removeQueue } from '../delivery/pane-queue.ts';
+import { getPaneStatus, parsePaneInputSection } from '../shared/pane-status.ts';
+import { logServer } from '../shared/server-log.ts';
 import type { SweepBusyMode } from '../shared/types.ts';
 import {
   getAllAgents,
@@ -237,7 +238,15 @@ async function processDelivery(
         });
       }
     } else {
-      stageDeferred(target, merged);
+      const deadPane = merged.size > 0 && Array.from(merged.values()).some((text) =>
+        text.includes('no longer exists'),
+      );
+      if (deadPane) {
+        deferredByLeader.delete(target);
+        removeQueue(target);
+      } else {
+        stageDeferred(target, merged);
+      }
     }
   }
 }
@@ -287,12 +296,16 @@ async function runIdleDetection(): Promise<void> {
     ]);
     if (content === null) continue;
 
+<<<<<<< HEAD
     const parsedInput = parsePaneInputSection(content);
     if (parsedInput.typingActive) {
       continue;
     }
 
     const textHash = simpleHash(parsedInput.sanitized);
+=======
+    const textHash = simpleHash(content);
+>>>>>>> 1eb76d3 (feat(idle): add ANSI-aware detection for thinking state)
     const ansiHash = simpleHash(ansiContent ?? '');
     const prev = workerStates.get(w.name);
     const now = Date.now();
