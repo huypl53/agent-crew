@@ -14,11 +14,13 @@ import {
 import {
   capturePane,
   capturePaneTail,
+  capturePaneWithAnsi,
   paneCommandLooksAlive,
 } from '../tmux/index.ts';
 
 const SWEEP_INTERVAL_MS = 5_000;
 const IDLE_THRESHOLD_MS = 60_000;
+const ANSI_CHECK_LINES = 8;
 const NOTIFY_THROTTLE_MS = 30 * 60_000;
 const LIVENESS_TICKS = 6;
 const WARMUP_MS = 30_000;
@@ -32,7 +34,8 @@ let tickCount = 0;
 let startedAt = 0;
 
 interface WorkerState {
-  hash: number;
+  textHash: number;
+  ansiHash: number; // hash of status region with ANSI codes (catches color-only changes)
   stableSince: number;
 }
 
@@ -279,15 +282,23 @@ async function runIdleDetection(): Promise<void> {
       continue;
     }
 
-    const content = await capturePane(target);
+    const [content, ansiContent] = await Promise.all([
+      capturePane(target),
+      capturePaneWithAnsi(target, ANSI_CHECK_LINES),
+    ]);
     if (content === null) continue;
 
-    const hash = simpleHash(content);
+    const textHash = simpleHash(content);
+    const ansiHash = simpleHash(ansiContent ?? '');
     const prev = workerStates.get(w.name);
     const now = Date.now();
 
-    if (!prev || prev.hash !== hash) {
-      workerStates.set(w.name, { hash, stableSince: now });
+    // Check if either text or ANSI changed (catches "thinking" color animations)
+    const textChanged = !prev || textHash !== prev.textHash;
+    const ansiChanged = !prev || ansiHash !== prev.ansiHash;
+
+    if (textChanged || ansiChanged) {
+      workerStates.set(w.name, { textHash, ansiHash, stableSince: now });
       lastNotified.delete(w.name);
       continue;
     }
