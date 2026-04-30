@@ -1,5 +1,5 @@
 ---
-name: refresh
+name: crew:refresh
 description: Re-register your agent with current tmux pane after resuming a session
 arguments: --name <your-name>
 ---

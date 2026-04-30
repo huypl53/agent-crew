@@ -1,5 +1,5 @@
 ---
-name: leader
+name: crew:leader
 description: Guidance for leader agents on task coordination, worker management, and escalation in crew rooms
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: boss
+name: crew:boss
 description: Guidance for boss agents on managing leaders, strategic direction, and organizational awareness in crew
 ---
 

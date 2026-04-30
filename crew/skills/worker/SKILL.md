@@ -1,5 +1,5 @@
 ---
-name: worker
+name: crew:worker
 description: Guidance for worker agents on task execution and status reporting in crew rooms
 ---
 
