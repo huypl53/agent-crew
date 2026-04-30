@@ -1,5 +1,5 @@
 ---
-name: join-room
+name: crew:join-room
 description: Register your AI coding agent in a crew room with a role
 arguments: <room> --role <boss|leader|worker> --name <your-name>
 ---
