@@ -282,6 +282,23 @@ export async function capturePane(target: string): Promise<string | null> {
   return stripAnsi(result.stdout);
 }
 
+/**
+ * Capture pane content with ANSI escape sequences preserved.
+ * Optionally capture only the last N lines (status region).
+ */
+export async function capturePaneWithAnsi(
+  target: string,
+  lastLines?: number,
+): Promise<string | null> {
+  const args = ['capture-pane', '-t', target, '-p', '-e'];
+  if (lastLines) {
+    args.push('-S', String(-lastLines));
+  }
+  const result = await run(...args);
+  if (!result.success) return null;
+  return result.stdout;
+}
+
 export async function isPaneDead(target: string): Promise<boolean> {
   // display-message accepts bare pane IDs (%N) unlike list-panes which expects a window target
   const result = await run(

@@ -129,7 +129,11 @@ export async function handleJoinRoom(
   const normalizedPath = normalizePath(cwd);
 
   // Generate random name if not provided
-  let name = params.name?.trim() || generateRandomName();
+  const explicitName = params.name?.trim();
+  let name = explicitName || generateRandomName();
+  if (!explicitName) {
+    name = `${role}-${name}`;
+  }
 
   // Remove any stale agents using the same pane but different name
   for (const agent of getAllAgents()) {

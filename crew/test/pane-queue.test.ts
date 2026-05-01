@@ -68,4 +68,12 @@ describe('PaneQueue', () => {
     // escape should have been processed before paste
     expect(order[0]).toBe('escape');
   });
+
+  test('delivery still works with typing gate checks enabled', async () => {
+    const q = getQueue(testPane);
+    await q.enqueue({ type: 'paste', text: 'typing-gate-smoke' });
+    await Bun.sleep(200);
+    const output = await captureFromPane(testPane);
+    expect(output).toContain('typing-gate-smoke');
+  });
 });

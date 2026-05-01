@@ -131,7 +131,7 @@ export class PaneQueue {
     const start = Date.now();
     while (Date.now() - start < MAX_WAIT_MS) {
       const result = await getPaneStatus(this.target);
-      if (result.status === 'idle') return;
+      if (!result.typingActive && result.status === 'idle') return;
       await Bun.sleep(getPollingInterval(this.role, this.lastActivityMs));
     }
     // Timeout — deliver anyway (best effort)

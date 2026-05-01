@@ -14,6 +14,7 @@ import {
   paneExists,
 } from '../tmux/index.ts';
 import { getQueue } from './pane-queue.ts';
+import { parsePaneInputSection } from '../shared/pane-status.ts';
 
 const NOTIFY_KINDS: MessageKind[] = ['completion', 'error', 'question'];
 
@@ -229,12 +230,13 @@ export async function deliverMessage(
             () => null,
           );
           if (tail) {
-            const flatTail = tail
+            const sanitized = parsePaneInputSection(tail).sanitized;
+            const flatTail = sanitized
               .split('\n')
               .map((l) => l.trim())
               .filter(Boolean)
               .join(' | ');
-            notifyText += ` [context: ${flatTail}]`;
+            if (flatTail) notifyText += ` [context: ${flatTail}]`;
           }
         }
 
