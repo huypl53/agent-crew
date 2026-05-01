@@ -1,4 +1,8 @@
-import { getQueue, removeQueue } from '../delivery/pane-queue.ts';
+import {
+  getQueue,
+  PaneDeliveryError,
+  removeQueue,
+} from '../delivery/pane-queue.ts';
 import { getPaneStatus, parsePaneInputSection } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
 import type { SweepBusyMode } from '../shared/types.ts';
@@ -152,21 +156,22 @@ function mergeMessages(
 async function deliverCollapsed(
   target: string,
   workerMsgs: Map<string, string>,
-): Promise<boolean> {
-  if (workerMsgs.size === 0) return true;
+): Promise<{ delivered: boolean; deadPane: boolean }> {
+  if (workerMsgs.size === 0) return { delivered: true, deadPane: false };
   try {
     await getQueue(target, { role: 'leader' }).enqueue({
       type: 'paste',
       text: Array.from(workerMsgs.values()).join('\n'),
     });
     lastFlushCount = workerMsgs.size;
-    return true;
+    return { delivered: true, deadPane: false };
   } catch (e) {
+    const deadPane = e instanceof PaneDeliveryError && e.code === 'PANE_DEAD';
     logServer(
       'WARN',
       `Failed to notify leader at ${target}: ${e instanceof Error ? e.message : String(e)}`,
     );
-    return false;
+    return { delivered: false, deadPane };
   }
 }
 
@@ -227,8 +232,8 @@ async function processDelivery(
     }
 
     const merged = mergeMessages(deferredByLeader.get(target), incoming);
-    const delivered = await deliverCollapsed(target, merged);
-    if (delivered) {
+    const result = await deliverCollapsed(target, merged);
+    if (result.delivered) {
       deferredByLeader.delete(target);
       if (merged.size > 0) {
         emitSweepEvent('flush', control, {
@@ -237,16 +242,11 @@ async function processDelivery(
           flush_count: merged.size,
         });
       }
+    } else if (result.deadPane) {
+      deferredByLeader.delete(target);
+      removeQueue(target);
     } else {
-      const deadPane = merged.size > 0 && Array.from(merged.values()).some((text) =>
-        text.includes('no longer exists'),
-      );
-      if (deadPane) {
-        deferredByLeader.delete(target);
-        removeQueue(target);
-      } else {
-        stageDeferred(target, merged);
-      }
+      stageDeferred(target, merged);
     }
   }
 }

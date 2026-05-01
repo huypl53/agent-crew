@@ -1,4 +1,14 @@
 import { config } from '../config.ts';
+
+export class PaneDeliveryError extends Error {
+  constructor(
+    message: string,
+    public readonly code: 'PANE_DEAD' | 'DELIVERY_FAILED',
+  ) {
+    super(message);
+    this.name = 'PaneDeliveryError';
+  }
+}
 import { getPaneStatus } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
 import type { AgentRole } from '../shared/types.ts';
@@ -144,7 +154,10 @@ export class PaneQueue {
         'WARN',
         `pane-queue: pane ${this.target} is dead, skipping delivery`,
       );
-      throw new Error(`pane ${this.target} no longer exists`);
+      throw new PaneDeliveryError(
+        `pane ${this.target} no longer exists`,
+        'PANE_DEAD',
+      );
     }
 
     switch (item.type) {
@@ -153,22 +166,38 @@ export class PaneQueue {
         const suffix = this.role ? ROLE_SUFFIX[this.role] : undefined;
         if (suffix) text += '\n' + suffix;
         const r = await sendKeys(this.target, text);
-        if (!r.delivered) throw new Error(r.error ?? 'paste delivery failed');
+        if (!r.delivered)
+          throw new PaneDeliveryError(
+            r.error ?? 'paste delivery failed',
+            'DELIVERY_FAILED',
+          );
         break;
       }
       case 'command': {
         const r = await sendCommand(this.target, item.text);
-        if (!r.delivered) throw new Error(r.error ?? 'command delivery failed');
+        if (!r.delivered)
+          throw new PaneDeliveryError(
+            r.error ?? 'command delivery failed',
+            'DELIVERY_FAILED',
+          );
         break;
       }
       case 'escape': {
         const r = await sendEscape(this.target);
-        if (!r.delivered) throw new Error(r.error ?? 'escape delivery failed');
+        if (!r.delivered)
+          throw new PaneDeliveryError(
+            r.error ?? 'escape delivery failed',
+            'DELIVERY_FAILED',
+          );
         break;
       }
       case 'clear': {
         const r = await sendClear(this.target);
-        if (!r.delivered) throw new Error(r.error ?? 'clear delivery failed');
+        if (!r.delivered)
+          throw new PaneDeliveryError(
+            r.error ?? 'clear delivery failed',
+            'DELIVERY_FAILED',
+          );
         break;
       }
     }
