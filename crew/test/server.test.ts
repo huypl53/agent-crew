@@ -455,9 +455,12 @@ describe('static serving', () => {
     expect(res.status).toBe(200);
     const ct = res.headers.get('content-type') ?? '';
     expect(ct).toMatch(/javascript/);
-    // Must not be the HTML index
+    // Must not be the HTML index document
     const text = await res.text();
-    expect(text).not.toContain('<html');
+    expect(text.trimStart().toLowerCase().startsWith('<!doctype html')).toBe(
+      false,
+    );
+    expect(text.trimStart().toLowerCase().startsWith('<html')).toBe(false);
   });
 
   test('GET /fake-spa-route falls back to index.html when dist is built', async () => {

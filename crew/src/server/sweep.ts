@@ -1,6 +1,5 @@
 import { getQueue } from '../delivery/pane-queue.ts';
-import { getPaneStatus } from '../shared/pane-status.ts';
-import { logServer } from '../shared/server-log.ts';
+import { getPaneStatus, parsePaneInputSection } from '../shared/pane-status.ts';import { logServer } from '../shared/server-log.ts';
 import type { SweepBusyMode } from '../shared/types.ts';
 import {
   getAllAgents,
@@ -14,11 +13,13 @@ import {
 import {
   capturePane,
   capturePaneTail,
+  capturePaneWithAnsi,
   paneCommandLooksAlive,
 } from '../tmux/index.ts';
 
 const SWEEP_INTERVAL_MS = 5_000;
 const IDLE_THRESHOLD_MS = 60_000;
+const ANSI_CHECK_LINES = 8;
 const NOTIFY_THROTTLE_MS = 30 * 60_000;
 const LIVENESS_TICKS = 6;
 const WARMUP_MS = 30_000;
@@ -32,7 +33,8 @@ let tickCount = 0;
 let startedAt = 0;
 
 interface WorkerState {
-  hash: number;
+  textHash: number;
+  ansiHash: number; // hash of status region with ANSI codes (catches color-only changes)
   stableSince: number;
 }
 
@@ -279,15 +281,28 @@ async function runIdleDetection(): Promise<void> {
       continue;
     }
 
-    const content = await capturePane(target);
+    const [content, ansiContent] = await Promise.all([
+      capturePane(target),
+      capturePaneWithAnsi(target, ANSI_CHECK_LINES),
+    ]);
     if (content === null) continue;
 
-    const hash = simpleHash(content);
+    const parsedInput = parsePaneInputSection(content);
+    if (parsedInput.typingActive) {
+      continue;
+    }
+
+    const textHash = simpleHash(parsedInput.sanitized);
+    const ansiHash = simpleHash(ansiContent ?? '');
     const prev = workerStates.get(w.name);
     const now = Date.now();
 
-    if (!prev || prev.hash !== hash) {
-      workerStates.set(w.name, { hash, stableSince: now });
+    // Check if either text or ANSI changed (catches "thinking" color animations)
+    const textChanged = !prev || textHash !== prev.textHash;
+    const ansiChanged = !prev || ansiHash !== prev.ansiHash;
+
+    if (textChanged || ansiChanged) {
+      workerStates.set(w.name, { textHash, ansiHash, stableSince: now });
       lastNotified.delete(w.name);
       continue;
     }
@@ -391,7 +406,8 @@ async function maybeNotify(
     () => null,
   );
   if (tail) {
-    const flat = tail
+    const sanitized = parsePaneInputSection(tail).sanitized;
+    const flat = sanitized
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean)
