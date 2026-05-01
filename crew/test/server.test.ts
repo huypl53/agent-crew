@@ -238,7 +238,7 @@ describe('POST /api/rooms/:name/onboard-agent', () => {
     expect(body.ok).toBe(true);
     expect(body.target_window.index).toBe(explicitWindowIndex);
     expect(body.agent.role).toBe('worker');
-    expect(typeof body.agent.name).toBe('string');
+    expect(body.agent.name).toMatch(/^worker-agent-[a-z0-9]{4}$/);
     expect(typeof body.agent.pane).toBe('string');
   });
 
