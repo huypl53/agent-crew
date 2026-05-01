@@ -1,4 +1,4 @@
-import { randomSuffix } from '../shared/types.ts';
+import { generateRandomName, randomSuffix } from '../shared/types.ts';
 import { getDb } from '../state/db.ts';
 import {
   dbCreateRoom,
@@ -601,8 +601,10 @@ export async function handleApi(req: Request): Promise<Response> {
     const window = windows.find((w) => w.index === targetWindowIndex);
     if (!window) return err('Window not found', 400);
 
+    const explicitName =
+      typeof body.name === 'string' ? body.name.trim() : '';
     let finalName =
-      (typeof body.name === 'string' && body.name.trim()) || template.name;
+      explicitName || `${template.role}-${generateRandomName()}`;
     while (getAgentByRoomAndName(room.id, finalName)) {
       finalName = `${finalName}-${randomSuffix()}`;
     }
