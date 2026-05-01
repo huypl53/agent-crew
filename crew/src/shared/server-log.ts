@@ -13,6 +13,8 @@ const MAX_BYTES = 1_000_000; // 1MB
 const TRUNCATE_LINES = 500;
 
 let _logPath = LOG_PATH;
+const RECENT_LOG_WINDOW_MS = 30_000;
+const recentLogMap = new Map<string, number>();
 
 export function initServerLog(path?: string): void {
   _logPath = path ?? LOG_PATH;
@@ -26,6 +28,12 @@ export function initServerLog(path?: string): void {
 
 export function logServer(level: string, msg: string): void {
   try {
+    const now = Date.now();
+    const dedupeKey = `${level}|${msg}`;
+    const lastAt = recentLogMap.get(dedupeKey) ?? 0;
+    if (now - lastAt < RECENT_LOG_WINDOW_MS) return;
+    recentLogMap.set(dedupeKey, now);
+
     const line = `${new Date().toISOString()} [${level}] ${msg}\n`;
     appendFileSync(_logPath, line);
 

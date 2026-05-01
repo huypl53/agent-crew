@@ -296,16 +296,12 @@ async function runIdleDetection(): Promise<void> {
     ]);
     if (content === null) continue;
 
-<<<<<<< HEAD
     const parsedInput = parsePaneInputSection(content);
     if (parsedInput.typingActive) {
       continue;
     }
 
     const textHash = simpleHash(parsedInput.sanitized);
-=======
-    const textHash = simpleHash(content);
->>>>>>> 1eb76d3 (feat(idle): add ANSI-aware detection for thinking state)
     const ansiHash = simpleHash(ansiContent ?? '');
     const prev = workerStates.get(w.name);
     const now = Date.now();

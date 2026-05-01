@@ -192,6 +192,10 @@ export class PaneQueue {
 
 const queues = new Map<string, PaneQueue>();
 
+export function removeQueue(target: string): void {
+  queues.delete(target);
+}
+
 export function getQueue(
   target: string,
   options?: PaneQueueOptions,
