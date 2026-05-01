@@ -1,6 +1,5 @@
 import { getQueue } from '../delivery/pane-queue.ts';
-import { getPaneStatus } from '../shared/pane-status.ts';
-import { logServer } from '../shared/server-log.ts';
+import { getPaneStatus, parsePaneInputSection } from '../shared/pane-status.ts';import { logServer } from '../shared/server-log.ts';
 import type { SweepBusyMode } from '../shared/types.ts';
 import {
   getAllAgents,
@@ -288,7 +287,12 @@ async function runIdleDetection(): Promise<void> {
     ]);
     if (content === null) continue;
 
-    const textHash = simpleHash(content);
+    const parsedInput = parsePaneInputSection(content);
+    if (parsedInput.typingActive) {
+      continue;
+    }
+
+    const textHash = simpleHash(parsedInput.sanitized);
     const ansiHash = simpleHash(ansiContent ?? '');
     const prev = workerStates.get(w.name);
     const now = Date.now();
@@ -402,7 +406,8 @@ async function maybeNotify(
     () => null,
   );
   if (tail) {
-    const flat = tail
+    const sanitized = parsePaneInputSection(tail).sanitized;
+    const flat = sanitized
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean)

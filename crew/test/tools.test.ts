@@ -105,7 +105,7 @@ describe('MCP tools', () => {
       });
       expect(result.isError).toBeUndefined();
       const data = JSON.parse(result.content[0]?.text);
-      expect(data.name).toMatch(/^agent-[a-z0-9]{4}$/);
+      expect(data.name).toMatch(/^worker-agent-[a-z0-9]{4}$/);
     });
 
     test('generates random name when empty string', async () => {
@@ -117,7 +117,7 @@ describe('MCP tools', () => {
       });
       expect(result.isError).toBeUndefined();
       const data = JSON.parse(result.content[0]?.text);
-      expect(data.name).toMatch(/^agent-[a-z0-9]{4}$/);
+      expect(data.name).toMatch(/^worker-agent-[a-z0-9]{4}$/);
     });
 
     test('rejoin same name same pane updates in place', async () => {
