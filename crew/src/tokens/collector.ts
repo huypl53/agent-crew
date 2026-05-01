@@ -8,7 +8,17 @@ let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
 /** Run one collection cycle for all registered agents */
 export async function collectAllTokens(): Promise<void> {
-  const agents = getAllAgents();
+  let agents;
+  try {
+    agents = getAllAgents();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('DB not initialized')) {
+      logServer('WARN', 'Token collection skipped: DB not initialized yet');
+      return;
+    }
+    throw e;
+  }
   const promises = agents.map(async (agent) => {
     try {
       switch (agent.agent_type) {
