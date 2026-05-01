@@ -1,4 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import {
+  resetIdleTransition,
+  resetSweepIdleTracking,
+  shouldNotifyIdleTransition,
+} from '../src/server/sweep.ts';
 import { closeDb, initDb } from '../src/state/db.ts';
 import {
   addAgent,
@@ -191,5 +196,18 @@ describe('event-driven status', () => {
       'completion',
     );
     expect(getAgentDbStatus('worker')).toBe('idle');
+  });
+
+  test('idle transition notify emits once per epoch and resets on activity', () => {
+    resetSweepIdleTracking();
+
+    expect(shouldNotifyIdleTransition('worker')).toBe(true);
+    expect(shouldNotifyIdleTransition('worker')).toBe(false);
+    expect(shouldNotifyIdleTransition('worker')).toBe(false);
+
+    resetIdleTransition('worker');
+
+    expect(shouldNotifyIdleTransition('worker')).toBe(true);
+    expect(shouldNotifyIdleTransition('worker')).toBe(false);
   });
 });

@@ -45,6 +45,7 @@ interface WorkerState {
 
 const workerStates = new Map<string, WorkerState>();
 const lastNotified = new Map<string, number>();
+const idleEpochNotified = new Map<string, boolean>();
 const deadCounts = new Map<string, number>();
 const deferredByLeader = new Map<string, Map<string, string>>();
 const leaderBusyUntil = new Map<string, number>();
@@ -96,6 +97,16 @@ function computeDeferredTotal(): number {
   let total = 0;
   for (const msgs of deferredByLeader.values()) total += msgs.size;
   return total;
+}
+
+export function shouldNotifyIdleTransition(workerName: string): boolean {
+  if (idleEpochNotified.get(workerName)) return false;
+  idleEpochNotified.set(workerName, true);
+  return true;
+}
+
+export function resetIdleTransition(workerName: string): void {
+  idleEpochNotified.delete(workerName);
 }
 
 export function getSweepRuntimeStats(): SweepRuntimeStats {
@@ -313,11 +324,12 @@ async function runIdleDetection(): Promise<void> {
     if (textChanged || ansiChanged) {
       workerStates.set(w.name, { textHash, ansiHash, stableSince: now });
       lastNotified.delete(w.name);
+      resetIdleTransition(w.name);
       continue;
     }
 
     const stableMs = now - prev.stableSince;
-    if (stableMs >= IDLE_THRESHOLD_MS) {
+    if (stableMs >= IDLE_THRESHOLD_MS && shouldNotifyIdleTransition(w.name)) {
       await maybeNotify(
         w,
         `idle (${Math.round(stableMs / 60_000)}m)`,
@@ -386,6 +398,7 @@ async function runLivenessCheck(): Promise<void> {
       markAgentStale(agent.name);
       deadCounts.delete(agent.name);
       workerStates.delete(agent.name);
+      resetIdleTransition(agent.name);
     } else {
       logServer(
         'LIVENESS',
@@ -441,6 +454,10 @@ async function maybeNotify(
   }
 
   logServer('SWEEP', `Worker ${w.name} ${reason}, staging notify for leaders`);
+}
+
+export function resetSweepIdleTracking(): void {
+  idleEpochNotified.clear();
 }
 
 export function getWorkerSweepStates(): Record<
