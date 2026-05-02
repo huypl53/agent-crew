@@ -167,22 +167,25 @@ function mergeMessages(
 async function deliverCollapsed(
   target: string,
   workerMsgs: Map<string, string>,
-): Promise<{ delivered: boolean; deadPane: boolean }> {
-  if (workerMsgs.size === 0) return { delivered: true, deadPane: false };
+): Promise<{ delivered: boolean; deadPane: boolean; typingDeferred: boolean }> {
+  if (workerMsgs.size === 0)
+    return { delivered: true, deadPane: false, typingDeferred: false };
   try {
     await getQueue(target, { role: 'leader' }).enqueue({
       type: 'paste',
       text: Array.from(workerMsgs.values()).join('\n'),
     });
     lastFlushCount = workerMsgs.size;
-    return { delivered: true, deadPane: false };
+    return { delivered: true, deadPane: false, typingDeferred: false };
   } catch (e) {
     const deadPane = e instanceof PaneDeliveryError && e.code === 'PANE_DEAD';
+    const typingDeferred =
+      e instanceof PaneDeliveryError && e.code === 'PANE_NOT_READY_TYPING';
     logServer(
       'WARN',
       `Failed to notify leader at ${target}: ${e instanceof Error ? e.message : String(e)}`,
     );
-    return { delivered: false, deadPane };
+    return { delivered: false, deadPane, typingDeferred };
   }
 }
 
