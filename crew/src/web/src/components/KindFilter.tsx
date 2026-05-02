@@ -16,7 +16,7 @@ interface Props {
 
 export default function KindFilter({ enabledKinds, onToggle }: Props) {
   return (
-    <div className="flex gap-1 px-3 py-1 border-b border-slate-700 flex-wrap">
+    <div className="flex gap-1 px-3 py-1 border-b border-slate-200 dark:border-slate-700 flex-wrap">
       {KINDS.map(({ key, label, color }) => {
         const active = enabledKinds.has(key);
         return (
@@ -26,8 +26,8 @@ export default function KindFilter({ enabledKinds, onToggle }: Props) {
             title={`Toggle ${key} messages`}
             className={`px-2 py-0.5 rounded text-xs font-mono transition-colors ${
               active
-                ? `bg-slate-600 ${color}`
-                : 'bg-transparent text-slate-600 hover:text-slate-500'
+                ? `bg-slate-200 dark:bg-slate-600 ${color}`
+                : 'bg-transparent text-slate-600 dark:text-slate-500 hover:text-slate-500'
             }`}
           >
             [{label}]

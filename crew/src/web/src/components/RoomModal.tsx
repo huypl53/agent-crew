@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { useFocusTrap } from './a11y-utils.ts';
 import { del, patch, post } from '../hooks/useApi.ts';
 import { validateRoomName } from '../lib/validators.ts';
 import type { AgentTemplate, Room } from '../types.ts';
@@ -122,18 +123,25 @@ export default function RoomModal({
     }
   };
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef);
+
   return (
     <div
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
       onClick={onClose}
     >
       <div
-        className="bg-slate-800 rounded p-6 w-96 space-y-4"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={mode === 'create' ? 'Create Room' : mode === 'delete-confirm' ? 'Delete Room' : mode === 'edit-topic' ? 'Edit Topic' : 'Edit Cast'}
+        className="bg-white dark:bg-slate-800 rounded p-6 w-96 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         {mode === 'create' && step === 'name-topic' && (
           <>
-            <h2 className="text-slate-100 font-semibold">Create Room</h2>
+            <h2 className="text-slate-700 dark:text-slate-100 font-semibold">Create Room</h2>
             <div className="space-y-2">
               <input
                 autoFocus
@@ -141,14 +149,14 @@ export default function RoomModal({
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleNameTopicNext()}
                 placeholder="Room name"
-                className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none"
+                className="w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-800"
               />
               <input
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleNameTopicNext()}
                 placeholder="Topic (optional)"
-                className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none"
+                className="w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-800"
               />
             </div>
           </>
@@ -156,16 +164,16 @@ export default function RoomModal({
 
         {mode === 'create' && step === 'templates' && (
           <>
-            <h2 className="text-slate-100 font-semibold">
+            <h2 className="text-slate-700 dark:text-slate-100 font-semibold">
               Add templates to #{name}
             </h2>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Select agent templates for this room (optional)
             </p>
             <ul className="max-h-48 overflow-y-auto space-y-1">
               {templates.map((t) => (
                 <li key={t.id}>
-                  <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-700 cursor-pointer text-sm text-slate-300">
+                  <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer text-sm text-slate-600 dark:text-slate-300">
                     <input
                       type="checkbox"
                       checked={selectedIds.includes(t.id)}
@@ -173,7 +181,7 @@ export default function RoomModal({
                       className="accent-blue-500"
                     />
                     <span className="font-medium">{t.name}</span>
-                    <span className="text-xs text-slate-500">({t.role})</span>
+                    <span className="text-xs text-slate-400 dark:text-slate-500">({t.role})</span>
                   </label>
                 </li>
               ))}
@@ -183,10 +191,10 @@ export default function RoomModal({
 
         {mode === 'delete-confirm' && (
           <>
-            <h2 className="text-slate-100 font-semibold">
+            <h2 className="text-slate-700 dark:text-slate-100 font-semibold">
               Delete #{room?.name}?
             </h2>
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               This will remove {room?.member_count ?? 0} member
               {(room?.member_count ?? 0) !== 1 ? 's' : ''} and all messages.
             </p>
@@ -195,7 +203,7 @@ export default function RoomModal({
 
         {mode === 'edit-topic' && room && (
           <>
-            <h2 className="text-slate-100 font-semibold">
+            <h2 className="text-slate-700 dark:text-slate-100 font-semibold">
               Edit topic — #{room.name}
             </h2>
             <textarea
@@ -204,28 +212,28 @@ export default function RoomModal({
               onChange={(e) => setTopic(e.target.value)}
               rows={3}
               placeholder="Room topic (optional)"
-              className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none resize-none"
+              className={`w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 ${INPUT_FOCUS} resize-none`}
             />
           </>
         )}
 
         {mode === 'edit-cast' && room && (
           <>
-            <h2 className="text-slate-100 font-semibold">
+            <h2 className="text-slate-700 dark:text-slate-100 font-semibold">
               Edit cast — #{room.name}
             </h2>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               Select agent templates for this room
             </p>
             {templates.length === 0 ? (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-400 dark:text-slate-500">
                 No templates available. Create templates first.
               </p>
             ) : (
               <ul className="max-h-48 overflow-y-auto space-y-1">
                 {templates.map((t) => (
                   <li key={t.id}>
-                    <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-700 cursor-pointer text-sm text-slate-300">
+                    <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer text-sm text-slate-600 dark:text-slate-300">
                       <input
                         type="checkbox"
                         checked={selectedIds.includes(t.id)}
@@ -233,7 +241,7 @@ export default function RoomModal({
                         className="accent-blue-500"
                       />
                       <span className="font-medium">{t.name}</span>
-                      <span className="text-xs text-slate-500">({t.role})</span>
+                      <span className="text-xs text-slate-400 dark:text-slate-500">({t.role})</span>
                     </label>
                   </li>
                 ))}
@@ -247,7 +255,7 @@ export default function RoomModal({
         <div className="flex gap-2 justify-end">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 rounded text-sm text-slate-400 hover:text-slate-200"
+            className="px-3 py-1.5 rounded text-sm text-slate-400 dark:text-slate-400 hover:text-slate-500 dark:hover:text-slate-200"
           >
             Cancel
           </button>
@@ -266,14 +274,14 @@ export default function RoomModal({
             <>
               <button
                 onClick={() => void submitCreate([])}
-                className="px-3 py-1.5 rounded text-sm text-slate-400 hover:text-slate-200"
+                className="px-3 py-1.5 rounded text-sm text-slate-400 dark:text-slate-400 hover:text-slate-500 dark:hover:text-slate-200"
               >
                 Skip
               </button>
               <button
                 onClick={() => void submitCreate(selectedIds)}
                 disabled={saving}
-                className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 disabled:opacity-50 rounded text-sm text-white"
+                className="px-3 py-1.5 bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 disabled:opacity-50 rounded text-sm text-slate-700 dark:text-white"
               >
                 {saving ? '…' : 'Create room'}
               </button>

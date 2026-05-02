@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { onKeyAction } from './a11y-utils.ts';
+import { SkeletonCard } from './skeleton.tsx';
 import {
   buildMessageTree,
   flattenTree,
@@ -96,8 +98,9 @@ export default function MessageFeed({
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">
-        Loading…
+      <div className="flex-1 overflow-y-auto flex flex-col">
+        <div className="flex-1" />
+        <SkeletonCard count={5} />
       </div>
     );
   }
@@ -129,8 +132,11 @@ export default function MessageFeed({
       <div key={id} className="font-mono text-sm">
         {/* Collapsed row — click to expand/collapse text */}
         <div
+          role="button"
+          tabIndex={0}
           className="group flex gap-2 px-3 py-0.5 hover:bg-slate-800/50 cursor-pointer items-baseline"
           onClick={() => toggleExpand(msg.message_id)}
+          onKeyDown={onKeyAction(() => toggleExpand(msg.message_id))}
         >
           {prefix != null && (
             <span className="text-slate-600 select-none whitespace-pre flex-shrink-0">
@@ -145,6 +151,7 @@ export default function MessageFeed({
               }}
               className="text-slate-500 hover:text-slate-300 text-xs w-4 flex-shrink-0"
               title={isThreadCollapsed ? 'Expand thread' : 'Collapse thread'}
+              aria-label={isThreadCollapsed ? 'Expand thread' : 'Collapse thread'}
             >
               {isThreadCollapsed ? '▶' : '▼'}
             </button>
@@ -182,6 +189,7 @@ export default function MessageFeed({
               }}
               className="ml-auto flex-shrink-0 text-slate-600 hover:text-slate-400 text-xs opacity-0 group-hover:opacity-100"
               title="Reply to this message"
+              aria-label="Reply to this message"
             >
               ↩
             </button>

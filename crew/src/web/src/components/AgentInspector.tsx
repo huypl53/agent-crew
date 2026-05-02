@@ -1,5 +1,8 @@
 import type React from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useFocusTrap } from './a11y-utils.ts';
+import AgentActivityIndicator from './agent-activity-indicator.tsx';
+import { useAgentPresence } from '../hooks/use-agent-presence.ts';
 import { get, post } from '../hooks/useApi.ts';
 import type {
   Agent,
@@ -25,7 +28,7 @@ function Field({
 }) {
   return (
     <div>
-      <div className="text-slate-500 uppercase tracking-widest text-[10px] mb-0.5">
+      <div className="text-slate-400 dark:text-slate-500 uppercase tracking-widest text-[10px] mb-0.5">
         {label}
       </div>
       {children}
@@ -45,7 +48,7 @@ function SectionHeader({
   return (
     <button
       onClick={onToggle}
-      className="w-full flex items-center justify-between text-[10px] uppercase tracking-widest text-slate-500 hover:text-slate-400 py-1 border-t border-slate-700 mt-1"
+      className="w-full flex items-center justify-between text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500 hover:text-slate-300 dark:hover:text-slate-400 py-1 border-t border-slate-200 dark:border-slate-700 mt-1"
     >
       <span>{label}</span>
       <span>{open ? '▾' : '▸'}</span>
@@ -113,6 +116,8 @@ export default function AgentInspector({
   const [onboardWindow, setOnboardWindow] = useState<number | null>(null);
   const [onboardLoading, setOnboardLoading] = useState(false);
   const [onboardError, setOnboardError] = useState<string | null>(null);
+
+  const presence = useAgentPresence(room);
 
   // Reset send state when selected agent changes
   useEffect(() => {
@@ -221,54 +226,59 @@ export default function AgentInspector({
   const hasCost = tu != null;
   const hasStats = ms != null || ts != null || selected?.joined_at != null;
 
+  const onboardPanelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(onboardPanelRef);
+
   return (
-    <aside className="w-64 flex-shrink-0 bg-slate-800 border-l border-slate-700 flex flex-col">
-      <div className="px-3 py-2 text-xs font-semibold uppercase tracking-widest text-slate-400 border-b border-slate-700 flex items-center gap-2">
+    <aside className="w-64 flex-shrink-0 bg-slate-50 dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 flex flex-col" aria-label="Agent Inspector">
+      <div className="px-3 py-2 text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2">
         <span className="flex-1">Agents {room ? `· #${room}` : ''}</span>
         {room && (
           <button
             onClick={() => void openOnboardModal()}
-            className="px-1.5 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-[10px] text-slate-200"
+            className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-[10px] text-slate-700 dark:text-slate-200"
             title="Onboard agent from template"
+            aria-label="Onboard agent from template"
           >
             + Agent
           </button>
         )}
       </div>
       {error && <div className="p-2 text-xs text-red-400">{error}</div>}
-      <ul className="border-b border-slate-700 overflow-y-auto max-h-48">
+      <ul className="border-b border-slate-200 dark:border-slate-700 overflow-y-auto max-h-48">
         {agents.map((a) => (
           <li key={a.name}>
             <button
               onClick={() => selectAgent(a.name)}
-              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-slate-700 transition-colors ${selected?.name === a.name ? 'bg-slate-700' : ''}`}
+              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${selected?.name === a.name ? 'bg-slate-200 dark:bg-slate-700' : ''}`}
             >
               <span
-                className={`text-xs mr-1 ${STATUS_COLORS[a.status] ?? 'text-slate-500'}`}
+                className={`text-xs mr-1 ${STATUS_COLORS[a.status] ?? 'text-slate-400 dark:text-slate-500'}`}
               >
                 ●
               </span>
-              <span className="text-slate-200">{a.name}</span>
-              <span className="ml-1 text-xs text-slate-500">{a.role}</span>
+              <AgentActivityIndicator status={presence.get(a.name)} />
+              <span className="text-slate-700 dark:text-slate-200">{a.name}</span>
+              <span className="ml-1 text-xs text-slate-400 dark:text-slate-500">{a.role}</span>
             </button>
           </li>
         ))}
         {agents.length === 0 && !error && !roomInfo?.template_names?.length && (
-          <li className="px-3 py-2 text-xs text-slate-500">No agents</li>
+          <li className="px-3 py-2 text-xs text-slate-400 dark:text-slate-500">No agents</li>
         )}
         {agents.length === 0 &&
           !error &&
           !!roomInfo?.template_names?.length && (
             <>
-              <li className="px-3 py-1 text-[10px] uppercase tracking-widest text-slate-500 bg-slate-700/30">
+              <li className="px-3 py-1 text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700/30">
                 Expected cast
               </li>
               {roomInfo.template_names.map((name) => (
                 <li
                   key={name}
-                  className="px-3 py-1.5 text-sm text-slate-500 italic"
+                  className="px-3 py-1.5 text-sm text-slate-400 dark:text-slate-500 italic"
                 >
-                  <span className="text-xs mr-1 text-slate-600">○</span>
+                  <span className="text-xs mr-1 text-slate-400 dark:text-slate-600">○</span>
                   {name}
                   <span className="ml-1 text-[10px] text-slate-600">
                     · not joined
@@ -282,13 +292,13 @@ export default function AgentInspector({
       {selected && (
         <div className="flex-1 overflow-y-auto p-3 text-xs space-y-2">
           <Field label="Name">
-            <div className="text-slate-200 font-medium">{selected.name}</div>
+            <div className="text-slate-700 dark:text-slate-200 font-medium">{selected.name}</div>
           </Field>
           <Field label="Role / Status">
             <div className="flex gap-2">
-              <span className="text-slate-300">{selected.role}</span>
+              <span className="text-slate-600 dark:text-slate-300">{selected.role}</span>
               <span
-                className={STATUS_COLORS[selected.status] ?? 'text-slate-500'}
+                className={STATUS_COLORS[selected.status] ?? 'text-slate-400 dark:text-slate-500'}
               >
                 {selected.status}
               </span>
@@ -296,24 +306,24 @@ export default function AgentInspector({
           </Field>
           {selected.tmux_target && (
             <Field label="Pane">
-              <div className="text-slate-400 font-mono">
+              <div className="text-slate-500 dark:text-slate-400 font-mono">
                 {selected.tmux_target}
               </div>
             </Field>
           )}
           {selected.persona && (
             <Field label="Persona">
-              <div className="text-slate-300">{selected.persona}</div>
+              <div className="text-slate-600 dark:text-slate-300">{selected.persona}</div>
             </Field>
           )}
           {selected.capabilities && (
             <Field label="Capabilities">
-              <div className="text-slate-300">{selected.capabilities}</div>
+              <div className="text-slate-600 dark:text-slate-300">{selected.capabilities}</div>
             </Field>
           )}
           {selected.room_name && (
             <Field label="Room">
-              <div className="text-slate-400">{selected.room_name}</div>
+              <div className="text-slate-500 dark:text-slate-400">{selected.room_name}</div>
             </Field>
           )}
 
@@ -328,7 +338,7 @@ export default function AgentInspector({
                 <div className="space-y-1.5 pl-1">
                   {selected.joined_at && (
                     <Field label="Active for">
-                      <div className="text-slate-300">
+                      <div className="text-slate-600 dark:text-slate-300">
                         {activeFor(selected.joined_at)}
                       </div>
                     </Field>
@@ -357,7 +367,7 @@ export default function AgentInspector({
                   )}
                   {ms && (
                     <Field label="Messages">
-                      <div className="flex gap-2 text-slate-300">
+                      <div className="flex gap-2 text-slate-600 dark:text-slate-300">
                         <span>
                           <span className="text-slate-200">{ms.sent}</span> sent
                         </span>
@@ -403,13 +413,13 @@ export default function AgentInspector({
                 <div className="space-y-1.5 pl-1">
                   {tu!.model && (
                     <Field label="Model">
-                      <div className="text-slate-300 font-mono text-[10px]">
+                      <div className="text-slate-600 dark:text-slate-300 font-mono text-[10px]">
                         {tu!.model}
                       </div>
                     </Field>
                   )}
                   <Field label="Tokens">
-                    <div className="flex gap-2 text-slate-300">
+                    <div className="flex gap-2 text-slate-600 dark:text-slate-300">
                       <span>
                         <span className="text-slate-200">
                           {tu!.input_tokens.toLocaleString()}
@@ -439,7 +449,7 @@ export default function AgentInspector({
           {onEditAgent && (
             <button
               onClick={() => onEditAgent(selected)}
-              className="mt-2 px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs text-slate-300 w-full"
+              className="mt-2 px-2 py-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-xs text-slate-600 dark:text-slate-300 w-full"
             >
               Edit
             </button>
@@ -463,7 +473,7 @@ export default function AgentInspector({
                     }}
                     rows={3}
                     placeholder="Text to send to agent pane…"
-                    className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-xs text-slate-200 resize-none focus:outline-none focus:border-slate-500"
+                    className="w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2 py-1.5 text-xs text-slate-700 dark:text-slate-200 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:border-slate-500"
                   />
                   {sendError && (
                     <p className="text-xs text-red-400">{sendError}</p>
@@ -482,7 +492,7 @@ export default function AgentInspector({
                         setSendText('');
                         setSendError(null);
                       }}
-                      className="px-2 py-1.5 text-xs text-slate-400 hover:text-slate-200 rounded"
+                      className="px-2 py-1.5 text-xs text-slate-400 dark:text-slate-400 hover:text-slate-500 dark:hover:text-slate-200 rounded"
                     >
                       Cancel
                     </button>
@@ -491,7 +501,7 @@ export default function AgentInspector({
               ) : (
                 <button
                   onClick={() => setSendTarget(selected.name)}
-                  className="w-full px-2 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs text-slate-300 text-left"
+                  className="w-full px-2 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-xs text-slate-600 dark:text-slate-300 text-left"
                 >
                   Send input to agent…
                 </button>
@@ -501,7 +511,7 @@ export default function AgentInspector({
         </div>
       )}
       {!selected && (
-        <div className="flex-1 flex items-center justify-center text-slate-600 text-xs">
+        <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-600 text-xs">
           Click an agent to inspect
         </div>
       )}
@@ -512,21 +522,25 @@ export default function AgentInspector({
           onClick={() => setOnboardOpen(false)}
         >
           <div
-            className="bg-slate-800 rounded p-4 w-[30rem] max-h-[80vh] overflow-y-auto space-y-3"
+            ref={onboardPanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Onboard agent to #${room}`}
+            className="bg-white dark:bg-slate-800 rounded p-4 w-[30rem] max-h-[80vh] overflow-y-auto space-y-3"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-sm font-semibold text-slate-100">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-100">
               Onboard agent to #{room}
             </h3>
 
             <div>
-              <label className="text-xs text-slate-400 uppercase tracking-widest">
+              <label className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-widest">
                 Template
               </label>
               <select
                 value={onboardTemplateId}
                 onChange={(e) => setOnboardTemplateId(Number(e.target.value))}
-                className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-sm text-slate-200"
+                className="mt-1 w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2 py-1.5 text-sm text-slate-700 dark:text-slate-200"
               >
                 {templates.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -537,33 +551,33 @@ export default function AgentInspector({
             </div>
 
             <div>
-              <label className="text-xs text-slate-400 uppercase tracking-widest">
+              <label className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-widest">
                 Agent name (optional)
               </label>
               <input
                 value={onboardName}
                 onChange={(e) => setOnboardName(e.target.value)}
                 placeholder="Default: template name"
-                className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-sm text-slate-200"
+                className="mt-1 w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2 py-1.5 text-sm text-slate-700 dark:text-slate-200"
               />
             </div>
 
             <div>
-              <label className="text-xs text-slate-400 uppercase tracking-widest">
+              <label className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-widest">
                 Target window
               </label>
               {onboardLoading && !tmuxWindows ? (
-                <p className="mt-1 text-xs text-slate-500">Loading windows…</p>
+                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Loading windows…</p>
               ) : (
                 <div className="mt-1 space-y-2">
                   {tmuxWindows?.windows.map((window) => (
                     <button
                       key={window.index}
                       onClick={() => setOnboardWindow(window.index)}
-                      className={`w-full text-left p-2 rounded border ${onboardWindow === window.index ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 bg-slate-900/40 hover:bg-slate-700/40'}`}
+                      className={`w-full text-left p-2 rounded border ${onboardWindow === window.index ? 'border-blue-500 bg-blue-500/10' : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 hover:bg-slate-100 dark:hover:bg-slate-700/40'}`}
                     >
                       <div className="flex items-center gap-2 text-xs">
-                        <span className="text-slate-200 font-medium">
+                        <span className="text-slate-700 dark:text-slate-200 font-medium">
                           [{window.index}] {window.name || 'window'}
                         </span>
                         {window.active && (
@@ -571,11 +585,11 @@ export default function AgentInspector({
                             active
                           </span>
                         )}
-                        <span className="text-slate-500">
+                        <span className="text-slate-400 dark:text-slate-500">
                           {window.pane_count} panes
                         </span>
                       </div>
-                      <div className="mt-1 text-[11px] text-slate-400 font-mono break-words">
+                      <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 font-mono break-words">
                         {renderWindowPreview(window)}
                       </div>
                     </button>
@@ -594,7 +608,7 @@ export default function AgentInspector({
             <div className="flex justify-end gap-2 pt-1">
               <button
                 onClick={() => setOnboardOpen(false)}
-                className="px-3 py-1.5 rounded text-sm text-slate-400 hover:text-slate-200"
+                className="px-3 py-1.5 rounded text-sm text-slate-400 dark:text-slate-400 hover:text-slate-500 dark:hover:text-slate-200"
               >
                 Cancel
               </button>
@@ -606,7 +620,7 @@ export default function AgentInspector({
                   onboardWindow === null ||
                   !room
                 }
-                className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 disabled:opacity-40 rounded text-sm text-white"
+                className="px-3 py-1.5 bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 disabled:opacity-40 rounded text-sm text-slate-700 dark:text-white"
               >
                 {onboardLoading ? '…' : 'Onboard'}
               </button>

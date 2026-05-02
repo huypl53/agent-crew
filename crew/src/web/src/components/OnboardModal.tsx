@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { useFocusTrap } from './a11y-utils.ts';
 import { post } from '../hooks/useApi.ts';
 import type { AgentTemplate, RoomTemplate } from '../types.ts';
 
@@ -65,43 +66,50 @@ export default function OnboardModal({
     }
   };
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef);
+
   return (
     <div
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
       onClick={onClose}
     >
       <div
-        className="bg-slate-800 rounded-lg p-6 w-[420px] space-y-4 max-h-[80vh] overflow-y-auto"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Onboard: ${template.name}`}
+        className="bg-white dark:bg-slate-800 rounded-lg p-6 w-[420px] space-y-4 max-h-[80vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-slate-100 font-semibold">
+        <h2 className="text-slate-700 dark:text-slate-100 font-semibold">
           Onboard: {template.name}
         </h2>
 
         {step === 'input' && (
           <>
             <div>
-              <label className="text-xs text-slate-400 uppercase tracking-widest">
+              <label className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-widest">
                 Room Name
               </label>
               <input
                 value={roomName}
                 onChange={(e) => setRoomName(e.target.value)}
-                className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none"
+                className="mt-1 w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-800"
                 placeholder="my-room"
               />
             </div>
             <div>
-              <label className="text-xs text-slate-400 uppercase tracking-widest">
+              <label className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-widest">
                 Project Path
               </label>
               <input
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
-                className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 font-mono focus:outline-none"
+                className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-slate-800"
                 placeholder="/path/to/project"
               />
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
                 Local filesystem path for the new room
               </p>
             </div>
@@ -115,7 +123,7 @@ export default function OnboardModal({
               </button>
               <button
                 onClick={handleReview}
-                className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 rounded text-sm text-white"
+                className="px-3 py-1.5 bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 rounded text-sm text-slate-700 dark:text-white"
               >
                 Next
               </button>
@@ -126,18 +134,18 @@ export default function OnboardModal({
         {step === 'review' && (
           <>
             <div className="space-y-2">
-              <div className="text-xs text-slate-400">
+              <div className="text-xs text-slate-500 dark:text-slate-400">
                 <span className="uppercase tracking-widest">Room</span>
-                <p className="text-slate-300 mt-0.5">{roomName}</p>
+                <p className="text-slate-600 dark:text-slate-300 mt-0.5">{roomName}</p>
               </div>
-              <div className="text-xs text-slate-400">
+              <div className="text-xs text-slate-500 dark:text-slate-400">
                 <span className="uppercase tracking-widest">Path</span>
-                <p className="font-mono text-slate-300 mt-0.5">{path}</p>
+                <p className="font-mono text-slate-600 dark:text-slate-300 mt-0.5">{path}</p>
               </div>
               {template.topic && (
-                <div className="text-xs text-slate-400">
+                <div className="text-xs text-slate-500 dark:text-slate-400">
                   <span className="uppercase tracking-widest">Topic</span>
-                  <p className="text-slate-300 mt-0.5">{template.topic}</p>
+                  <p className="text-slate-600 dark:text-slate-300 mt-0.5">{template.topic}</p>
                 </div>
               )}
               <div>
@@ -148,13 +156,13 @@ export default function OnboardModal({
                   {resolvedAgents.map((at) => (
                     <li
                       key={at.id}
-                      className="text-sm text-slate-300 flex items-center gap-2"
+                      className="text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2"
                     >
                       <span className="font-medium">{at.name}</span>
-                      <span className="text-xs bg-slate-700 text-slate-400 px-1.5 py-0.5 rounded">
+                      <span className="text-xs bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded">
                         {at.role}
                       </span>
-                      <span className="text-xs text-slate-500 font-mono">
+                      <span className="text-xs text-slate-400 dark:text-slate-500 font-mono">
                         $ {at.start_command || 'claude'}
                       </span>
                     </li>
@@ -189,7 +197,7 @@ export default function OnboardModal({
                 {results.map((r) => (
                   <li
                     key={r.pane}
-                    className="text-sm text-slate-300 flex items-center gap-2"
+                    className="text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2"
                   >
                     <span className="font-medium">{r.name}</span>
                     <span
@@ -204,7 +212,7 @@ export default function OnboardModal({
             <div className="flex justify-end">
               <button
                 onClick={onClose}
-                className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 rounded text-sm text-white"
+                className="px-3 py-1.5 bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 rounded text-sm text-slate-700 dark:text-white"
               >
                 Done
               </button>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { onKeyAction } from './a11y-utils.ts';
 import type { FlatRow } from './TraceView.tsx';
 
 // ── Time format helpers ────────────────────────────────────────────────────
@@ -62,17 +63,17 @@ function Tooltip({
   if (!rect) return null;
   return (
     <div
-      className="fixed z-50 bg-slate-800 border border-slate-600 rounded px-2.5 py-1.5 text-xs space-y-0.5 pointer-events-none shadow-lg"
+      className="fixed z-50 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 text-xs space-y-0.5 pointer-events-none shadow-lg"
       style={{ left: rect.left, top: rect.bottom + 4 }}
     >
-      <div className="text-slate-200 font-medium truncate max-w-xs">
+      <div className="text-slate-700 dark:text-slate-200 font-medium truncate max-w-xs">
         {node.label}
       </div>
       {node.timestamp != null && (
-        <div className="text-slate-400">{fmtDateTime(node.timestamp)}</div>
+        <div className="text-slate-500 dark:text-slate-400">{fmtDateTime(node.timestamp)}</div>
       )}
       {node.durationMs != null && (
-        <div className="text-slate-400">
+        <div className="text-slate-500 dark:text-slate-400">
           Duration: {fmtDuration(node.durationMs)}
         </div>
       )}
@@ -108,7 +109,7 @@ export default function TraceTimeline({
 
   if (timedRows.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center text-slate-500 text-xs">
+      <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-500 text-xs">
         No timed events to display
       </div>
     );
@@ -117,13 +118,13 @@ export default function TraceTimeline({
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">
       {/* Time axis header */}
-      <div className="flex-shrink-0 border-b border-slate-700 h-6 relative">
+      <div className="flex-shrink-0 border-b border-slate-200 dark:border-slate-700 h-6 relative">
         {ticks.map((t, i) => {
           const pct = ((t - min) / range) * 100;
           return (
             <span
               key={i}
-              className="absolute text-[9px] text-slate-500 font-mono -translate-x-1/2 top-1"
+              className="absolute text-[9px] text-slate-400 dark:text-slate-500 font-mono -translate-x-1/2 top-1"
               style={{ left: `${pct}%` }}
             >
               {fmtTime(t)}
@@ -152,8 +153,12 @@ export default function TraceTimeline({
           return (
             <div
               key={node.id}
+              role="button"
+              tabIndex={0}
               className="h-6 flex items-center px-1 cursor-pointer"
               onClick={() => onSelect(node.id)}
+              onKeyDown={onKeyAction(() => onSelect(node.id))}
+              aria-label={`${node.label}${node.durationMs != null ? ` — ${fmtDuration(node.durationMs)}` : ''}`}
               onMouseEnter={(e) => {
                 setHoverRect(e.currentTarget.getBoundingClientRect());
                 setHoverNode(node);
@@ -167,7 +172,7 @@ export default function TraceTimeline({
                 className={`h-3.5 rounded-sm transition-colors ${
                   isSelected
                     ? (BAR_SELECTED[node.kind] ?? 'bg-emerald-400')
-                    : (BAR_COLORS[node.kind] ?? 'bg-slate-600/50')
+                    : (BAR_COLORS[node.kind] ?? 'bg-slate-400/50 dark:bg-slate-600/50')
                 }`}
                 style={{
                   marginLeft: `${leftPct}%`,
