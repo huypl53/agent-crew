@@ -180,8 +180,11 @@ export async function deliverMessage(
       },
     ];
   } else {
+    const sender = getAgent(senderName);
     targets = members
       .filter((m) => m.name !== senderName)
+      // Workers should not broadcast to peers — messages flow up the hierarchy
+      .filter((m) => !(sender?.role === 'worker' && m.role === 'worker'))
       .map((m) => ({
         to: m.name,
         senderName,
