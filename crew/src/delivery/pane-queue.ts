@@ -3,7 +3,7 @@ import { config } from '../config.ts';
 export class PaneDeliveryError extends Error {
   constructor(
     message: string,
-    public readonly code: 'PANE_DEAD' | 'DELIVERY_FAILED',
+    public readonly code: 'PANE_DEAD' | 'DELIVERY_FAILED' | 'PANE_NOT_READY_TYPING',
   ) {
     super(message);
     this.name = 'PaneDeliveryError';
@@ -141,10 +141,13 @@ export class PaneQueue {
     const start = Date.now();
     while (Date.now() - start < MAX_WAIT_MS) {
       const result = await getPaneStatus(this.target);
-      if (!result.typingActive && result.status === 'idle') return;
+      if (!result.typingActive) return;
       await Bun.sleep(getPollingInterval(this.role, this.lastActivityMs));
     }
-    // Timeout — deliver anyway (best effort)
+    throw new PaneDeliveryError(
+      `pane ${this.target} not ready: typing/busy timeout`,
+      'PANE_NOT_READY_TYPING',
+    );
   }
 
   private async deliver(item: QueueItem): Promise<void> {
