@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { get } from '../hooks/useApi.ts';
+import { SkeletonStat } from './skeleton.tsx';
 import type { Stats } from '../types.ts';
 
 function fmt(n: number | null | undefined, decimals = 4): string {
@@ -31,7 +32,7 @@ function Pill({
 }
 
 function Sep() {
-  return <span className="text-slate-700 select-none">|</span>;
+  return <span className="text-slate-300 dark:text-slate-700 select-none">|</span>;
 }
 
 export default function HeaderStats() {
@@ -53,15 +54,15 @@ export default function HeaderStats() {
     };
   }, []);
 
-  if (!stats) return null;
+  if (!stats) return <SkeletonStat />;
 
   const { agents, tasks, cost } = stats;
   const totalTokens = cost.total_input_tokens + cost.total_output_tokens;
 
   return (
-    <div className="flex items-center gap-3 px-4 py-1.5 bg-slate-800 border-b border-slate-700 text-xs flex-wrap">
+    <div className="flex items-center gap-3 px-4 py-1.5 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-xs flex-wrap">
       {/* Agents */}
-      <span className="text-slate-500 uppercase tracking-widest text-[10px]">
+      <span className="text-slate-400 dark:text-slate-500 uppercase tracking-widest text-[10px]">
         Agents
       </span>
       <Pill label="busy" value={agents.busy} color="text-yellow-400" />
@@ -69,12 +70,15 @@ export default function HeaderStats() {
       {agents.dead > 0 && (
         <Pill label="dead" value={agents.dead} color="text-red-400" />
       )}
-      <Pill label="total" value={agents.total} color="text-slate-300" />
+      <Pill label="total" value={agents.total} color="text-slate-600 dark:text-slate-300" />
+      <span className="sr-only" aria-live="polite" aria-atomic="true">
+        {agents.busy} busy, {agents.idle} idle, {agents.total} total agents
+      </span>
 
       <Sep />
 
       {/* Tasks */}
-      <span className="text-slate-500 uppercase tracking-widest text-[10px]">
+      <span className="text-slate-400 dark:text-slate-500 uppercase tracking-widest text-[10px]">
         Tasks
       </span>
       <Pill label="active" value={tasks.active} color="text-blue-400" />
@@ -83,11 +87,14 @@ export default function HeaderStats() {
       {tasks.error > 0 && (
         <Pill label="err" value={tasks.error} color="text-red-400" />
       )}
+      <span className="sr-only" aria-live="polite" aria-atomic="true">
+        {tasks.active} active, {tasks.queued} queued, {tasks.done} done tasks
+      </span>
 
       <Sep />
 
       {/* Cost */}
-      <span className="text-slate-500 uppercase tracking-widest text-[10px]">
+      <span className="text-slate-400 dark:text-slate-500 uppercase tracking-widest text-[10px]">
         Cost
       </span>
       <Pill
@@ -96,7 +103,7 @@ export default function HeaderStats() {
         color="text-amber-400"
       />
       {totalTokens > 0 && (
-        <Pill label="tok" value={fmtK(totalTokens)} color="text-slate-300" />
+        <Pill label="tok" value={fmtK(totalTokens)} color="text-slate-600 dark:text-slate-300" />
       )}
     </div>
   );

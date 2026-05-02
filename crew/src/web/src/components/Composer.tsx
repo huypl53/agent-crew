@@ -70,7 +70,7 @@ export default function Composer({ room, replyTarget, onClearReply }: Props) {
   return (
     <div className={`p-2 space-y-1 ${disabled ? 'opacity-50' : ''}`}>
       {replyTarget && (
-        <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-700/50 rounded px-2 py-1">
+        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 rounded px-2 py-1">
           <span className="truncate">
             Replying to #{replyTarget.message_id}:{' '}
             {replyTarget.text.slice(0, 60)}
@@ -78,7 +78,8 @@ export default function Composer({ room, replyTarget, onClearReply }: Props) {
           </span>
           <button
             onClick={onClearReply}
-            className="ml-auto flex-shrink-0 text-slate-500 hover:text-slate-300"
+            className="ml-auto flex-shrink-0 text-slate-400 dark:text-slate-500 hover:text-slate-500 dark:hover:text-slate-300"
+            aria-label="Clear reply"
           >
             ✕
           </button>
@@ -89,7 +90,8 @@ export default function Composer({ room, replyTarget, onClearReply }: Props) {
           value={to}
           onChange={(e) => setTo(e.target.value)}
           disabled={disabled}
-          className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none"
+          aria-label="Recipient"
+          className="bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-800"
         >
           <option value="">broadcast</option>
           {agents.map((a) => (
@@ -102,7 +104,8 @@ export default function Composer({ room, replyTarget, onClearReply }: Props) {
           value={kind}
           onChange={(e) => setKind(e.target.value)}
           disabled={disabled}
-          className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none"
+          aria-label="Message kind"
+          className="bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-800"
         >
           {KINDS.map((k) => (
             <option key={k} value={k}>
@@ -113,7 +116,8 @@ export default function Composer({ room, replyTarget, onClearReply }: Props) {
         <button
           onClick={() => setMode((m) => (m === 'push' ? 'pull' : 'push'))}
           disabled={disabled}
-          className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 hover:bg-slate-600"
+          aria-label={`Delivery mode: ${mode}. Click to switch.`}
+          className="bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600"
         >
           {mode}
         </button>
@@ -126,12 +130,12 @@ export default function Composer({ room, replyTarget, onClearReply }: Props) {
           disabled={disabled}
           placeholder={room ? 'Message… (⌘↵ to send)' : 'Select a room'}
           rows={2}
-          className="flex-1 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-sm text-slate-200 resize-none focus:outline-none focus:border-slate-500 placeholder-slate-500"
+          className="flex-1 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-sm text-slate-700 dark:text-slate-200 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:border-slate-500 placeholder-slate-400 dark:placeholder-slate-500"
         />
         <button
           onClick={() => void send()}
           disabled={disabled || sending || !text.trim()}
-          className="px-3 py-1 bg-slate-600 hover:bg-slate-500 disabled:opacity-50 rounded text-sm text-white self-end"
+          className="px-3 py-1 bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 disabled:opacity-50 rounded text-sm text-slate-700 dark:text-white self-end"
         >
           {sending ? '…' : 'Send'}
         </button>

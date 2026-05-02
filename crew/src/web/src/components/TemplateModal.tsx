@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { useFocusTrap } from './a11y-utils.ts';
 import { patch, post } from '../hooks/useApi.ts';
 import type { AgentTemplate } from '../types.ts';
 
@@ -51,38 +52,45 @@ export default function TemplateModal({ template, onClose, onSuccess }: Props) {
     }
   };
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef);
+
   return (
     <div
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
       onClick={onClose}
     >
       <div
-        className="bg-slate-800 rounded-lg p-6 w-96 space-y-4"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={template ? 'Edit Template' : 'New Template'}
+        className="bg-white dark:bg-slate-800 rounded-lg p-6 w-96 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-slate-100 font-semibold">
+        <h2 className="text-slate-700 dark:text-slate-100 font-semibold">
           {template ? 'Edit Template' : 'New Template'}
         </h2>
         <div className="space-y-3">
           <div>
-            <label className="text-xs text-slate-400 uppercase tracking-widest">
+            <label className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-widest">
               Name
             </label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none"
+              className="mt-1 w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-800"
               placeholder="my-template"
             />
           </div>
           <div>
-            <label className="text-xs text-slate-400 uppercase tracking-widest">
+            <label className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-widest">
               Role
             </label>
             <select
               value={role}
               onChange={(e) => setRole(e.target.value as AgentTemplate['role'])}
-              className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none"
+              className="mt-1 w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-800"
             >
               <option value="worker">worker</option>
               <option value="leader">leader</option>
@@ -90,7 +98,7 @@ export default function TemplateModal({ template, onClose, onSuccess }: Props) {
             </select>
           </div>
           <div>
-            <label className="text-xs text-slate-400 uppercase tracking-widest">
+            <label className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-widest">
               Persona
             </label>
             <textarea
@@ -98,11 +106,11 @@ export default function TemplateModal({ template, onClose, onSuccess }: Props) {
               onChange={(e) => setPersona(e.target.value)}
               rows={3}
               placeholder="You are a senior engineer..."
-              className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 resize-none focus:outline-none"
+              className="mt-1 w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-3 py-2 text-sm text-slate-700 dark:text-slate-200 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-800"
             />
           </div>
           <div>
-            <label className="text-xs text-slate-400 uppercase tracking-widest">
+            <label className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-widest">
               Capabilities
             </label>
             <textarea
@@ -110,20 +118,20 @@ export default function TemplateModal({ template, onClose, onSuccess }: Props) {
               onChange={(e) => setCapabilities(e.target.value)}
               rows={2}
               placeholder='["coding", "testing"]'
-              className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 resize-none focus:outline-none"
+              className="mt-1 w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-3 py-2 text-sm text-slate-700 dark:text-slate-200 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-800"
             />
           </div>
           <div>
-            <label className="text-xs text-slate-400 uppercase tracking-widest">
+            <label className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-widest">
               Start Command
             </label>
             <input
               value={startCommand}
               onChange={(e) => setStartCommand(e.target.value)}
-              className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none font-mono"
+              className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-slate-800 font-mono"
               placeholder="claude"
             />
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
               Command to launch the agent (default: claude)
             </p>
           </div>
@@ -132,14 +140,14 @@ export default function TemplateModal({ template, onClose, onSuccess }: Props) {
         <div className="flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 rounded text-sm text-slate-400 hover:text-slate-200"
+            className="px-3 py-1.5 rounded text-sm text-slate-400 dark:text-slate-400 hover:text-slate-500 dark:hover:text-slate-200"
           >
             Cancel
           </button>
           <button
             onClick={() => void handleSave()}
             disabled={saving}
-            className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 disabled:opacity-50 rounded text-sm text-white"
+            className="px-3 py-1.5 bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 disabled:opacity-50 rounded text-sm text-slate-700 dark:text-white"
           >
             {saving ? '…' : template ? 'Save' : 'Create'}
           </button>

@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { onKeyAction } from './a11y-utils.ts';
+import { SkeletonRow } from './skeleton.tsx';
 import { get } from '../hooks/useApi.ts';
 import type { Task, TaskEvent, TaskStatus } from '../types.ts';
 
@@ -94,37 +96,41 @@ function TaskRow({ task }: TaskRowProps) {
     <>
       {/* Task row — caret makes expandability obvious */}
       <tr
-        className={`border-b border-slate-800 cursor-pointer transition-colors ${
+        role="button"
+        tabIndex={0}
+        className={`border-b border-slate-200 dark:border-slate-800 cursor-pointer transition-colors ${
           expanded
-            ? 'bg-slate-800/60 hover:bg-slate-800/80'
-            : 'hover:bg-slate-800/40'
+            ? 'bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200 dark:hover:bg-slate-800/80'
+            : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
         }`}
         onClick={toggle}
+        onKeyDown={onKeyAction(toggle)}
+        aria-expanded={expanded}
       >
-        <td className="px-3 py-1.5 text-slate-500 text-xs w-4">
-          <span className="text-slate-500 font-mono text-xs">{caret}</span>
+        <td className="px-3 py-1.5 text-slate-400 dark:text-slate-500 text-xs w-4">
+          <span className="text-slate-400 dark:text-slate-500 font-mono text-xs">{caret}</span>
         </td>
-        <td className="px-2 py-1.5 text-slate-500 text-xs font-mono">
+        <td className="px-2 py-1.5 text-slate-400 dark:text-slate-500 text-xs font-mono">
           #{task.id}
         </td>
         <td className="px-3 py-1.5">
           <StatusBadge status={task.status} />
         </td>
-        <td className="px-3 py-1.5 text-slate-400 text-xs">{task.room}</td>
-        <td className="px-3 py-1.5 text-slate-200 text-sm max-w-xs truncate">
+        <td className="px-3 py-1.5 text-slate-500 dark:text-slate-400 text-xs">{task.room}</td>
+        <td className="px-3 py-1.5 text-slate-700 dark:text-slate-200 text-sm max-w-xs truncate">
           {task.summary}
         </td>
-        <td className="px-3 py-1.5 text-slate-500 text-xs whitespace-nowrap">
+        <td className="px-3 py-1.5 text-slate-400 dark:text-slate-500 text-xs whitespace-nowrap">
           {elapsed(task.updated_at)} ago
         </td>
       </tr>
 
       {/* Expanded detail panel */}
       {expanded && (
-        <tr className="bg-slate-900/60 border-b border-slate-700">
+        <tr className="bg-white dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700">
           <td colSpan={6} className="px-6 py-3">
             {loadingDetail && (
-              <div className="text-xs text-slate-500 italic">
+              <div className="text-xs text-slate-400 dark:text-slate-500 italic">
                 Loading details…
               </div>
             )}
@@ -138,10 +144,10 @@ function TaskRow({ task }: TaskRowProps) {
                 {/* Full task instructions */}
                 {task.text && (
                   <div>
-                    <div className="text-slate-500 uppercase tracking-widest text-xs mb-1">
+                    <div className="text-slate-400 dark:text-slate-500 uppercase tracking-widest text-xs mb-1">
                       Instructions
                     </div>
-                    <pre className="text-slate-200 font-mono whitespace-pre-wrap leading-relaxed border-l-2 border-slate-600 pl-3 text-xs">
+                    <pre className="text-slate-700 dark:text-slate-200 font-mono whitespace-pre-wrap leading-relaxed border-l-2 border-slate-400 dark:border-slate-600 pl-3 text-xs">
                       {task.text}
                     </pre>
                   </div>
@@ -150,34 +156,34 @@ function TaskRow({ task }: TaskRowProps) {
                 {/* Metadata grid */}
                 <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs">
                   <div>
-                    <span className="text-slate-500">Task ID: </span>
-                    <span className="text-slate-300 font-mono">#{task.id}</span>
+                    <span className="text-slate-400 dark:text-slate-500">Task ID: </span>
+                    <span className="text-slate-600 dark:text-slate-300 font-mono">#{task.id}</span>
                   </div>
                   <div>
-                    <span className="text-slate-500">Status: </span>
+                    <span className="text-slate-400 dark:text-slate-500">Status: </span>
                     <StatusBadge status={task.status} />
                   </div>
                   <div>
-                    <span className="text-slate-500">Room: </span>
-                    <span className="text-slate-300">#{task.room}</span>
+                    <span className="text-slate-400 dark:text-slate-500">Room: </span>
+                    <span className="text-slate-600 dark:text-slate-300">#{task.room}</span>
                   </div>
                   <div>
-                    <span className="text-slate-500">Assigned to: </span>
-                    <span className="text-slate-300">{task.assigned_to}</span>
+                    <span className="text-slate-400 dark:text-slate-500">Assigned to: </span>
+                    <span className="text-slate-600 dark:text-slate-300">{task.assigned_to}</span>
                   </div>
                   <div>
-                    <span className="text-slate-500">Created by: </span>
-                    <span className="text-slate-300">{task.created_by}</span>
+                    <span className="text-slate-400 dark:text-slate-500">Created by: </span>
+                    <span className="text-slate-600 dark:text-slate-300">{task.created_by}</span>
                   </div>
                   <div>
-                    <span className="text-slate-500">Created: </span>
-                    <span className="text-slate-400 font-mono">
+                    <span className="text-slate-400 dark:text-slate-500">Created: </span>
+                    <span className="text-slate-500 dark:text-slate-400 font-mono">
                       {fmtDateTime(task.created_at)}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-500">Updated: </span>
-                    <span className="text-slate-400 font-mono">
+                    <span className="text-slate-400 dark:text-slate-500">Updated: </span>
+                    <span className="text-slate-500 dark:text-slate-400 font-mono">
                       {fmtDateTime(task.updated_at)}
                     </span>
                   </div>
@@ -185,16 +191,16 @@ function TaskRow({ task }: TaskRowProps) {
 
                 {/* Lifecycle events */}
                 <div>
-                  <div className="text-slate-500 uppercase tracking-widest text-xs mb-1">
+                  <div className="text-slate-400 dark:text-slate-500 uppercase tracking-widest text-xs mb-1">
                     Lifecycle
                   </div>
                   {events === null && (
-                    <div className="text-slate-600 italic">
+                    <div className="text-slate-500 dark:text-slate-600 italic">
                       No lifecycle events yet.
                     </div>
                   )}
                   {events !== null && events.length === 0 && (
-                    <div className="text-slate-600 italic">
+                    <div className="text-slate-500 dark:text-slate-600 italic">
                       No lifecycle events yet.
                     </div>
                   )}
@@ -202,22 +208,22 @@ function TaskRow({ task }: TaskRowProps) {
                     <div className="space-y-0.5 font-mono">
                       {events.map((ev) => (
                         <div key={ev.id} className="flex gap-3 text-xs">
-                          <span className="text-slate-600 flex-shrink-0">
+                          <span className="text-slate-500 dark:text-slate-600 flex-shrink-0">
                             {fmtDateTime(ev.timestamp)}
                           </span>
                           <span>
                             <span
                               className={
                                 STATUS_COLOR[ev.from_status ?? ''] ??
-                                'text-slate-500'
+                                'text-slate-400 dark:text-slate-500'
                               }
                             >
                               {ev.from_status ?? 'init'}
                             </span>
-                            <span className="text-slate-600"> → </span>
+                            <span className="text-slate-500 dark:text-slate-600"> → </span>
                             <span
                               className={
-                                STATUS_COLOR[ev.to_status] ?? 'text-slate-400'
+                                STATUS_COLOR[ev.to_status] ?? 'text-slate-500 dark:text-slate-400'
                               }
                             >
                               {ev.to_status}
@@ -225,7 +231,7 @@ function TaskRow({ task }: TaskRowProps) {
                           </span>
                           {ev.triggered_by && (
                             <span className="text-slate-600">
-                              by {ev.triggered_by}
+                              by <span className="text-slate-400 dark:text-slate-600">{ev.triggered_by}</span>
                             </span>
                           )}
                         </div>
@@ -300,27 +306,28 @@ export default function TaskBoard() {
   return (
     <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-slate-700 flex-shrink-0">
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
         <div className="flex items-center gap-1">
-          <span className="text-xs text-slate-500">Group by:</span>
+          <span className="text-xs text-slate-400 dark:text-slate-500">Group by:</span>
           {(['agent', 'room'] as GroupBy[]).map((g) => (
             <button
               key={g}
               onClick={() => setGroupBy(g)}
-              className={`px-2 py-0.5 text-xs rounded ${groupBy === g ? 'bg-slate-600 text-slate-100' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`px-2 py-0.5 text-xs rounded ${groupBy === g ? 'bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-100' : 'text-slate-400 hover:text-slate-500 dark:hover:text-slate-200'}`}
             >
               {g}
             </button>
           ))}
         </div>
         <div className="flex items-center gap-1">
-          <span className="text-xs text-slate-500">Status:</span>
+          <span className="text-xs text-slate-400 dark:text-slate-500">Status:</span>
           <select
             value={statusFilter}
             onChange={(e) =>
               setStatusFilter(e.target.value as TaskStatus | 'all')
             }
-            className="bg-slate-800 text-slate-200 text-xs px-2 py-0.5 rounded border border-slate-700"
+            aria-label="Filter by status"
+            className="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs px-2 py-0.5 rounded border border-slate-300 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-900"
           >
             <option value="all">all</option>
             {ALL_STATUSES.map((s) => (
@@ -330,7 +337,7 @@ export default function TaskBoard() {
             ))}
           </select>
         </div>
-        <span className="text-xs text-slate-600 ml-auto">
+        <span className="text-xs text-slate-500 dark:text-slate-600 ml-auto">
           {tasks.length} task{tasks.length !== 1 ? 's' : ''}
         </span>
       </div>
@@ -338,11 +345,11 @@ export default function TaskBoard() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {loading && (
-          <div className="px-4 py-8 text-slate-500 text-sm">Loading tasks…</div>
+          <SkeletonRow count={6} />
         )}
         {error && <div className="px-4 py-4 text-red-400 text-sm">{error}</div>}
         {!loading && !error && tasks.length === 0 && (
-          <div className="px-4 py-8 text-slate-500 text-sm">
+          <div className="px-4 py-8 text-slate-400 dark:text-slate-500 text-sm">
             No tasks found.
           </div>
         )}
@@ -351,15 +358,15 @@ export default function TaskBoard() {
             <div key={key}>
               <button
                 onClick={() => toggleGroup(key)}
-                className="w-full flex items-center gap-2 px-4 py-1.5 bg-slate-800/60 border-b border-slate-700 text-left hover:bg-slate-800"
+                className="w-full flex items-center gap-2 px-4 py-1.5 bg-slate-100 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 text-left hover:bg-slate-200 dark:hover:bg-slate-800"
               >
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
                   {collapsed.has(key) ? '▶' : '▼'}
                 </span>
-                <span className="text-sm font-medium text-slate-200">
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
                   {key}
                 </span>
-                <span className="text-xs text-slate-500 ml-auto">
+                <span className="text-xs text-slate-400 dark:text-slate-500 ml-auto">
                   {groupTasks.length} task{groupTasks.length !== 1 ? 's' : ''}
                 </span>
               </button>

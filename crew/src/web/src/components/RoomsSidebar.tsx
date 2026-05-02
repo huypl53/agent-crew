@@ -37,13 +37,14 @@ export default function RoomsSidebar({
   }, []);
 
   return (
-    <aside className="w-56 flex-shrink-0 bg-slate-800 border-r border-slate-700 flex flex-col">
-      <div className="px-3 py-2 text-xs font-semibold uppercase tracking-widest text-slate-400 border-b border-slate-700 flex items-center">
+    <aside className="w-56 flex-shrink-0 bg-slate-50 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col" aria-label="Rooms">
+      <div className="px-3 py-2 text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 flex items-center">
         <span className="flex-1">Rooms</span>
         <button
           onClick={onCreateRoom}
           title="Create room"
-          className="text-slate-500 hover:text-slate-200 leading-none text-base"
+          aria-label="Create room"
+          className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 leading-none text-base"
         >
           +
         </button>
@@ -54,19 +55,20 @@ export default function RoomsSidebar({
           <li key={room.name} className="group relative">
             <button
               onClick={() => onSelect(room.name)}
-              className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-700 transition-colors ${selectedRoom === room.name ? 'bg-slate-700 text-white font-medium' : 'text-slate-300'}`}
+              aria-label={`Select room ${room.name}`}
+              className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${selectedRoom === room.name ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white font-medium' : 'text-slate-700 dark:text-slate-300'}`}
             >
               {/* Room name — extra right padding to clear icon buttons */}
               <div className="truncate pr-24 font-medium">#{room.name}</div>
-              <div className="text-xs text-slate-500 truncate">
+              <div className="text-xs text-slate-400 dark:text-slate-500 truncate">
                 {room.member_count ?? 0} member
                 {(room.member_count ?? 0) !== 1 ? 's' : ''}
               </div>
               {room.topic && (
-                <p className="text-xs text-slate-500 truncate">{room.topic}</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{room.topic}</p>
               )}
               {!!room.template_names?.length && (
-                <p className="text-xs text-slate-600 italic truncate">
+                <p className="text-xs text-slate-500 dark:text-slate-600 italic truncate">
                   {room.template_names.join(', ')}
                 </p>
               )}
@@ -80,7 +82,8 @@ export default function RoomsSidebar({
                   onCloneRoom(room);
                 }}
                 title="Clone as template"
-                className="absolute right-20 top-2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-blue-400 text-xs transition-opacity"
+                aria-label="Clone as template"
+                className="absolute right-20 top-2 opacity-0 group-hover:opacity-100 text-slate-400 dark:text-slate-500 hover:text-blue-400 text-xs transition-opacity"
               >
                 📋
               </button>
@@ -92,7 +95,8 @@ export default function RoomsSidebar({
                 onEditTopic(room);
               }}
               title="Edit topic"
-              className="absolute right-8 top-2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-slate-200 text-xs transition-opacity"
+              aria-label="Edit topic"
+              className="absolute right-8 top-2 opacity-0 group-hover:opacity-100 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 text-xs transition-opacity"
             >
               ✎
             </button>
@@ -102,7 +106,8 @@ export default function RoomsSidebar({
                 onEditCast(room);
               }}
               title="Edit cast"
-              className="absolute right-14 top-2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-blue-400 text-xs transition-opacity"
+              aria-label="Edit cast"
+              className="absolute right-14 top-2 opacity-0 group-hover:opacity-100 text-slate-400 dark:text-slate-500 hover:text-blue-400 text-xs transition-opacity"
             >
               👥
             </button>
@@ -112,14 +117,15 @@ export default function RoomsSidebar({
                 onDeleteRoom(room);
               }}
               title="Delete room"
-              className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 text-xs transition-opacity"
+              aria-label="Delete room"
+              className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 text-slate-400 dark:text-slate-500 hover:text-red-400 text-xs transition-opacity"
             >
               🗑
             </button>
           </li>
         ))}
         {rooms.length === 0 && !error && (
-          <li className="px-3 py-2 text-xs text-slate-500">No rooms</li>
+          <li className="px-3 py-2 text-xs text-slate-400 dark:text-slate-500">No rooms</li>
         )}
       </ul>
     </aside>

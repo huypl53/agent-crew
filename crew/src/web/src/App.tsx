@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import AgentEditModal from './components/AgentEditModal.tsx';
 import AgentInspector from './components/AgentInspector.tsx';
+import CommandPalette from './components/command-palette.tsx';
 import Composer from './components/Composer.tsx';
 import HeaderStats from './components/HeaderStats.tsx';
 import KindFilter from './components/KindFilter.tsx';
@@ -13,8 +14,10 @@ import TaskBoard from './components/TaskBoard.tsx';
 import TemplatesPanel from './components/TemplatesPanel.tsx';
 import TimelineView from './components/TimelineView.tsx';
 import TraceView from './components/TraceView.tsx';
+import ThemeToggle from './components/theme-toggle.tsx';
 import { get, post } from './hooks/useApi.ts';
 import { useMessages } from './hooks/useMessages.ts';
+import { useTheme } from './hooks/use-theme.ts';
 import { useWebSocket } from './hooks/useWebSocket.ts';
 import type { Agent, AgentTemplate, Message, Room } from './types.ts';
 
@@ -26,10 +29,30 @@ type RoomModalState =
   | { mode: 'edit-topic'; room: Room }
   | { mode: 'edit-cast'; room: Room };
 
+/** Read initial state from URL params */
+function readUrlState() {
+  const p = new URLSearchParams(window.location.search);
+  return {
+    view: (p.get('view') as View) || 'dashboard',
+    room: p.get('room'),
+  };
+}
+
+/** Sync state to URL without page reload */
+function syncUrl(view: View, room: string | null) {
+  const p = new URLSearchParams();
+  if (view !== 'dashboard') p.set('view', view);
+  if (room) p.set('room', room);
+  const qs = p.toString();
+  const url = qs ? `?${qs}` : window.location.pathname;
+  window.history.replaceState(null, '', url);
+}
+
 export default function App() {
-  const [currentView, setCurrentView] = useState<View>('dashboard');
-  const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
+  const [currentView, setCurrentView] = useState<View>(readUrlState().view);
+  const [selectedRoom, setSelectedRoom] = useState<string | null>(readUrlState().room);
   const { subscribe } = useWebSocket();
+  const { theme, toggleTheme } = useTheme();
   const { messages, loading, error } = useMessages(selectedRoom, subscribe);
 
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
@@ -39,6 +62,22 @@ export default function App() {
     new Set(ALL_KINDS),
   );
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
+
+  // Sync URL when view or room changes
+  useEffect(() => {
+    syncUrl(currentView, selectedRoom);
+  }, [currentView, selectedRoom]);
+
+  // Handle browser back/forward
+  useEffect(() => {
+    const onPopState = () => {
+      const s = readUrlState();
+      setCurrentView(s.view);
+      setSelectedRoom(s.room);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   // Fetch templates on mount and refresh on template-change WS event
   useEffect(() => {
@@ -79,8 +118,8 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-slate-900 text-slate-100 overflow-hidden">
-      <NavBar currentView={currentView} onViewChange={setCurrentView} />
+    <div className="h-screen flex flex-col bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 overflow-hidden">
+      <NavBar currentView={currentView} onViewChange={setCurrentView} themeToggle={<ThemeToggle theme={theme} onToggle={toggleTheme} />} />
       <HeaderStats />
 
       {currentView === 'dashboard' && (
@@ -171,6 +210,12 @@ export default function App() {
           onSuccess={() => setAgentEditTarget(null)}
         />
       )}
+      <CommandPalette
+        onSelect={(view, room) => {
+          setCurrentView(view);
+          if (room) setSelectedRoom(room);
+        }}
+      />
     </div>
   );
 }

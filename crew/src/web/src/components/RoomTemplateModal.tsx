@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { useFocusTrap } from './a11y-utils.ts';
 import { patch, post } from '../hooks/useApi.ts';
 import type { AgentTemplate, RoomTemplate } from '../types.ts';
 
@@ -57,55 +58,62 @@ export default function RoomTemplateModal({
     }
   };
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef);
+
   return (
     <div
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
       onClick={onClose}
     >
       <div
-        className="bg-slate-800 rounded-lg p-6 w-96 space-y-4"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={template ? 'Edit Room Template' : 'New Room Template'}
+        className="bg-white dark:bg-slate-800 rounded-lg p-6 w-96 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-slate-100 font-semibold">
+        <h2 className="text-slate-700 dark:text-slate-100 font-semibold">
           {template ? 'Edit Room Template' : 'New Room Template'}
         </h2>
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs text-slate-400 uppercase tracking-widest">
+            <label className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-widest">
               Name
             </label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none"
+              className="mt-1 w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-800"
               placeholder="my-room-template"
             />
           </div>
           <div>
-            <label className="text-xs text-slate-400 uppercase tracking-widest">
+            <label className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-widest">
               Topic
             </label>
             <input
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
-              className="mt-1 w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none"
+              className="mt-1 w-full bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-800"
               placeholder="Optional room topic"
             />
           </div>
           <div>
-            <label className="text-xs text-slate-400 uppercase tracking-widest">
+            <label className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-widest">
               Agent Templates
             </label>
             {agentTemplates.length === 0 ? (
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
                 No agent templates available
               </p>
             ) : (
               <ul className="mt-1 max-h-40 overflow-y-auto space-y-1">
                 {agentTemplates.map((at) => (
                   <li key={at.id}>
-                    <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-700 cursor-pointer text-sm text-slate-300">
+                    <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer text-sm text-slate-600 dark:text-slate-300">
                       <input
                         type="checkbox"
                         checked={selectedIds.includes(at.id)}
@@ -113,7 +121,7 @@ export default function RoomTemplateModal({
                         className="accent-blue-500"
                       />
                       <span className="font-medium">{at.name}</span>
-                      <span className="text-xs text-slate-500">
+                      <span className="text-xs text-slate-400 dark:text-slate-500">
                         ({at.role})
                       </span>
                     </label>
@@ -129,14 +137,14 @@ export default function RoomTemplateModal({
         <div className="flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 rounded text-sm text-slate-400 hover:text-slate-200"
+            className="px-3 py-1.5 rounded text-sm text-slate-400 dark:text-slate-400 hover:text-slate-500 dark:hover:text-slate-200"
           >
             Cancel
           </button>
           <button
             onClick={() => void handleSave()}
             disabled={saving}
-            className="px-3 py-1.5 bg-slate-600 hover:bg-slate-500 disabled:opacity-50 rounded text-sm text-white"
+            className="px-3 py-1.5 bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 disabled:opacity-50 rounded text-sm text-slate-700 dark:text-white"
           >
             {saving ? '…' : template ? 'Save' : 'Create'}
           </button>
