@@ -76,4 +76,27 @@ describe('PaneQueue', () => {
     const output = await captureFromPane(testPane);
     expect(output).toContain('typing-gate-smoke');
   });
+
+  test('leader queue applies configured pace between paste deliveries', async () => {
+    const q = getQueue(testPane, { role: 'leader', leaderPaceMs: 1200 });
+
+    const t0 = Date.now();
+    const p1 = q.enqueue({ type: 'paste', text: 'pace-1' });
+    const p2 = q.enqueue({ type: 'paste', text: 'pace-2' });
+
+    await Promise.all([p1, p2]);
+    const elapsed = Date.now() - t0;
+
+    expect(elapsed).toBeGreaterThanOrEqual(1100);
+  });
+
+  test('leader command bypass is not delayed by pace', async () => {
+    const q = getQueue(testPane, { role: 'leader', leaderPaceMs: 3000 });
+
+    const t0 = Date.now();
+    await q.enqueue({ type: 'command', text: 'echo bypass-command' });
+    const elapsed = Date.now() - t0;
+
+    expect(elapsed).toBeLessThan(1500);
+  });
 });
