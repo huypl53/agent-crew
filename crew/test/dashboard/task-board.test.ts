@@ -79,11 +79,9 @@ describe('TaskBoard timestamp formatting', () => {
     });
 
     it('should format timestamps from earlier today as hours ago', () => {
-      const earlierToday = new Date(now);
-      earlierToday.setHours(Math.max(0, now.getHours() - 6), 0, 0, 0); // 6 hours ago but same day
-      const result = formatTaskTimestamp(earlierToday.toISOString());
-      // Result should be in "Xh ago" format for times less than 24 hours
-      expect(result).toMatch(/^\d+h ago$/);
+      const sixHoursAgo = new Date(now.getTime() - 6 * 3600000);
+      const result = formatTaskTimestamp(sixHoursAgo.toISOString(), now);
+      expect(result).toBe('6h ago');
     });
 
     it('should format timestamps from past days as date string', () => {

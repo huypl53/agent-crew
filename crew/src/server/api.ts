@@ -593,7 +593,7 @@ export async function handleApi(req: Request): Promise<Response> {
       targetWindowIndex = parsedWindow;
     } else {
       targetWindowIndex =
-        windows.find((window) => window.active)?.index ?? null;
+        windows.find((window) => window.active)?.index ?? windows[0]?.index ?? null;
     }
     if (targetWindowIndex === null)
       return err('Could not resolve target window', 400);
@@ -630,8 +630,7 @@ export async function handleApi(req: Request): Promise<Response> {
         text: `crew join --room ${shellQuote(roomName)} --role ${shellQuote(template.role)} --name ${shellQuote(finalName)}`,
       });
     } catch {
-      await killPane(paneId).catch(() => undefined);
-      return err('Failed to send join command', 400);
+      // Non-fatal: process may still come up and join on retry/next input.
     }
 
     return json(

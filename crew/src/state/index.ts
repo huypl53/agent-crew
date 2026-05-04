@@ -606,7 +606,7 @@ export function readRoomMessages(
   if (!roomObj) return { messages: [], next_sequence: 0 };
 
   const cursor = getCursor(agentName, room);
-  // Only return messages addressed to this agent (not all room messages)
+  // Only return messages addressed to this agent within this room.
   let sql = 'SELECT * FROM messages WHERE room_id = ? AND id > ? AND recipient = ?';
   const params: unknown[] = [roomObj.id, cursor, agentName];
   if (kinds && kinds.length > 0) {

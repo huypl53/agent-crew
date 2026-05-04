@@ -83,6 +83,8 @@ export interface PaneQueueOptions {
   role?: AgentRole | string;
   /** Last activity timestamp in epoch ms — used for heartbeat-stale fallback. */
   lastActivityMs?: number;
+  /** Optional override for leader paste pacing interval in milliseconds. */
+  leaderPaceMs?: number;
 }
 
 export class PaneQueue {
@@ -92,11 +94,14 @@ export class PaneQueue {
   private lockPromise: Promise<void> = Promise.resolve();
   private role?: AgentRole | string;
   private lastActivityMs?: number;
+  private leaderPaceMs?: number;
+  private lastPasteDeliveredAt = 0;
 
   constructor(target: string, options?: PaneQueueOptions) {
     this.target = target;
     this.role = options?.role;
     this.lastActivityMs = options?.lastActivityMs;
+    this.leaderPaceMs = options?.leaderPaceMs;
   }
 
   /** Update agent metadata so interval calculations stay current. */
@@ -104,6 +109,7 @@ export class PaneQueue {
     if (options.role !== undefined) this.role = options.role;
     if (options.lastActivityMs !== undefined)
       this.lastActivityMs = options.lastActivityMs;
+    if (options.leaderPaceMs !== undefined) this.leaderPaceMs = options.leaderPaceMs;
   }
 
   enqueue(item: QueueItem): Promise<void> {
@@ -128,7 +134,10 @@ export class PaneQueue {
         if (entry.item.type !== 'escape') {
           await this.waitForReady();
         }
-        await this.withLock(() => this.deliver(entry.item));
+        await this.withLock(async () => {
+          await this.applyLeaderPacing(entry.item);
+          await this.deliver(entry.item);
+        });
         entry.resolve();
       } catch (err) {
         entry.reject(err instanceof Error ? err : new Error(String(err)));
@@ -148,6 +157,15 @@ export class PaneQueue {
       `pane ${this.target} not ready: typing/busy timeout`,
       'PANE_NOT_READY_TYPING',
     );
+  }
+
+  private async applyLeaderPacing(item: QueueItem): Promise<void> {
+    if (this.role !== 'leader' || item.type !== 'paste') return;
+    const paceMs = this.leaderPaceMs ?? config.leaderPaceMs;
+    const elapsed = Date.now() - this.lastPasteDeliveredAt;
+    if (this.lastPasteDeliveredAt > 0 && elapsed < paceMs) {
+      await Bun.sleep(paceMs - elapsed);
+    }
   }
 
   private async deliver(item: QueueItem): Promise<void> {
@@ -174,6 +192,7 @@ export class PaneQueue {
             r.error ?? 'paste delivery failed',
             'DELIVERY_FAILED',
           );
+        this.lastPasteDeliveredAt = Date.now();
         break;
       }
       case 'command': {

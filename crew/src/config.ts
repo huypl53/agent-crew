@@ -10,8 +10,14 @@ export const config = {
 
   // Polling profile:
   //   conservative — 500ms fixed interval
-  //   reduced      — role-based: leader=2s, worker=5s, boss=10s (default)
+  //   reduced      — role-based: worker=2s, leader=5s, boss=10s (default)
   pollingProfile: (process.env.CREW_POLLING_PROFILE || 'reduced') as
     | 'conservative'
     | 'reduced',
+
+  // Leader inbound pacing between consecutive paste deliveries (ms)
+  leaderPaceMs: (() => {
+    const parsed = Number(process.env.CREW_LEADER_PACE_MS ?? 7000);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 7000;
+  })(),
 };

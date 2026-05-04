@@ -428,7 +428,7 @@ describe('MCP tools', () => {
       expect(data.messages[0].room_id).toBeDefined();
     });
 
-    test('read_messages with room reads room log (not just inbox)', async () => {
+    test('read_messages with room reads inbox for that room only', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -450,14 +450,21 @@ describe('MCP tools', () => {
         name: 'lead-1',
       });
 
-      // lead-1 can also read the room log (even though msg was TO w1)
+      // lead-1 cannot read w1-directed inbox entries via room-scoped read
       const result = await handleReadMessages({
         name: 'lead-1',
         room: 'frontend',
       });
       const data = JSON.parse(result.content[0]?.text);
-      expect(data.messages.length).toBe(1);
-      expect(data.messages[0].text).toBe('build login');
+      expect(data.messages.length).toBe(0);
+
+      const workerResult = await handleReadMessages({
+        name: 'w1',
+        room: 'frontend',
+      });
+      const workerData = JSON.parse(workerResult.content[0]?.text);
+      expect(workerData.messages.length).toBe(1);
+      expect(workerData.messages[0].text).toBe('build login');
     });
 
     test('read_messages with kinds filter', async () => {
