@@ -6,6 +6,8 @@ import {
   getAgent,
   getRoom,
   getRoomMembers,
+  getRoomReminderDispatchCount,
+  incrementRoomReminderDispatchCount,
   markAgentStale,
 } from '../state/index.ts';
 import {
@@ -39,24 +41,45 @@ interface DeliveryContext {
   agent?: Agent;
 }
 
+function shouldApplyReminder(
+  roomName: string,
+  targetAgent: Agent | undefined,
+): boolean {
+  const policy = targetAgent?.reminder_policy ?? getRoom(roomName)?.reminder_policy;
+  if (!policy || !policy.enabled) return false;
+  if (policy.cadence_mode === 'always') return true;
+  const cadenceN = Math.max(1, Math.floor(policy.cadence_n || 1));
+  const dispatchCount = getRoomReminderDispatchCount(roomName);
+  return (dispatchCount + 1) % cadenceN === 0;
+}
+
+function decorateMessageWithReminder(
+  text: string,
+  roomName: string,
+  targetAgent: Agent | undefined,
+): string {
+  const policy = targetAgent?.reminder_policy ?? getRoom(roomName)?.reminder_policy;
+  if (!policy || !policy.enabled) return text;
+  if (!shouldApplyReminder(roomName, targetAgent)) return text;
+  const prefix = policy.prefix?.trim() ?? '';
+  const suffix = policy.suffix?.trim() ?? '';
+  if (!prefix && !suffix) return text;
+  return [prefix, text, suffix].filter(Boolean).join(' ').trim();
+}
+
 async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
-  const {
-    to,
-    senderName,
-    roomName,
-    text,
-    targetName,
-    mode,
-    kind,
-    replyTo,
-    fullText,
-  } = ctx;
+  const { to, senderName, roomName, text, targetName, mode, kind, replyTo } =
+    ctx;
+  const targetAgent = ctx.agent ?? getAgent(to);
+  const outgoingText = decorateMessageWithReminder(text, roomName, targetAgent);
+  const header = `[${senderName}@${roomName}]:`;
+  const fullText = `${header} ${outgoingText}`;
 
   const msg = addMessage(
     to,
     senderName,
     roomName,
-    text,
+    outgoingText,
     mode,
     targetName ?? to,
     kind,
@@ -114,6 +137,7 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
           type: 'paste',
           text: fullText,
         });
+        incrementRoomReminderDispatchCount(roomName);
         return {
           message_id: msg.message_id,
           delivered: true,
@@ -157,8 +181,6 @@ export async function deliverMessage(
   kind: MessageKind = 'chat',
   replyTo?: number | null,
 ): Promise<DeliveryResult[]> {
-  const header = `[${senderName}@${room}]:`;
-  const fullText = `${header} ${text}`;
   const roomObj = getRoom(room);
 
   // Build target list with pre-fetched agents for broadcasts
@@ -172,7 +194,7 @@ export async function deliverMessage(
         senderName,
         roomName: room,
         text,
-        fullText,
+        fullText: '',
         targetName,
         mode,
         kind,
@@ -190,7 +212,7 @@ export async function deliverMessage(
         senderName,
         roomName: room,
         text,
-        fullText,
+        fullText: '',
         targetName: null as string | null,
         mode,
         kind,

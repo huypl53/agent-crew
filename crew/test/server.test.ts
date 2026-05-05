@@ -112,6 +112,20 @@ describe('GET /api/rooms/:name/members', () => {
 
 // ── GET /api/rooms/:name/messages ────────────────────────────────────────────
 
+describe('GET /api/rooms/:name/pane-mirror', () => {
+  test('returns room-scoped pane mirror payload', async () => {
+    const { status, body } = await get('/api/rooms/general/pane-mirror');
+    expect(status).toBe(200);
+    expect(body.room).toBe('general');
+    expect(Array.isArray(body.panes)).toBe(true);
+  });
+
+  test('returns 404 for unknown room', async () => {
+    const { status } = await get('/api/rooms/ghost/pane-mirror');
+    expect(status).toBe(404);
+  });
+});
+
 describe('GET /api/rooms/:name/messages', () => {
   test('returns array (empty is fine)', async () => {
     const { status, body } = await get('/api/rooms/general/messages');

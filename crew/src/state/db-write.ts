@@ -5,7 +5,23 @@
  */
 import { Database } from 'bun:sqlite';
 import { existsSync } from 'fs';
+import type { ReminderPolicy } from '../shared/types.ts';
 import { getDbPath } from './db.ts';
+
+function serializeReminderPolicy(policy: ReminderPolicy): string {
+  const cadenceMode = policy.cadence_mode === 'every_n' ? 'every_n' : 'always';
+  const cadenceN =
+    cadenceMode === 'every_n'
+      ? Math.max(1, Math.floor(policy.cadence_n || 1))
+      : 1;
+  return JSON.stringify({
+    enabled: Boolean(policy.enabled),
+    prefix: String(policy.prefix ?? ''),
+    suffix: String(policy.suffix ?? ''),
+    cadence_mode: cadenceMode,
+    cadence_n: cadenceN,
+  });
+}
 
 function withDb<T>(fn: (db: Database) => T): { result?: T; error?: string } {
   const path = getDbPath();
@@ -24,6 +40,47 @@ function withDb<T>(fn: (db: Database) => T): { result?: T; error?: string } {
 export function dbSetTopic(room: string, topic: string): { error?: string } {
   const { error } = withDb((db) => {
     db.run('UPDATE rooms SET topic = ? WHERE name = ?', [topic, room]);
+  });
+  return error ? { error } : {};
+}
+
+export function dbSetRoomReminderPolicy(
+  room: string,
+  policy: ReminderPolicy,
+): { error?: string } {
+  const payload = serializeReminderPolicy(policy);
+  const { error } = withDb((db) => {
+    db.run('UPDATE rooms SET reminder_policy = ? WHERE name = ?', [payload, room]);
+  });
+  return error ? { error } : {};
+}
+
+export function dbSetAgentReminderPolicy(
+  name: string,
+  policy: ReminderPolicy,
+): { error?: string } {
+  const payload = serializeReminderPolicy(policy);
+  const { error } = withDb((db) => {
+    db.run('UPDATE agents SET reminder_policy = ? WHERE name = ?', [payload, name]);
+  });
+  return error ? { error } : {};
+}
+
+export function dbIncrementRoomReminderDispatchCounter(
+  room: string,
+): { error?: string } {
+  const { error } = withDb((db) => {
+    db.run(
+      'UPDATE rooms SET reminder_dispatch_count = reminder_dispatch_count + 1 WHERE name = ?',
+      [room],
+    );
+  });
+  return error ? { error } : {};
+}
+
+export function dbResetRoomReminderDispatchCounter(room: string): { error?: string } {
+  const { error } = withDb((db) => {
+    db.run('UPDATE rooms SET reminder_dispatch_count = 0 WHERE name = ?', [room]);
   });
   return error ? { error } : {};
 }

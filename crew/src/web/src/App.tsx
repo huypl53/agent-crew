@@ -3,6 +3,7 @@ import AgentEditModal from './components/AgentEditModal.tsx';
 import AgentInspector from './components/AgentInspector.tsx';
 import CommandPalette from './components/command-palette.tsx';
 import Composer from './components/Composer.tsx';
+import PaneBoard from './components/PaneBoard.tsx';
 import HeaderStats from './components/HeaderStats.tsx';
 import KindFilter from './components/KindFilter.tsx';
 import MessageFeed from './components/MessageFeed.tsx';
@@ -146,6 +147,7 @@ export default function App() {
               )}
             </header>
             <KindFilter enabledKinds={enabledKinds} onToggle={toggleKind} />
+            <PaneBoard room={selectedRoom} subscribe={subscribe} />
             <MessageFeed
               messages={messages}
               enabledKinds={enabledKinds}

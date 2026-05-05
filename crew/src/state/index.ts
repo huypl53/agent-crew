@@ -5,6 +5,7 @@ import type {
   Message,
   MessageKind,
   PricingEntry,
+  ReminderPolicy,
   Room,
   RoomTemplate,
   SweepBusyMode,
@@ -26,6 +27,27 @@ function now(): string {
   return new Date().toISOString();
 }
 
+function parseReminderPolicy(raw: unknown): ReminderPolicy | null {
+  if (typeof raw !== 'string' || raw.trim().length === 0) return null;
+  try {
+    const data = JSON.parse(raw) as Partial<ReminderPolicy>;
+    const cadenceMode = data.cadence_mode === 'every_n' ? 'every_n' : 'always';
+    const cadenceN =
+      typeof data.cadence_n === 'number' && Number.isFinite(data.cadence_n)
+        ? Math.max(1, Math.floor(data.cadence_n))
+        : 1;
+    return {
+      enabled: Boolean(data.enabled),
+      prefix: typeof data.prefix === 'string' ? data.prefix : '',
+      suffix: typeof data.suffix === 'string' ? data.suffix : '',
+      cadence_mode: cadenceMode,
+      cadence_n: cadenceN,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function dbRowToAgent(row: Record<string, unknown>): Agent {
   return {
     agent_id: row.id as number,
@@ -42,6 +64,7 @@ function dbRowToAgent(row: Record<string, unknown>): Agent {
     status: (row.status as string | null) ?? null,
     persona: (row.persona as string | null) ?? null,
     capabilities: (row.capabilities as string | null) ?? null,
+    reminder_policy: parseReminderPolicy(row.reminder_policy),
   };
 }
 
@@ -52,6 +75,7 @@ function dbRoomToRoom(row: Record<string, unknown>): Room {
     name: row.name as string,
     topic: (row.topic as string | null) ?? null,
     created_at: row.created_at as string,
+    reminder_policy: parseReminderPolicy(row.reminder_policy),
   };
 }
 
@@ -419,6 +443,24 @@ export function getAllRooms(): Room[] {
     unknown
   >[];
   return rows.map(dbRoomToRoom);
+}
+
+export function getRoomReminderDispatchCount(roomName: string): number {
+  const row = getDb()
+    .query('SELECT reminder_dispatch_count FROM rooms WHERE name = ? ORDER BY id LIMIT 1')
+    .get(roomName) as { reminder_dispatch_count: number } | null;
+  return row?.reminder_dispatch_count ?? 0;
+}
+
+export function incrementRoomReminderDispatchCount(roomName: string): void {
+  getDb().run(
+    'UPDATE rooms SET reminder_dispatch_count = reminder_dispatch_count + 1 WHERE name = ?',
+    [roomName],
+  );
+}
+
+export function resetRoomReminderDispatchCount(roomName: string): void {
+  getDb().run('UPDATE rooms SET reminder_dispatch_count = 0 WHERE name = ?', [roomName]);
 }
 
 export function getAgentByRoomAndName(

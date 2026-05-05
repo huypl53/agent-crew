@@ -39,6 +39,59 @@ import {
 } from '../state/index.ts';
 import { handleSendMessage } from '../tools/send-message.ts';
 import { getSweepRuntimeStats, getWorkerSweepStates } from './sweep.ts';
+import { getPaneStatus } from '../shared/pane-status.ts';
+import { capturePane } from '../tmux/index.ts';
+import type {
+  CanonicalTraceSpan,
+  TraceEventLink,
+  TraceTimelineFilters,
+  TraceTimelinePayload,
+  TraceTurnGroup,
+} from '../web/src/types.ts';
+
+const MIRROR_MAX_CHARS = 6000;
+
+function trimMirrorContent(input: string, maxChars = MIRROR_MAX_CHARS): string {
+  if (input.length <= maxChars) return input;
+  return input.slice(input.length - maxChars);
+}
+
+async function buildRoomPaneMirror(roomName: string) {
+  const room = getRoom(roomName);
+  if (!room) return null;
+  const members = getRoomMembers(room.id).filter((m) => !!m.tmux_target);
+  const panes = await Promise.all(
+    members.map(async (member) => {
+      const paneTarget = member.tmux_target;
+      if (!paneTarget) return null;
+      try {
+        const [content, paneStatus] = await Promise.all([
+          capturePane(paneTarget),
+          getPaneStatus(paneTarget),
+        ]);
+        if (content === null) return null;
+        return {
+          room: room.name,
+          agent: member.name,
+          pane: paneTarget,
+          status: paneStatus.status,
+          typing_active: paneStatus.typingActive,
+          input_chars: paneStatus.inputChars,
+          content: trimMirrorContent(content),
+          captured_at: new Date().toISOString(),
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return panes.filter((pane) => pane !== null);
+}
+
+function isValidRoomName(name: string): boolean {
+  return name.trim().length > 0 && !name.includes('/');
+}
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -59,6 +112,147 @@ function parseIntParam(v: string | null): number | undefined {
 
 function shellQuote(input: string): string {
   return `'${String(input).replace(/'/g, `'"'"'`)}'`;
+}
+
+function toIso(input: unknown): string | null {
+  if (typeof input !== 'string' || !input) return null;
+  const ms = Date.parse(input);
+  if (Number.isNaN(ms)) return null;
+  return new Date(ms).toISOString();
+}
+
+function toMs(input: string | null): number {
+  if (!input) return 0;
+  const ms = Date.parse(input);
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+function buildTraceTimelinePayload(filters: TraceTimelineFilters): TraceTimelinePayload {
+  const db = getDb();
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (filters.room) {
+    where.push('r.name = ?');
+    params.push(filters.room);
+  }
+  if (filters.agent) {
+    where.push('m.sender = ?');
+    params.push(filters.agent);
+  }
+  if (filters.status) {
+    where.push('COALESCE(te.to_status, t.status, m.kind, "event") = ?');
+    params.push(filters.status);
+  }
+  if (filters.from) {
+    where.push('m.timestamp >= ?');
+    params.push(filters.from);
+  }
+  if (filters.to) {
+    where.push('m.timestamp <= ?');
+    params.push(filters.to);
+  }
+  const sql = `
+    SELECT m.id AS message_id, m.reply_to, m.sender, m.recipient, m.kind, m.mode, m.timestamp,
+           m.text, r.name AS room_name, t.id AS task_id, t.status AS task_status,
+           te.to_status AS event_status, te.id AS task_event_id
+    FROM messages m
+    JOIN rooms r ON r.id = m.room_id
+    LEFT JOIN tasks t ON t.message_id = m.id
+    LEFT JOIN task_events te ON te.task_id = t.id
+    ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
+    ORDER BY m.id ASC, te.id ASC`;
+  const rows = db.query(sql).all(...params) as Array<Record<string, unknown>>;
+
+  const spans: CanonicalTraceSpan[] = [];
+  const links: TraceEventLink[] = [];
+  const turnMap = new Map<string, TraceTurnGroup>();
+  const spanIdsByTurn = new Map<string, string[]>();
+  const spanById = new Map<string, CanonicalTraceSpan>();
+
+  for (const row of rows) {
+    const messageId = Number(row.message_id);
+    const room = String(row.room_name ?? 'unknown');
+    const sender = String(row.sender ?? 'unknown');
+    const timestamp = toIso(row.timestamp) ?? new Date(0).toISOString();
+    const taskId = typeof row.task_id === 'number' ? row.task_id : null;
+    const status = String(row.event_status ?? row.task_status ?? row.kind ?? 'event');
+    const turnId = `${room}:${sender}:${taskId ?? messageId}`;
+    const spanId = `msg:${messageId}:evt:${Number(row.task_event_id ?? 0)}`;
+    const parentSpanId = row.reply_to ? `msg:${Number(row.reply_to)}:evt:0` : null;
+
+    const span: CanonicalTraceSpan = {
+      trace_id: room,
+      span_id: spanId,
+      parent_span_id: parentSpanId,
+      room,
+      agent: sender,
+      status,
+      kind: 'message_turn',
+      started_at: timestamp,
+      ended_at: timestamp,
+      attributes: {
+        task_id: taskId,
+        message_id: messageId,
+        mode: row.mode ?? 'push',
+      },
+    };
+    spans.push(span);
+    spanById.set(span.span_id, span);
+
+    const ids = spanIdsByTurn.get(turnId) ?? [];
+    ids.push(span.span_id);
+    spanIdsByTurn.set(turnId, ids);
+
+    const existing = turnMap.get(turnId);
+    if (!existing) {
+      turnMap.set(turnId, {
+        turn_id: turnId,
+        room,
+        agent: sender,
+        started_at: timestamp,
+        ended_at: timestamp,
+        status,
+        span_ids: [],
+        before_span_ids: [],
+        after_span_ids: [],
+        parallel_turn_ids: [],
+      });
+    } else {
+      if (toMs(timestamp) < toMs(existing.started_at)) existing.started_at = timestamp;
+      if (!existing.ended_at || toMs(timestamp) > toMs(existing.ended_at)) existing.ended_at = timestamp;
+    }
+
+    if (parentSpanId) links.push({ source_span_id: parentSpanId, target_span_id: span.span_id, relation: 'reply_to' });
+  }
+
+  const turns = Array.from(turnMap.values()).sort((a, b) => {
+    const cmpStart = toMs(a.started_at) - toMs(b.started_at);
+    if (cmpStart !== 0) return cmpStart;
+    const cmpEnd = toMs(a.ended_at) - toMs(b.ended_at);
+    if (cmpEnd !== 0) return cmpEnd;
+    return a.turn_id.localeCompare(b.turn_id);
+  });
+
+  for (const turn of turns) {
+    const ids = spanIdsByTurn.get(turn.turn_id) ?? [];
+    turn.span_ids = ids;
+  }
+
+  for (let i = 0; i < turns.length; i++) {
+    const current = turns[i]!;
+    const prev = turns[i - 1];
+    const next = turns[i + 1];
+    if (prev) current.before_span_ids = prev.span_ids;
+    if (next) current.after_span_ids = next.span_ids;
+    for (let j = 0; j < turns.length; j++) {
+      if (i === j) continue;
+      const other = turns[j]!;
+      const overlap = toMs(current.started_at) <= toMs(other.ended_at) && toMs(other.started_at) <= toMs(current.ended_at);
+      if (overlap) current.parallel_turn_ids.push(other.turn_id);
+    }
+  }
+
+  return { spans, turns, links };
 }
 
 export async function handleApi(req: Request): Promise<Response> {
@@ -96,6 +290,18 @@ export async function handleApi(req: Request): Promise<Response> {
     const room = getRoom(name);
     if (!room) return err('Room not found', 404);
     return json(getRoomMembers(room.id));
+  }
+
+  // GET /api/rooms/:name/pane-mirror
+  const roomPaneMirrorMatch = path.match(/^\/rooms\/([^/]+)\/pane-mirror$/);
+  if (method === 'GET' && roomPaneMirrorMatch) {
+    const [, matchedName] = roomPaneMirrorMatch;
+    if (!matchedName) return err('Not found', 404);
+    const name = decodeURIComponent(matchedName);
+    if (!isValidRoomName(name)) return err('Invalid room name', 400);
+    const panes = await buildRoomPaneMirror(name);
+    if (!panes) return err('Room not found', 404);
+    return json({ room: name, panes });
   }
 
   // GET /api/rooms/:name/messages?limit=&offset=
@@ -397,6 +603,22 @@ export async function handleApi(req: Request): Promise<Response> {
       'rooms',
     ]);
     return json(versions);
+  }
+
+  // GET /api/trace/timeline?room=&agent=&status=&from=&to=
+  if (method === 'GET' && path === '/trace/timeline') {
+    try {
+      const payload = buildTraceTimelinePayload({
+        room: url.searchParams.get('room') ?? undefined,
+        agent: url.searchParams.get('agent') ?? undefined,
+        status: url.searchParams.get('status') ?? undefined,
+        from: url.searchParams.get('from') ?? undefined,
+        to: url.searchParams.get('to') ?? undefined,
+      });
+      return json(payload);
+    } catch (e) {
+      return err(String(e));
+    }
   }
 
   // GET /api/trace — aggregate payload for trace view (rooms + agents + tasks + recent messages)

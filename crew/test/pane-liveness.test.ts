@@ -6,6 +6,7 @@ import {
   addAgent,
   getAgent,
   getOrCreateRoom,
+  getRoomMessages,
   validateLiveness,
 } from '../src/state/index.ts';
 import {
@@ -172,6 +173,102 @@ describe('pane liveness checks', () => {
       expect(results[0]!.delivered).toBe(true);
       expect(results[0]!.error).toBeUndefined();
     }, 15000);
+  });
+
+  describe('reminder precedence and cadence', () => {
+    test('agent reminder policy overrides room default', async () => {
+      const room = mkRoom('reminder-precedence');
+      const roomPolicy = JSON.stringify({
+        enabled: true,
+        prefix: '[ROOM]',
+        suffix: '',
+        cadence_mode: 'always',
+        cadence_n: 1,
+      });
+      const agentPolicy = JSON.stringify({
+        enabled: true,
+        prefix: '[AGENT]',
+        suffix: '',
+        cadence_mode: 'always',
+        cadence_n: 1,
+      });
+
+      addAgent('sender', 'leader', room.id, shellPane, 'unknown');
+      addAgent('target', 'worker', room.id, shellPane, 'unknown');
+
+      const { getDb } = await import('../src/state/db.ts');
+      getDb().run('UPDATE rooms SET reminder_policy = ? WHERE id = ?', [
+        roomPolicy,
+        room.id,
+      ]);
+      getDb().run('UPDATE agents SET reminder_policy = ? WHERE name = ?', [
+        agentPolicy,
+        'target',
+      ]);
+
+      await deliverMessage('sender', room.name, 'hello', 'target', 'push');
+      const msgs = getRoomMessages(room.name);
+      const latest = msgs[msgs.length - 1];
+      expect(latest?.text).toBe('[AGENT] hello');
+    });
+
+    test('every_n cadence decorates only matching dispatches', async () => {
+      const room = mkRoom('reminder-cadence');
+      const roomPolicy = JSON.stringify({
+        enabled: true,
+        prefix: '[N2]',
+        suffix: '',
+        cadence_mode: 'every_n',
+        cadence_n: 2,
+      });
+
+      addAgent('sender', 'leader', room.id, shellPane, 'unknown');
+      addAgent('target', 'worker', room.id, shellPane, 'unknown');
+
+      const { getDb } = await import('../src/state/db.ts');
+      getDb().run('UPDATE rooms SET reminder_policy = ? WHERE id = ?', [
+        roomPolicy,
+        room.id,
+      ]);
+
+      await deliverMessage('sender', room.name, 'm1', 'target', 'push');
+      await deliverMessage('sender', room.name, 'm2', 'target', 'push');
+
+      const msgs = getRoomMessages(room.name);
+      const t1 = msgs[msgs.length - 2]?.text;
+      const t2 = msgs[msgs.length - 1]?.text;
+      expect(t1).toBe('m1');
+      expect(t2).toBe('[N2] m2');
+    });
+
+    test('failed dispatch does not increment reminder cadence counter', async () => {
+      const room = mkRoom('reminder-failed-dispatch');
+      const roomPolicy = JSON.stringify({
+        enabled: true,
+        prefix: '[N2]',
+        suffix: '',
+        cadence_mode: 'every_n',
+        cadence_n: 2,
+      });
+
+      addAgent('sender', 'leader', room.id, shellPane, 'unknown');
+      addAgent('target', 'worker', room.id, '%99999', 'claude-code');
+
+      const { getDb } = await import('../src/state/db.ts');
+      getDb().run('UPDATE rooms SET reminder_policy = ? WHERE id = ?', [
+        roomPolicy,
+        room.id,
+      ]);
+
+      await deliverMessage('sender', room.name, 'fails', 'target', 'push');
+      getDb().run('DELETE FROM agents WHERE name = ?', ['target']);
+      addAgent('target', 'worker', room.id, shellPane, 'unknown');
+      await deliverMessage('sender', room.name, 'next', 'target', 'push');
+
+      const msgs = getRoomMessages(room.name);
+      const latest = msgs[msgs.length - 1];
+      expect(latest?.text).toBe('next');
+    });
   });
 
   // ── validateLiveness command check ───────────────────────────────────────────
