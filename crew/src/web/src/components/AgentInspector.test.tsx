@@ -92,7 +92,11 @@ describe('AgentInspector onboarding', () => {
       />,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: '+ Agent' }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /onboard agent from template/i,
+      }),
+    );
 
     expect(await screen.findByText('Onboard agent to #crew')).toBeTruthy();
 

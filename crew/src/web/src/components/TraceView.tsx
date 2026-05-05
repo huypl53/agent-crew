@@ -1,341 +1,171 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import type { TraceNode } from '../hooks/useTraceTree.ts';
-import { useTraceTree } from '../hooks/useTraceTree.ts';
-import TraceDetailPanel from './TraceDetailPanel.tsx';
-import TraceTimeline from './TraceTimeline.tsx';
+import React, { useEffect, useMemo, useState } from 'react';
+import { get } from '../hooks/useApi.ts';
+import type { TraceSelection, TraceTimelineFilters, TraceTimelinePayload } from '../types.ts';
+import {
+  buildTraceDagViewModel,
+  buildTraceTimelineViewModel,
+  buildTraceWaterfallViewModel,
+} from '../types.ts';
 
-// ── Status dot colour ────────────────────────────────────────────────────
-const STATUS_DOT: Record<string, string> = {
-  active: 'bg-amber-400',
-  busy: 'bg-amber-400',
-  queued: 'bg-slate-400',
-  idle: 'bg-slate-400',
-  done: 'bg-emerald-500',
-  error: 'bg-rose-500',
-  dead: 'bg-rose-500',
-  note: 'bg-slate-500',
-};
-
-// ── Kind badge colour ─────────────────────────────────────────────────────
-const KIND_BADGE: Record<string, string> = {
-  root: 'bg-slate-700 text-slate-300',
-  room: 'bg-blue-900 text-blue-300',
-  agent: 'bg-violet-900 text-violet-300',
-  task: 'bg-amber-900 text-amber-300',
-  message: 'bg-slate-800 text-slate-400',
-};
-
-// ── Duration formatter ────────────────────────────────────────────────────
-function fmtDuration(ms: number | null): string {
-  if (ms === null || ms < 0) return '—';
-  if (ms < 1000) return `${ms}ms`;
-  const s = ms / 1000;
-  if (s < 60) return `${s.toFixed(1)}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  return `${Math.floor(m / 60)}h`;
+function fmtTs(value: string | null): string {
+  if (!value) return '—';
+  const ms = Date.parse(value);
+  if (Number.isNaN(ms)) return '—';
+  return new Date(ms).toLocaleString();
 }
 
-// ── Flatten tree to rows for rendering ───────────────────────────────────
-export interface FlatRow {
-  node: TraceNode;
-  depth: number;
-  hasChildren: boolean;
-  maxSiblingMs: number;
+function relationLabel(rel: string): string {
+  if (rel === 'reply_to') return 'reply';
+  if (rel === 'status_transition') return 'status';
+  if (rel === 'parent') return 'parent';
+  return 'inferred';
 }
 
-function flatten(
-  node: TraceNode,
-  depth: number,
-  expandedIds: Set<string>,
-  siblingMaxMs: number,
-): FlatRow[] {
-  const row: FlatRow = {
-    node,
-    depth,
-    hasChildren: node.children.length > 0,
-    maxSiblingMs: siblingMaxMs,
-  };
-  const rows: FlatRow[] = [row];
-  if (node.children.length > 0 && expandedIds.has(node.id)) {
-    const maxMs = Math.max(...node.children.map((c) => c.durationMs ?? 0), 1);
-    for (const child of node.children) {
-      rows.push(...flatten(child, depth + 1, expandedIds, maxMs));
-    }
-  }
-  return rows;
-}
-
-// ── Counter summary from tree ─────────────────────────────────────────────
-function countKinds(node: TraceNode, counts: Record<string, number> = {}) {
-  counts[node.kind] = (counts[node.kind] ?? 0) + 1;
-  for (const c of node.children) countKinds(c, counts);
-  return counts;
-}
-
-function collectIds(node: TraceNode, out: Set<string> = new Set()) {
-  out.add(node.id);
-  for (const c of node.children) collectIds(c, out);
-  return out;
-}
-
-function defaultExpanded(
-  node: TraceNode,
-  out: Set<string> = new Set(),
-): Set<string> {
-  // Expand root and rooms by default; agents/tasks/messages collapsed
-  if (node.kind === 'root' || node.kind === 'room') {
-    out.add(node.id);
-    for (const c of node.children) defaultExpanded(c, out);
-  }
-  return out;
-}
-
-// ── Row component ─────────────────────────────────────────────────────────
-interface RowProps {
-  row: FlatRow;
-  selected: boolean;
-  expanded: boolean;
-  onToggle: (id: string) => void;
-  onSelect: (id: string) => void;
-}
-
-function TraceRow({ row, selected, expanded, onToggle, onSelect }: RowProps) {
-  const { node, depth, hasChildren, maxSiblingMs } = row;
-  const dotColor = STATUS_DOT[node.status ?? ''] ?? 'bg-slate-600';
-  const badge = KIND_BADGE[node.kind] ?? 'bg-slate-800 text-slate-400';
-  const barPct =
-    node.durationMs !== null && maxSiblingMs > 0
-      ? Math.max(2, (node.durationMs / maxSiblingMs) * 100)
-      : 0;
-
-  return (
-    <div
-      role="row"
-      tabIndex={0}
-      onClick={() => onSelect(node.id)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onToggle(node.id);
-        }
-      }}
-      className={[
-        'flex flex-col h-6 cursor-pointer select-none outline-none',
-        'hover:bg-slate-800/70',
-        selected
-          ? 'bg-slate-700 border-l-2 border-emerald-500'
-          : 'border-l-2 border-transparent',
-      ].join(' ')}
-      style={{ paddingLeft: `${depth * 16 + 8}px` }}
-    >
-      <div className="flex items-center gap-1.5 h-6 pr-3 min-w-0">
-        {/* Caret */}
-        <span
-          className="text-slate-500 w-3 text-xs flex-shrink-0"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle(node.id);
-          }}
-        >
-          {hasChildren ? (expanded ? '▼' : '▶') : ' '}
-        </span>
-
-        {/* Status dot */}
-        <span
-          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`}
-        />
-
-        {/* Kind badge */}
-        <span
-          className={`text-xs px-1 rounded font-mono flex-shrink-0 ${badge}`}
-        >
-          {node.kind}
-        </span>
-
-        {/* Label */}
-        <span className="text-xs text-slate-200 font-mono truncate flex-1 min-w-0">
-          {node.label}
-        </span>
-
-        {/* Duration */}
-        <span className="text-xs text-slate-500 font-mono flex-shrink-0 ml-2">
-          {fmtDuration(node.durationMs)}
-        </span>
-      </div>
-
-      {/* Duration bar */}
-      {barPct > 0 && (
-        <div className="h-px mx-1 -mt-px mb-px">
-          <div
-            className="h-full bg-slate-600 rounded-full"
-            style={{ width: `${barPct}%` }}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Collect min/max timestamps from all tree nodes ────────────────────────
-function collectTimeBounds(node: TraceNode): { min: number; max: number } {
-  let min = Infinity,
-    max = -Infinity;
-  function walk(n: TraceNode) {
-    if (n.timestamp != null) {
-      if (n.timestamp < min) min = n.timestamp;
-      const end =
-        n.timestamp + (n.durationMs != null ? n.durationMs / 1000 : 0);
-      if (end > max) max = end;
-    }
-    for (const c of n.children) walk(c);
-  }
-  walk(node);
-  if (min === Infinity) {
-    const now = Math.floor(Date.now() / 1000);
-    return { min: now - 3600, max: now };
-  }
-  // Add 5% padding
-  const range = max - min || 1;
-  return { min: min - range * 0.05, max: max + range * 0.05 };
-}
-
-type ZoomRange = 'all' | '1h' | '15m';
-
-// ── Main component ────────────────────────────────────────────────────────
 export default function TraceView() {
-  const { tree: root, loading, error } = useTraceTree();
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(() =>
-    root ? defaultExpanded(root) : new Set(),
+  const [filters, setFilters] = useState<TraceTimelineFilters>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [payload, setPayload] = useState<TraceTimelinePayload | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [mode, setMode] = useState<'timeline' | 'waterfall' | 'graph'>('timeline');
+  const [selection, setSelection] = useState<TraceSelection>({ turnId: null, spanId: null });
+
+  useEffect(() => {
+    const q = new URLSearchParams();
+    if (filters.room) q.set('room', filters.room);
+    if (filters.agent) q.set('agent', filters.agent);
+    if (filters.status) q.set('status', filters.status);
+    if (filters.from) q.set('from', filters.from);
+    if (filters.to) q.set('to', filters.to);
+    setLoading(true);
+    setError(null);
+    get<TraceTimelinePayload>(`/trace/timeline?${q.toString()}`)
+      .then((data) => setPayload(data))
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false));
+  }, [filters]);
+
+  const timeline = useMemo(() => (payload ? buildTraceTimelineViewModel(payload) : { rows: [] }), [payload]);
+  const waterfall = useMemo(
+    () => (payload ? buildTraceWaterfallViewModel(payload) : { min_start_ms: 0, max_end_ms: 0, total_ms: 0, rows: [] }),
+    [payload],
   );
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [zoomRange, setZoomRange] = useState<ZoomRange>('all');
-  const treeRef = useRef<HTMLDivElement>(null);
+  const dag = useMemo(() => (payload ? buildTraceDagViewModel(payload) : { nodes: [], edges: [] }), [payload]);
 
-  const allIds = useMemo(
-    () => (root ? collectIds(root) : new Set<string>()),
-    [root],
-  );
-  const counts = useMemo(() => (root ? countKinds(root) : {}), [root]);
-
-  const rows = useMemo(() => {
-    if (!root) return [];
-    return flatten(root, 0, expandedIds, root.durationMs ?? 1);
-  }, [root, expandedIds]);
-
-  const selectedNode = useMemo(
-    () => rows.find((r) => r.node.id === selectedId)?.node ?? null,
-    [rows, selectedId],
-  );
-
-  // Compute time bounds with zoom
-  const timeBounds = useMemo(() => {
-    if (!root) return { min: 0, max: 1 };
-    const full = collectTimeBounds(root);
-    if (zoomRange === 'all') return full;
-    const now = Math.floor(Date.now() / 1000);
-    const windowSec = zoomRange === '1h' ? 3600 : 900;
-    const min = Math.max(full.min, now - windowSec);
-    return { min, max: now };
-  }, [root, zoomRange]);
-
-  const toggle = useCallback((id: string) => {
-    setExpandedIds((prev) => {
+  const toggle = (turnId: string) => {
+    setExpanded((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(turnId)) next.delete(turnId);
+      else next.add(turnId);
       return next;
     });
-  }, []);
+  };
 
-  const expandAll = () => setExpandedIds(new Set(allIds));
-  const collapseAll = () =>
-    setExpandedIds(root ? new Set([root.id]) : new Set());
+  if (loading) return <div className="p-4 text-slate-400">Loading trace timeline…</div>;
+  if (error) return <div className="p-4 text-rose-400">{error}</div>;
 
-  if (loading)
-    return (
-      <div className="flex-1 flex items-center justify-center text-slate-500">
-        Loading trace…
-      </div>
-    );
-  if (error)
-    return (
-      <div className="flex-1 flex items-center justify-center text-red-400">
-        {error}
-      </div>
-    );
-  if (!root)
-    return (
-      <div className="flex-1 flex items-center justify-center text-slate-500">
-        No trace data.
-      </div>
-    );
+  const selectedTurn = timeline.rows.find((r) => r.turn.turn_id === selection.turnId) ?? null;
+  const selectedSpan = payload?.spans.find((s) => s.span_id === selection.spanId) ?? null;
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden font-mono">
-      {/* Top strip */}
-      <div className="flex items-center gap-4 px-4 py-1.5 border-b border-slate-700 flex-shrink-0 text-xs text-slate-400">
-        <span>{counts.agent ?? 0} agents</span>
-        <span>·</span>
-        <span>{counts.task ?? 0} tasks</span>
-        <span>·</span>
-        <span>{counts.message ?? 0} messages</span>
-        <div className="ml-auto flex gap-2 items-center">
-          {/* Zoom controls */}
-          <div className="flex gap-1 mr-3 border border-slate-700 rounded overflow-hidden">
-            {(['all', '15m', '1h'] as ZoomRange[]).map((z) => (
-              <button
-                key={z}
-                onClick={() => setZoomRange(z)}
-                className={`px-2 py-0.5 text-xs ${zoomRange === z ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-              >
-                {z === 'all' ? 'All' : z}
+    <div className="flex-1 overflow-auto p-3 space-y-3">
+      <div className="grid grid-cols-5 gap-2">
+        <input placeholder="room" className="bg-slate-800 text-xs p-2 rounded" onChange={(e) => setFilters((f) => ({ ...f, room: e.target.value || undefined }))} />
+        <input placeholder="agent" className="bg-slate-800 text-xs p-2 rounded" onChange={(e) => setFilters((f) => ({ ...f, agent: e.target.value || undefined }))} />
+        <input placeholder="status" className="bg-slate-800 text-xs p-2 rounded" onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value || undefined }))} />
+        <input type="datetime-local" className="bg-slate-800 text-xs p-2 rounded" onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value ? new Date(e.target.value).toISOString() : undefined }))} />
+        <input type="datetime-local" className="bg-slate-800 text-xs p-2 rounded" onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value ? new Date(e.target.value).toISOString() : undefined }))} />
+      </div>
+
+      <div className="flex gap-2 text-xs">
+        {(['timeline', 'waterfall', 'graph'] as const).map((m) => (
+          <button key={m} onClick={() => setMode(m)} className={`px-2 py-1 rounded border ${mode === m ? 'bg-slate-700 border-slate-600' : 'bg-slate-900 border-slate-700'}`}>{m}</button>
+        ))}
+      </div>
+
+      {mode === 'timeline' && timeline.rows.map((row) => {
+        const isExpanded = expanded.has(row.turn.turn_id);
+        return (
+          <div key={row.turn.turn_id} className={`border rounded ${selection.turnId === row.turn.turn_id ? 'border-cyan-500' : 'border-slate-700'}`}>
+            <button className="w-full text-left px-3 py-2 text-xs hover:bg-slate-800 flex items-center justify-between" onClick={() => { toggle(row.turn.turn_id); setSelection({ turnId: row.turn.turn_id, spanId: row.spans[0]?.span_id ?? null }); }}>
+              <span>{isExpanded ? '▼' : '▶'} {row.turn.room} · {row.turn.agent ?? 'unknown'} · {row.turn.status}</span>
+              <span className="text-slate-400">{fmtTs(row.turn.started_at)} → {fmtTs(row.turn.ended_at)}</span>
+            </button>
+            {isExpanded && (
+              <div className="px-3 pb-3 text-xs space-y-2">
+                <ul className="space-y-1">
+                  {row.spans.map((span) => (
+                    <li key={span.span_id} onClick={() => setSelection({ turnId: row.turn.turn_id, spanId: span.span_id })} className={`rounded p-2 cursor-pointer ${selection.spanId === span.span_id ? 'bg-cyan-900/50' : 'bg-slate-900'}`}>
+                      <div>{span.span_id} · {span.status}</div>
+                      <div className="text-slate-400">{fmtTs(span.started_at)} → {fmtTs(span.ended_at)}</div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex flex-wrap gap-1">
+                  {row.links.map((link, idx) => (
+                    <span key={`${link.source_span_id}-${idx}`} className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                      {relationLabel(link.relation)}: {link.source_span_id} → {link.target_span_id}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {mode === 'waterfall' && (
+        <div className="space-y-1 text-xs">
+          {waterfall.rows.map((row) => {
+            const left = ((row.start_ms - waterfall.min_start_ms) / waterfall.total_ms) * 100;
+            const width = Math.max(1, ((row.end_ms - row.start_ms) / waterfall.total_ms) * 100);
+            return (
+              <button key={row.row_id} onClick={() => setSelection({ turnId: row.turn_id, spanId: row.span_id })} className="w-full text-left bg-slate-900 rounded p-2 border border-slate-700 hover:border-slate-500">
+                <div className="flex justify-between"><span>{row.label}</span><span>{row.duration_ms}ms</span></div>
+                <div className="relative h-2 bg-slate-800 rounded mt-1">
+                  <div className={`absolute h-2 rounded ${selection.spanId === row.span_id ? 'bg-cyan-400' : 'bg-indigo-400'}`} style={{ left: `${left}%`, width: `${width}%` }} />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {mode === 'graph' && (
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="space-y-1">
+            {dag.nodes.map((node) => (
+              <button key={node.id} onClick={() => setSelection({ turnId: `${node.room}:${node.agent ?? 'unknown'}`, spanId: node.span_id })} className={`w-full text-left rounded border p-2 ${selection.spanId === node.span_id ? 'border-cyan-500 bg-cyan-900/30' : 'border-slate-700 bg-slate-900'}`}>
+                <div>{node.span_id}</div>
+                <div className="text-slate-400">{node.status} · {node.room} · {node.agent ?? 'unknown'}</div>
               </button>
             ))}
           </div>
-          <button
-            onClick={expandAll}
-            className="px-2 py-0.5 rounded hover:text-slate-200"
-          >
-            Expand all
-          </button>
-          <button
-            onClick={collapseAll}
-            className="px-2 py-0.5 rounded hover:text-slate-200"
-          >
-            Collapse all
-          </button>
+          <div className="rounded border border-slate-700 p-2 bg-slate-900">
+            <div className="font-medium mb-2">Edges</div>
+            <div className="space-y-1">
+              {dag.edges.map((edge) => (
+                <div key={edge.id} className="text-slate-300">{relationLabel(edge.relation)}: {edge.source} → {edge.target}</div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* 40/60 split: tree | timeline */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* LEFT — tree (40%) */}
-        <div
-          ref={treeRef}
-          className="w-2/5 overflow-y-auto border-r border-slate-700"
-          role="tree"
-        >
-          {rows.map((row) => (
-            <TraceRow
-              key={row.node.id}
-              row={row}
-              selected={row.node.id === selectedId}
-              expanded={expandedIds.has(row.node.id)}
-              onToggle={toggle}
-              onSelect={setSelectedId}
-            />
-          ))}
-        </div>
-
-        {/* RIGHT — timeline (60%) */}
-        <div className="w-3/5 overflow-hidden flex flex-col">
-          <TraceTimeline
-            rows={rows}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            timeBounds={timeBounds}
-          />
-        </div>
+      <div className="rounded border border-slate-700 p-3 text-xs bg-slate-900">
+        <div className="font-medium mb-1">Details</div>
+        {selectedSpan ? (
+          <div className="space-y-1">
+            <div>span: {selectedSpan.span_id}</div>
+            <div>status: {selectedSpan.status}</div>
+            <div>room/agent: {selectedSpan.room} / {selectedSpan.agent ?? 'unknown'}</div>
+            <div>time: {fmtTs(selectedSpan.started_at)} → {fmtTs(selectedSpan.ended_at)}</div>
+          </div>
+        ) : selectedTurn ? (
+          <div>turn: {selectedTurn.turn.turn_id}</div>
+        ) : (
+          <div className="text-slate-400">Select timeline row, waterfall bar, or graph node.</div>
+        )}
       </div>
     </div>
   );

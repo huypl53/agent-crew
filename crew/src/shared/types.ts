@@ -1,6 +1,16 @@
 export type AgentRole = 'boss' | 'leader' | 'worker';
 export type AgentStatus = 'idle' | 'busy' | 'dead' | 'unknown';
 
+export type ReminderCadenceMode = 'always' | 'every_n';
+
+export interface ReminderPolicy {
+  enabled: boolean;
+  prefix: string;
+  suffix: string;
+  cadence_mode: ReminderCadenceMode;
+  cadence_n: number;
+}
+
 export interface Agent {
   agent_id: number;
   room_id: number;
@@ -13,6 +23,7 @@ export interface Agent {
   status: string | null;
   persona: string | null;
   capabilities: string | null;
+  reminder_policy: ReminderPolicy | null;
 }
 
 export interface Room {
@@ -21,6 +32,7 @@ export interface Room {
   name: string;
   topic: string | null;
   created_at: string;
+  reminder_policy: ReminderPolicy | null;
 }
 
 export interface AgentTemplate {

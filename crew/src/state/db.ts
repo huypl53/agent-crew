@@ -14,6 +14,8 @@ const SCHEMA = `
     path TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     topic TEXT,
+    reminder_policy TEXT,
+    reminder_dispatch_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
 
@@ -29,6 +31,7 @@ const SCHEMA = `
     status TEXT,
     persona TEXT,
     capabilities TEXT,
+    reminder_policy TEXT,
     UNIQUE(room_id, name)
   );
 
@@ -258,9 +261,24 @@ export function initDb(path?: string): void {
   const agentCols = _db.query('PRAGMA table_info(agents)').all() as Array<{
     name: string;
   }>;
+  if (!agentCols.some((c) => c.name === 'reminder_policy')) {
+    _db.exec('ALTER TABLE agents ADD COLUMN reminder_policy TEXT');
+  }
   if (!agentCols.some((c) => c.name === 'idle_muted')) {
     _db.exec(
       'ALTER TABLE agents ADD COLUMN idle_muted INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+
+  const roomCols = _db.query('PRAGMA table_info(rooms)').all() as Array<{
+    name: string;
+  }>;
+  if (!roomCols.some((c) => c.name === 'reminder_policy')) {
+    _db.exec('ALTER TABLE rooms ADD COLUMN reminder_policy TEXT');
+  }
+  if (!roomCols.some((c) => c.name === 'reminder_dispatch_count')) {
+    _db.exec(
+      'ALTER TABLE rooms ADD COLUMN reminder_dispatch_count INTEGER NOT NULL DEFAULT 0',
     );
   }
 

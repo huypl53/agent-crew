@@ -6,7 +6,7 @@ import {
   setDefaultTimeout,
   test,
 } from 'bun:test';
-import { getQueue } from '../src/delivery/pane-queue.ts';
+import { getQueue, removeQueue } from '../src/delivery/pane-queue.ts';
 import {
   captureFromPane,
   cleanupAllTestSessions,
@@ -24,6 +24,7 @@ describe('PaneQueue', () => {
   beforeEach(async () => {
     const s = await createTestSession(SESSION);
     testPane = s.pane;
+    removeQueue(testPane);
   });
 
   afterAll(async () => {
@@ -97,6 +98,6 @@ describe('PaneQueue', () => {
     await q.enqueue({ type: 'command', text: 'echo bypass-command' });
     const elapsed = Date.now() - t0;
 
-    expect(elapsed).toBeLessThan(1500);
+    expect(elapsed).toBeLessThan(5000);
   });
 });

@@ -131,7 +131,7 @@ export class PaneQueue {
     while (this.queue.length > 0) {
       const entry = this.queue.shift()!;
       try {
-        if (entry.item.type !== 'escape') {
+        if (entry.item.type === 'paste') {
           await this.waitForReady();
         }
         await this.withLock(async () => {

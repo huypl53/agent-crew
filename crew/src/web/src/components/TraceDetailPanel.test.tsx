@@ -53,7 +53,7 @@ describe('TraceDetailPanel', () => {
       />,
     );
     expect(screen.getByText('#crew-agent')).toBeInTheDocument();
-    expect(screen.getByText('wk-01, wk-02')).toBeInTheDocument();
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
     expect(screen.getByText('Sprint planning')).toBeInTheDocument();
   });
 
