@@ -4,6 +4,7 @@ import {
   getAllMessages,
   getAllRooms,
   getChangeVersions,
+  getRecentHookEvents,
   searchTasks,
 } from '../state/index.ts';
 import { capturePane } from '../tmux/index.ts';
@@ -16,6 +17,7 @@ const POLL_SCOPES = [
   'rooms',
   'templates',
   'room-templates',
+  'hook-events',
 ];
 
 const MIRROR_MAX_CHARS = 6000;
@@ -57,6 +59,7 @@ async function broadcastPaneMirrors(): Promise<void> {
 
 const clients = new Set<ServerWebSocket<unknown>>();
 let lastVersions: Record<string, number> = {};
+let lastHookEventId = 0;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let isBroadcastCycleInFlight = false;
 
@@ -123,6 +126,20 @@ async function broadcastChanges(): Promise<void> {
       broadcast({ type: 'template-change' });
     } else if (scope === 'room-templates') {
       broadcast({ type: 'room-template-change' });
+    } else if (scope === 'hook-events') {
+      const events = getRecentHookEvents(lastHookEventId);
+      for (const e of events) {
+        broadcast({
+          type: 'hook-event',
+          agent: e.agent_name,
+          event_type: e.event_type,
+          session_id: e.session_id,
+          created_at: e.created_at,
+        });
+      }
+      if (events.length > 0) {
+        lastHookEventId = events[events.length - 1]!.id;
+      }
     }
     lastVersions[scope] = current;
   }

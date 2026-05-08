@@ -1,4 +1,5 @@
 import { handleCheckChanges } from '../tools/check-changes.ts';
+import { handleHookEvent } from '../tools/hook-event.ts';
 import { handleClearWorkerSession } from '../tools/clear-worker-session.ts';
 import { handleCreateRoom } from '../tools/create-room.ts';
 import { handleDeleteRoom } from '../tools/delete-room.ts';
@@ -163,5 +164,9 @@ export const COMMANDS: Record<
   'delete-room': {
     handler: handleDeleteRoom,
     buildParams: (f) => ({ room: f.room, confirm: !!f.confirm, name: f.name }),
+  },
+  'hook-event': {
+    handler: handleHookEvent,
+    buildParams: () => ({}),
   },
 };

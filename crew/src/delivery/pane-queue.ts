@@ -12,6 +12,7 @@ export class PaneDeliveryError extends Error {
 import { getPaneStatus } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
 import type { AgentRole } from '../shared/types.ts';
+import { getAgentByPane, getLatestHookEvent } from '../state/index.ts';
 import {
   paneExists,
   sendClear,
@@ -32,7 +33,7 @@ interface QueueEntry {
   reject: (err: Error) => void;
 }
 
-const MAX_WAIT_MS = 10_000;
+const MAX_WAIT_MS = 5_000;
 const HEARTBEAT_STALE_MS = 30_000;
 
 // Role-aware suffix appended to every push message
@@ -147,11 +148,27 @@ export class PaneQueue {
   }
 
   private async waitForReady(): Promise<void> {
+    // Fast-path: if agent has a recent hook event, it's ready to receive
+    try {
+      const agent = getAgentByPane(this.target);
+      if (agent) {
+        const event = getLatestHookEvent(agent.name);
+        if (event) {
+          const ageMs = Date.now() - new Date(event.created_at).getTime();
+          // Recent event (< 60s) means agent state is known → ready
+          if (ageMs < 60_000) return;
+        }
+      }
+    } catch {
+      // DB not available — fall through to polling
+    }
+
+    // Fallback: poll typingActive via tmux capture
     const start = Date.now();
     while (Date.now() - start < MAX_WAIT_MS) {
       const result = await getPaneStatus(this.target);
       if (!result.typingActive) return;
-      await Bun.sleep(getPollingInterval(this.role, this.lastActivityMs));
+      await Bun.sleep(1000);
     }
     throw new PaneDeliveryError(
       `pane ${this.target} not ready: typing/busy timeout`,

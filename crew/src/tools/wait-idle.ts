@@ -2,11 +2,8 @@ import { waitForIdle } from '../utils/wait-for-idle.ts';
 
 interface WaitIdleParams {
   target: string;
-  stable_count?: number;
-  idle_seconds?: number;
   poll_interval?: number;
   timeout?: number;
-  lines?: number;
 }
 
 /**
@@ -15,8 +12,7 @@ interface WaitIdleParams {
  * Called inline from cli.ts before initDb().
  */
 export async function handleWaitIdle(params: WaitIdleParams): Promise<void> {
-  const { target, stable_count, idle_seconds, poll_interval, timeout, lines } =
-    params;
+  const { target, poll_interval, timeout } = params;
 
   if (!target) {
     console.error('Error: --target <pane> is required');
@@ -25,11 +21,8 @@ export async function handleWaitIdle(params: WaitIdleParams): Promise<void> {
 
   const result = await waitForIdle({
     target,
-    stableCount: stable_count,
-    idleSeconds: idle_seconds,
     pollInterval: poll_interval,
     timeout,
-    lines,
   });
 
   if (result.timedOut) {

@@ -817,10 +817,11 @@ describe('state module', () => {
         scope: string;
         version: number;
       }[];
-      expect(rows.length).toBe(5);
+      expect(rows.length).toBe(6);
       const scopes = rows.map((r) => r.scope).sort();
       expect(scopes).toEqual([
         'agents',
+        'hook-events',
         'messages',
         'room-templates',
         'tasks',

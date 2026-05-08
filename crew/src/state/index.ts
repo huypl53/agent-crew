@@ -2,6 +2,7 @@ import type {
   Agent,
   AgentRole,
   AgentTemplate,
+  HookEvent,
   Message,
   MessageKind,
   PricingEntry,
@@ -1146,6 +1147,65 @@ export function getPricingForModel(modelName: string): PricingEntry | null {
       .query('SELECT * FROM pricing WHERE model_name = ?')
       .get(modelName) as PricingEntry) ?? null
   );
+}
+
+// --- Hook events ---
+
+export function addHookEvent(
+  agentName: string,
+  eventType: string,
+  sessionId: string | null,
+  payload: string,
+): number {
+  const db = getDb();
+  const stmt = db.run(
+    'INSERT INTO hook_events (agent_name, event_type, session_id, payload) VALUES (?, ?, ?, ?)',
+    [agentName, eventType, sessionId, payload],
+  );
+  const newStatus: 'idle' | 'busy' = eventType === 'Stop' ? 'idle' : 'busy';
+  setAgentStatus(agentName, newStatus);
+  return Number(stmt.lastInsertRowid);
+}
+
+export function getLatestHookEvent(
+  agentName: string,
+  eventType?: string,
+): HookEvent | null {
+  const db = getDb();
+  let sql = 'SELECT * FROM hook_events WHERE agent_name = ?';
+  const params: unknown[] = [agentName];
+  if (eventType) {
+    sql += ' AND event_type = ?';
+    params.push(eventType);
+  }
+  sql += ' ORDER BY id DESC LIMIT 1';
+  const row = db.query(sql).get(...params) as Record<string, unknown> | null;
+  if (!row) return null;
+  return {
+    id: row.id as number,
+    agent_name: row.agent_name as string,
+    event_type: row.event_type as string,
+    session_id: (row.session_id as string | null) ?? null,
+    payload: (row.payload as string | null) ?? null,
+    created_at: row.created_at as string,
+  };
+}
+
+export function getAgentHookStatus(
+  agentName: string,
+): 'idle' | 'busy' | 'unknown' {
+  const event = getLatestHookEvent(agentName);
+  if (!event) return 'unknown';
+  return event.event_type === 'Stop' ? 'idle' : 'busy';
+}
+
+export function getRecentHookEvents(
+  sinceId: number = 0,
+): HookEvent[] {
+  const db = getDb();
+  return db
+    .query('SELECT * FROM hook_events WHERE id > ? ORDER BY id')
+    .all(sinceId) as HookEvent[];
 }
 
 // --- Change detection ---

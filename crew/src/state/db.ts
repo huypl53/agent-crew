@@ -138,6 +138,24 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient, id);
   CREATE INDEX IF NOT EXISTS idx_tasks_room ON tasks(room_id, status);
   CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_to, status);
+  CREATE TABLE IF NOT EXISTS hook_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_name TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    session_id TEXT,
+    payload TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_hook_events_agent ON hook_events(agent_name);
+  CREATE INDEX IF NOT EXISTS idx_hook_events_type ON hook_events(agent_name, event_type);
+
+  CREATE TRIGGER IF NOT EXISTS trg_hook_events_insert AFTER INSERT ON hook_events
+  BEGIN
+    INSERT INTO change_log(scope, version, updated_at) VALUES('hook-events', 1, datetime('now'))
+    ON CONFLICT(scope) DO UPDATE SET version = version + 1, updated_at = datetime('now');
+  END;
+
   CREATE INDEX IF NOT EXISTS idx_token_usage_agent ON token_usage(agent_id, recorded_at);
 
   CREATE TRIGGER IF NOT EXISTS trg_messages_change AFTER INSERT ON messages
@@ -310,7 +328,7 @@ export function initDb(path?: string): void {
      VALUES (1, 0, NULL, 'auto', datetime('now'))`,
   );
 
-  const scopes = ['agents', 'messages', 'tasks', 'templates', 'room-templates'];
+  const scopes = ['agents', 'messages', 'tasks', 'templates', 'room-templates', 'hook-events'];
   for (const scope of scopes) {
     _db.run(
       'INSERT OR IGNORE INTO change_log (scope, version, updated_at) VALUES (?, 0, datetime("now"))',

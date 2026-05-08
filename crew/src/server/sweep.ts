@@ -3,11 +3,12 @@ import {
   PaneDeliveryError,
   removeQueue,
 } from '../delivery/pane-queue.ts';
-import { getPaneStatus, parsePaneInputSection } from '../shared/pane-status.ts';
+import { getPaneStatus } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
 import type { SweepBusyMode } from '../shared/types.ts';
 import {
   getAllAgents,
+  getLatestHookEvent,
   getRoomMembers,
   getSweepControlState,
   getTasksForAgent,
@@ -15,16 +16,10 @@ import {
   markAgentStale,
   setAgentStatus,
 } from '../state/index.ts';
-import {
-  capturePane,
-  capturePaneTail,
-  capturePaneWithAnsi,
-  paneCommandLooksAlive,
-} from '../tmux/index.ts';
+import { paneCommandLooksAlive } from '../tmux/index.ts';
 
 const SWEEP_INTERVAL_MS = 5_000;
 const IDLE_THRESHOLD_MS = 60_000;
-const ANSI_CHECK_LINES = 8;
 const NOTIFY_THROTTLE_MS = 30 * 60_000;
 const LIVENESS_TICKS = 6;
 const WARMUP_MS = 30_000;
@@ -37,13 +32,6 @@ let sweeping = false;
 let tickCount = 0;
 let startedAt = 0;
 
-interface WorkerState {
-  textHash: number;
-  ansiHash: number; // hash of status region with ANSI codes (catches color-only changes)
-  stableSince: number;
-}
-
-const workerStates = new Map<string, WorkerState>();
 const lastNotified = new Map<string, number>();
 const idleEpochNotified = new Map<string, boolean>();
 const deadCounts = new Map<string, number>();
@@ -81,16 +69,6 @@ export function setSweepEventListener(
   listener: ((event: SweepEvent) => void) | null,
 ): void {
   sweepEventListener = listener;
-}
-
-function simpleHash(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return hash;
 }
 
 function computeDeferredTotal(): number {
@@ -293,51 +271,38 @@ async function runIdleDetection(): Promise<void> {
   }
 
   const notificationsByLeader = new Map<string, Map<string, string>>();
+  const now = Date.now();
 
   for (const w of workers) {
     const target = w.tmux_target as string;
     const alive = await paneCommandLooksAlive(target);
 
     if (!alive) {
-      workerStates.delete(w.name);
       await maybeNotify(w, 'process exited', notificationsByLeader);
       continue;
     }
 
-    const [content, ansiContent] = await Promise.all([
-      capturePane(target),
-      capturePaneWithAnsi(target, ANSI_CHECK_LINES),
-    ]);
-    if (content === null) continue;
+    // Query hook events for idle detection
+    const stopEvent = getLatestHookEvent(w.name, 'Stop');
+    const submitEvent = getLatestHookEvent(w.name, 'UserPromptSubmit');
 
-    const parsedInput = parsePaneInputSection(content);
-    if (parsedInput.typingActive) {
-      continue;
-    }
-
-    const textHash = simpleHash(parsedInput.sanitized);
-    const ansiHash = simpleHash(ansiContent ?? '');
-    const prev = workerStates.get(w.name);
-    const now = Date.now();
-
-    // Check if either text or ANSI changed (catches "thinking" color animations)
-    const textChanged = !prev || textHash !== prev.textHash;
-    const ansiChanged = !prev || ansiHash !== prev.ansiHash;
-
-    if (textChanged || ansiChanged) {
-      workerStates.set(w.name, { textHash, ansiHash, stableSince: now });
+    // If most recent event is UserPromptSubmit (agent is busy), reset idle tracking
+    if (
+      submitEvent &&
+      (!stopEvent || submitEvent.id > stopEvent.id)
+    ) {
       lastNotified.delete(w.name);
       resetIdleTransition(w.name);
       continue;
     }
 
-    const stableMs = now - prev.stableSince;
-    if (stableMs >= IDLE_THRESHOLD_MS && shouldNotifyIdleTransition(w.name)) {
-      await maybeNotify(
-        w,
-        `idle (${Math.round(stableMs / 60_000)}m)`,
-        notificationsByLeader,
-      );
+    // If no Stop event yet, no idle data
+    if (!stopEvent) continue;
+
+    const elapsedMs = now - new Date(stopEvent.created_at).getTime();
+    if (elapsedMs >= IDLE_THRESHOLD_MS && shouldNotifyIdleTransition(w.name)) {
+      const reason = `idle (${Math.round(elapsedMs / 60_000)}m)`;
+      await maybeNotify(w, reason, notificationsByLeader, stopEvent.payload);
     }
   }
 
@@ -355,15 +320,13 @@ async function runLivenessCheck(): Promise<void> {
 
     if (alive) {
       deadCounts.delete(agent.name);
+      // Status is now set by hook events, but fallback for workers without hooks
       if (agent.role === 'worker') {
-        const hasContent = workerStates.has(agent.name);
-        const stableMs = hasContent
-          ? Date.now() - (workerStates.get(agent.name)?.stableSince ?? 0)
-          : 0;
-        setAgentStatus(
-          agent.name,
-          stableMs >= IDLE_THRESHOLD_MS ? 'idle' : 'busy',
-        );
+        const hookStatus = getLatestHookEvent(agent.name);
+        if (!hookStatus) {
+          // No hook data — set based on liveness only
+          setAgentStatus(agent.name, 'busy');
+        }
       }
       continue;
     }
@@ -400,7 +363,6 @@ async function runLivenessCheck(): Promise<void> {
       );
       markAgentStale(agent.name);
       deadCounts.delete(agent.name);
-      workerStates.delete(agent.name);
       resetIdleTransition(agent.name);
     } else {
       logServer(
@@ -420,6 +382,7 @@ async function maybeNotify(
   },
   reason: string,
   notificationsByLeader: Map<string, Map<string, string>>,
+  hookPayload?: string | null,
 ): Promise<void> {
   const last = lastNotified.get(w.name);
   if (last && Date.now() - last < NOTIFY_THROTTLE_MS) return;
@@ -427,17 +390,22 @@ async function maybeNotify(
   lastNotified.set(w.name, Date.now());
 
   let context = '';
-  const tail = await capturePaneTail(w.tmux_target as string, 20).catch(
-    () => null,
-  );
-  if (tail) {
-    const sanitized = parsePaneInputSection(tail).sanitized;
-    const flat = sanitized
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .join(' | ');
-    if (flat) context = ` [context: ${flat}]`;
+  // Use last_assistant_message from hook payload instead of tmux capture
+  if (hookPayload) {
+    try {
+      const parsed = JSON.parse(hookPayload) as { last_assistant_message?: string };
+      if (parsed.last_assistant_message) {
+        const msg = parsed.last_assistant_message
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean)
+          .join(' | ');
+        const truncated = msg.length > 300 ? `${msg.slice(0, 297)}...` : msg;
+        if (truncated) context = ` [context: ${truncated}]`;
+      }
+    } catch {
+      // payload parse failed — no context
+    }
   }
 
   const notifyText = `[system@${w.room_name}]: ${w.name} ${reason}${context}`;
@@ -472,10 +440,14 @@ export function getWorkerSweepStates(): Record<
     string,
     { content_stable_ms: number; last_notified_at: string | null }
   > = {};
-  for (const [name, state] of workerStates) {
-    const last = lastNotified.get(name);
-    result[name] = {
-      content_stable_ms: now - state.stableSince,
+  const agents = getAllAgents().filter((a) => a.role === 'worker');
+  for (const agent of agents) {
+    const stopEvent = getLatestHookEvent(agent.name, 'Stop');
+    const last = lastNotified.get(agent.name);
+    result[agent.name] = {
+      content_stable_ms: stopEvent
+        ? now - new Date(stopEvent.created_at).getTime()
+        : 0,
       last_notified_at: last ? new Date(last).toISOString() : null,
     };
   }

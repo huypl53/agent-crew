@@ -159,6 +159,15 @@ export interface PricingEntry {
   output_cost_per_million: number;
 }
 
+export interface HookEvent {
+  id: number;
+  agent_name: string;
+  event_type: string;
+  session_id: string | null;
+  payload: string | null;
+  created_at: string;
+}
+
 export type SweepBusyMode = 'auto' | 'manual_busy' | 'manual_free';
 
 export interface SweepControlState {

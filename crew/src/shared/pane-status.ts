@@ -1,37 +1,11 @@
-import {
-  capturePane,
-  capturePaneWithAnsi,
-  paneCommandLooksAlive,
-} from '../tmux/index.ts';
-
-// Content must be unchanged for this long before we declare idle
-const STABLE_THRESHOLD_MS = 3000;
-// Number of lines to check for ANSI changes (status region)
-const ANSI_CHECK_LINES = 8;
-
-interface PaneSnapshot {
-  textHash: number;
-  ansiHash: number; // hash of last N lines with ANSI codes (catches color-only changes)
-  changedAt: number; // epoch ms when content last changed
-}
-
-const snapshots = new Map<string, PaneSnapshot>();
-
-function simpleHash(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return hash;
-}
+import { capturePane } from '../tmux/index.ts';
+import { getAgentByPane, getLatestHookEvent } from '../state/index.ts';
 
 export type PaneStatus = 'idle' | 'busy' | 'unknown';
 
 export interface PaneStatusResult {
   status: PaneStatus;
-  contentChanged: boolean; // true if content changed since last check (for last_activity updates)
+  contentChanged: boolean;
   typingActive: boolean;
   inputChars: number;
 }
@@ -69,7 +43,7 @@ export function parsePaneInputSection(
     return { typingActive: false, inputChars: 0, sanitized: text };
   }
 
-  const between = lines.slice(top + 1, bottom).join('\n').replace(/ /g, ' ');
+  const between = lines.slice(top + 1, bottom).join('\n').replace(/ /g, ' ');
   const inputChars = between.replace(/\s+/g, '').length;
   const typingActive = inputChars >= MIN_CHARS_NUM;
   const sanitized = lines.slice(0, top).join('\n');
@@ -77,32 +51,53 @@ export function parsePaneInputSection(
   return { typingActive, inputChars, sanitized };
 }
 
+/** Cache pane→agentName lookups with 5s TTL to avoid DB thrash */
+const paneCache = new Map<string, { name: string; ts: number }>();
+const PANE_CACHE_TTL_MS = 5000;
+
+function getAgentNameByPane(target: string): string | null {
+  const cached = paneCache.get(target);
+  if (cached && Date.now() - cached.ts < PANE_CACHE_TTL_MS) {
+    return cached.name;
+  }
+  try {
+    const agent = getAgentByPane(target);
+    if (!agent) {
+      paneCache.delete(target);
+      return null;
+    }
+    paneCache.set(target, { name: agent.name, ts: Date.now() });
+    return agent.name;
+  } catch {
+    // DB not initialized — return null gracefully
+    return null;
+  }
+}
+
 /**
- * Determines pane status using content hash change detection + agent process check.
+ * Determines pane status using hook events from Claude Code.
  *
  * Logic:
- *   - Text OR ANSI changed since last check → busy
- *   - Both stable >= STABLE_THRESHOLD_MS → idle
- *   - Both stable < threshold but no agent process → idle (agent exited)
- *   - No prior snapshot → unknown (call again after a moment)
- *
- * ANSI detection catches "thinking" states where Claude Code shows color
- * changes (status line animation) but no text output yet.
+ *   - Agent found → query latest hook event
+ *   - Stop event → idle
+ *   - UserPromptSubmit event → busy
+ *   - No events → unknown (hooks not yet installed)
+ *   - No agent for pane → unknown
+ *   - typingActive still detected via tmux input box parsing
  */
 export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
-  const [textOutput, ansiOutput] = await Promise.all([
-    capturePane(target),
-    capturePaneWithAnsi(target, ANSI_CHECK_LINES),
-  ]);
+  const textOutput = await capturePane(target);
 
-  if (textOutput === null)
+  if (textOutput === null) {
     return {
       status: 'unknown',
       contentChanged: false,
       typingActive: false,
       inputChars: 0,
     };
+  }
 
+  // Parse typing state from tmux (hook-independent)
   const paneMeta = await Bun.spawn(
     ['tmux', 'display-message', '-p', '-t', target, '#{pane_width}'],
     { stdout: 'pipe', stderr: 'pipe' },
@@ -113,14 +108,9 @@ export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
     Number.isFinite(paneWidth) ? paneWidth : undefined,
   );
 
-  const now = Date.now();
-  const textHash = simpleHash(parsed.sanitized);
-  const ansiHash = simpleHash(ansiOutput ?? '');
-  const prev = snapshots.get(target);
-
-  // First call — establish baseline, no comparison possible yet
-  if (!prev) {
-    snapshots.set(target, { textHash, ansiHash, changedAt: now });
+  // Resolve agent from pane target
+  const agentName = getAgentNameByPane(target);
+  if (!agentName) {
     return {
       status: 'unknown',
       contentChanged: false,
@@ -129,55 +119,28 @@ export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
     };
   }
 
-  // Check if either text or ANSI changed
-  const textChanged = textHash !== prev.textHash;
-  const ansiChanged = ansiHash !== prev.ansiHash;
-  const anyChanged = textChanged || ansiChanged;
-
-  if (anyChanged) {
-    snapshots.set(target, { textHash, ansiHash, changedAt: now });
+  // Derive status from latest hook event
+  const latestEvent = getLatestHookEvent(agentName);
+  if (!latestEvent) {
     return {
-      status: 'busy',
-      contentChanged: true,
-      typingActive: parsed.typingActive,
-      inputChars: parsed.inputChars,
-    };
-  }
-
-  // Both unchanged — check how long they've been stable
-  const stableMs = now - prev.changedAt;
-
-  if (stableMs >= STABLE_THRESHOLD_MS) {
-    return {
-      status: 'idle',
+      status: 'unknown',
       contentChanged: false,
       typingActive: parsed.typingActive,
       inputChars: parsed.inputChars,
     };
   }
 
-  // Stable but not long enough — check if agent process is even running.
-  // If the process already exited (back to shell prompt), it's idle immediately.
-  const agentRunning = await paneCommandLooksAlive(target);
-  if (!agentRunning) {
-    return {
-      status: 'idle',
-      contentChanged: false,
-      typingActive: parsed.typingActive,
-      inputChars: parsed.inputChars,
-    };
-  }
+  const status: PaneStatus = latestEvent.event_type === 'Stop' ? 'idle' : 'busy';
+  // contentChanged = true when transitioning to idle (new response completed)
+  const contentChanged = status === 'idle';
 
-  // Process running, content hasn't changed long enough to be sure
   return {
-    status: 'unknown',
-    contentChanged: false,
+    status,
+    contentChanged,
     typingActive: parsed.typingActive,
     inputChars: parsed.inputChars,
   };
 }
 
-/** Remove cached snapshot when agent leaves or pane is recycled. */
-export function clearPaneSnapshot(target: string): void {
-  snapshots.delete(target);
-}
+/** No-op — kept for API compatibility until Phase 8 cleanup. */
+export function clearPaneSnapshot(_target: string): void {}
