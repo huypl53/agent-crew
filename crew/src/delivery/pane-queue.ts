@@ -154,7 +154,7 @@ export class PaneQueue {
       if (agent) {
         const event = getLatestHookEvent(agent.name);
         if (event) {
-          const ageMs = Date.now() - new Date(event.created_at).getTime();
+          const ageMs = Date.now() - new Date(event.created_at + 'Z').getTime();
           // Recent event (< 60s) means agent state is known → ready
           if (ageMs < 60_000) return;
         }

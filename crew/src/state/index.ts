@@ -1201,11 +1201,12 @@ export function getAgentHookStatus(
 
 export function getRecentHookEvents(
   sinceId: number = 0,
+  limit: number = 100,
 ): HookEvent[] {
   const db = getDb();
   return db
-    .query('SELECT * FROM hook_events WHERE id > ? ORDER BY id')
-    .all(sinceId) as HookEvent[];
+    .query('SELECT * FROM hook_events WHERE id > ? ORDER BY id LIMIT ?')
+    .all(sinceId, limit) as HookEvent[];
 }
 
 // --- Change detection ---

@@ -299,7 +299,7 @@ async function runIdleDetection(): Promise<void> {
     // If no Stop event yet, no idle data
     if (!stopEvent) continue;
 
-    const elapsedMs = now - new Date(stopEvent.created_at).getTime();
+    const elapsedMs = now - new Date(stopEvent.created_at + 'Z').getTime();
     if (elapsedMs >= IDLE_THRESHOLD_MS && shouldNotifyIdleTransition(w.name)) {
       const reason = `idle (${Math.round(elapsedMs / 60_000)}m)`;
       await maybeNotify(w, reason, notificationsByLeader, stopEvent.payload);
@@ -446,7 +446,7 @@ export function getWorkerSweepStates(): Record<
     const last = lastNotified.get(agent.name);
     result[agent.name] = {
       content_stable_ms: stopEvent
-        ? now - new Date(stopEvent.created_at).getTime()
+        ? now - new Date(stopEvent.created_at + 'Z').getTime()
         : 0,
       last_notified_at: last ? new Date(last).toISOString() : null,
     };

@@ -38,14 +38,15 @@ export async function waitForIdle(
 ): Promise<IdleResult> {
   const { target, pollInterval = 1000, timeout = 60_000 } = options;
   const start = Date.now();
-  const startTime = new Date(start).toISOString();
+  // Subtract 1s to account for SQLite datetime() truncating to whole seconds
+  const startTime = new Date(start - 1000).toISOString();
 
   // Fast-path: try hook events (needs DB)
   let useHooks = false;
   let agentName: string | null = null;
   try {
-    const { initDb } = await import('../state/db.ts');
-    initDb();
+    const { getDb, initDb } = await import('../state/db.ts');
+    try { getDb(); } catch { initDb(); }
     const agent = getAgentByPane(target);
     if (agent) {
       agentName = agent.name;
@@ -62,8 +63,10 @@ export async function waitForIdle(
         return { idle: false, content: '', elapsed, timedOut: true };
       }
 
-      const stopEvent = getLatestHookEvent(agentName!, 'Stop');
-      if (stopEvent && new Date(stopEvent.created_at) >= new Date(startTime)) {
+      const stopEvent = getLatestHookEvent(agentName, 'Stop');
+      // SQLite datetime('now') returns UTC without 'Z' suffix — append it for correct JS parsing
+      const eventTime = stopEvent ? new Date(stopEvent.created_at + 'Z') : null;
+      if (stopEvent && eventTime && eventTime >= new Date(startTime)) {
         // Extract last_assistant_message for content
         let content = '';
         if (stopEvent.payload) {

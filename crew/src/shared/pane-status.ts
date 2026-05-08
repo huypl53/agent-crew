@@ -55,6 +55,13 @@ export function parsePaneInputSection(
 const paneCache = new Map<string, { name: string; ts: number }>();
 const PANE_CACHE_TTL_MS = 5000;
 
+/** Track last-seen hook event ID per pane to compute contentChanged accurately */
+const lastSeenEventId = new Map<string, number>();
+
+/** Cache pane width with 30s TTL — width rarely changes */
+const paneWidthCache = new Map<string, { width: number; ts: number }>();
+const PANE_WIDTH_CACHE_TTL_MS = 30_000;
+
 function getAgentNameByPane(target: string): string | null {
   const cached = paneCache.get(target);
   if (cached && Date.now() - cached.ts < PANE_CACHE_TTL_MS) {
@@ -97,16 +104,27 @@ export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
     };
   }
 
-  // Parse typing state from tmux (hook-independent)
-  const paneMeta = await Bun.spawn(
-    ['tmux', 'display-message', '-p', '-t', target, '#{pane_width}'],
-    { stdout: 'pipe', stderr: 'pipe' },
-  ).stdout.text();
-  const paneWidth = Number.parseInt(paneMeta.trim(), 10);
-  const parsed = parsePaneInputSection(
-    textOutput,
-    Number.isFinite(paneWidth) ? paneWidth : undefined,
-  );
+  // Parse typing state from tmux (hook-independent), cache pane width
+  let paneWidth: number | undefined;
+  const cachedWidth = paneWidthCache.get(target);
+  if (cachedWidth && Date.now() - cachedWidth.ts < PANE_WIDTH_CACHE_TTL_MS) {
+    paneWidth = cachedWidth.width;
+  } else {
+    try {
+      const paneMeta = await Bun.spawn(
+        ['tmux', 'display-message', '-p', '-t', target, '#{pane_width}'],
+        { stdout: 'pipe', stderr: 'pipe' },
+      ).stdout.text();
+      const w = Number.parseInt(paneMeta.trim(), 10);
+      if (Number.isFinite(w)) {
+        paneWidth = w;
+        paneWidthCache.set(target, { width: w, ts: Date.now() });
+      }
+    } catch {
+      // tmux failed — proceed without width
+    }
+  }
+  const parsed = parsePaneInputSection(textOutput, paneWidth);
 
   // Resolve agent from pane target
   const agentName = getAgentNameByPane(target);
@@ -131,8 +149,9 @@ export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
   }
 
   const status: PaneStatus = latestEvent.event_type === 'Stop' ? 'idle' : 'busy';
-  // contentChanged = true when transitioning to idle (new response completed)
-  const contentChanged = status === 'idle';
+  const prevEventId = lastSeenEventId.get(target) ?? 0;
+  const contentChanged = latestEvent.id !== prevEventId;
+  lastSeenEventId.set(target, latestEvent.id);
 
   return {
     status,

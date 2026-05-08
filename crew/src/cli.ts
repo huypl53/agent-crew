@@ -15,7 +15,7 @@ if (parsed.command === 'help' || parsed.flags.help) {
   process.exit(0);
 }
 
-// 'wait-idle' uses hook events with tmux fallback
+// 'wait-idle' uses hook events (lazy DB init) with tmux fallback
 if (parsed.command === 'wait-idle') {
   const { handleWaitIdle } = await import('./tools/wait-idle.ts');
   await handleWaitIdle({
