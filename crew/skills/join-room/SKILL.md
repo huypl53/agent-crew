@@ -1,7 +1,7 @@
 ---
 name: crew:join-room
 description: Register your AI coding agent in a crew room with a role
-arguments: <room> --role <boss|leader|worker> --name <your-name>
+arguments: --role <boss|leader|worker> [--name <your-name>] [--room <room>]
 ---
 
 # Join Room
@@ -10,12 +10,17 @@ Register yourself in a crew coordination room.
 
 ## Instructions
 
-1. Parse arguments: `<room> --role <role> --name <name>`
+1. Parse arguments: `--role <role>` (required), `--name <name>` (optional), `--room <room>` (optional)
 2. Run via Bash:
+   ```bash
+   crew join --role <role>
+   # Or with explicit name/room:
+   crew join --role <role> --name <name> --room <room>
    ```
-   crew join --room <room> --role <role> --name <name>
-   ```
-3. Tmux pane auto-detected from `$TMUX_PANE`
+3. **Defaults:**
+   - `--room` defaults to current directory basename
+   - `--name` auto-generated if not provided (e.g., `worker-abc123`)
+   - Tmux pane auto-detected from `$TMUX_PANE`
 
 **On success:** Confirm registration and pane ID.
 
