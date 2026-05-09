@@ -7,6 +7,16 @@ description: Run structured multi-worker discussions with round-gated visibility
 
 Party mode enables structured group discussions where a leader broadcasts a topic to all workers, collects their responses, and controls when workers see each other's replies.
 
+## References
+
+Detailed guidance for running effective discussions:
+
+| Document | Use When |
+|----------|----------|
+| [`references/advisor-perspectives.md`](references/advisor-perspectives.md) | Assigning worker perspectives, understanding the 4 advisor roles |
+| [`references/discussion-workflows.md`](references/discussion-workflows.md) | Choosing discussion structure (decision, brainstorm, diagnosis, retro) |
+| [`references/synthesis-patterns.md`](references/synthesis-patterns.md) | Combining multi-perspective responses into decisions |
+
 ## Project Context
 
 Workers should ground their responses in project constraints. Include these references in topic framing:
@@ -21,25 +31,23 @@ Consider the following project context:
 
 ## Advisor Perspectives
 
-For architectural discussions, assign different perspectives to workers:
+For architectural discussions, assign workers specific perspectives to avoid groupthink:
 
-| Perspective | Focus | Questions to Answer |
-|-------------|-------|---------------------|
-| **Systems Designer** | Boundaries, interfaces, data flows | How do components interact? What are the contracts? |
-| **Tech Strategist** | Stack choices, patterns, best practices | What technologies fit? What patterns apply? |
-| **Scalability Consultant** | Performance, reliability, growth | Will it scale? What are the bottlenecks? |
-| **Risk Analyst** | Trade-offs, dependencies, failure modes | What could go wrong? What are we trading off? |
+| Perspective | Focus |
+|-------------|-------|
+| **Systems Designer** | Boundaries, interfaces, data flows |
+| **Tech Strategist** | Stack choices, patterns, best practices |
+| **Scalability Consultant** | Performance, reliability, growth |
+| **Risk Analyst** | Trade-offs, dependencies, failure modes |
 
-**Example topic with perspectives:**
+**Example assignment:**
 ```
-Topic: Should we use GraphQL or REST for our new API?
-
-Worker-A: Evaluate as Systems Designer — focus on schema design, type safety, and client-server contracts.
-Worker-B: Evaluate as Tech Strategist — focus on ecosystem maturity, tooling, and team expertise.
-Worker-C: Evaluate as Risk Analyst — focus on complexity, learning curve, and migration risks.
+Worker-A: Evaluate as Systems Designer
+Worker-B: Evaluate as Tech Strategist
+Worker-C: Evaluate as Risk Analyst
 ```
 
-Workers respond from their assigned angle, then leader synthesizes.
+See [`references/advisor-perspectives.md`](references/advisor-perspectives.md) for detailed guiding questions, output emphasis, and assignment patterns.
 
 ## Starting a Party
 
@@ -119,6 +127,8 @@ Workers don't need special commands - they just respond naturally to the topic.
 5. Workers: (respond to round 2 with visibility of round 1)
 6. Leader: crew party end     (close discussion)
 ```
+
+For workflow variations (brainstorming, problem diagnosis, retrospectives), see [`references/discussion-workflows.md`](references/discussion-workflows.md).
 
 ---
 
@@ -246,6 +256,8 @@ When ending the party, synthesize the full discussion:
 ## Open Questions (for future)
 - [Questions that surfaced but weren't resolved]
 ```
+
+For advanced synthesis techniques (extraction, clustering, disagreement resolution, weighting), see [`references/synthesis-patterns.md`](references/synthesis-patterns.md).
 
 ---
 
