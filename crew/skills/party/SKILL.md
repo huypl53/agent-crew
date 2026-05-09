@@ -86,6 +86,108 @@ Workers don't need special commands - they just respond naturally to the topic.
 6. Leader: crew party end     (close discussion)
 ```
 
+---
+
+## Topic Framing Template
+
+Good topics produce good discussions. Use this structure:
+
+```
+## Context
+[1-2 sentences on background — what problem we're solving, why now]
+
+## Question
+[Specific question to answer — avoid vague "what do you think about X"]
+
+## Constraints
+- [Technical constraints: stack, performance, compatibility]
+- [Business constraints: timeline, budget, team size]
+- [Non-negotiables: must-haves vs nice-to-haves]
+
+## Perspectives Needed
+- [What angles should workers consider?]
+- [Security? Performance? UX? Maintainability?]
+
+## Expected Output
+[What form should answers take? Options list? Recommendation? Trade-off analysis?]
+```
+
+**Example — Good:**
+```
+Context: We need auth for our API. Currently no auth, launching in 2 weeks.
+
+Question: Should we use JWT or session-based auth?
+
+Constraints:
+- Node.js/Express backend, React frontend
+- Must support mobile apps later
+- Team has JWT experience but not session management
+
+Perspectives: Security, scalability, implementation complexity
+
+Expected: Recommendation with pros/cons for each approach
+```
+
+**Example — Bad:**
+```
+What auth should we use?
+```
+
+## Round Synthesis Template
+
+When advancing rounds, synthesize previous responses to focus the next round:
+
+```
+## Round N Summary
+
+### Common Themes
+- [Points multiple workers agreed on]
+
+### Key Insights
+- [Worker-A]: [Their unique contribution]
+- [Worker-B]: [Their unique contribution]
+
+### Disagreements
+- [Topic]: Worker-A says X, Worker-B says Y
+
+### Open Questions
+- [Questions raised but not answered]
+
+---
+
+## Round N+1 Focus
+
+Given the above, please address:
+1. [Specific question to resolve disagreement]
+2. [Area needing more depth]
+3. [New angle to consider based on insights]
+```
+
+## Closing Synthesis Template
+
+When ending the party, synthesize the full discussion:
+
+```
+## Decision/Recommendation
+[Clear statement of the conclusion]
+
+## Supporting Arguments
+- [Key point 1 with attribution]
+- [Key point 2 with attribution]
+
+## Dissenting Views
+- [Any unresolved disagreements — important to capture]
+
+## Action Items
+- [ ] [Concrete next step + owner]
+- [ ] [Concrete next step + owner]
+
+## Open Questions (for future)
+- [Questions that surfaced but weren't resolved]
+```
+
+---
+
 ## Key Principles
 
 1. **Round-gated visibility** - Workers only see previous round responses after `party next`

@@ -263,6 +263,27 @@ Sends final digest and closes party mode.
 
 **Avoid for:** sequential tasks, simple assignments, time-critical work.
 
+### Orchestration Best Practices
+
+**Frame topics well.** Vague topics produce vague responses. Include:
+- Context (why are we discussing this?)
+- Specific question (not "what do you think?")
+- Constraints (technical/business limits)
+- Expected output (recommendation? options? trade-offs?)
+
+**Synthesize between rounds.** Don't just forward responses — highlight:
+- Common themes across workers
+- Key disagreements to resolve
+- Specific questions for next round
+
+**Close with decisions.** End with:
+- Clear recommendation/decision
+- Action items with owners
+- Dissenting views (important to capture)
+- Open questions for future
+
+See `crew:party` skill for full templates.
+
 ## Key Principles
 
 1. **NEVER write code** — you are a manager, not a developer
