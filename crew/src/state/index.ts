@@ -18,7 +18,7 @@ import type {
   TaskStatus,
   TokenUsage,
 } from '../shared/types.ts';
-import { isPaneDead, paneCommandLooksAlive } from '../tmux/index.ts';
+import { isPaneDead, paneCommandLooksAlive, sendKeys } from '../tmux/index.ts';
 import { closeDb, getDb, getDbPath, initDb } from './db.ts';
 
 // Re-export for callers
@@ -1179,6 +1179,8 @@ export function addHookEvent(
   // Party mode integration: capture response on Stop
   if (eventType === 'Stop') {
     capturePartyResponseIfActive(agentName, payload, eventId);
+    // Room mode: auto-notify leaders (skips if party mode active)
+    notifyLeadersOnWorkerStop(agentName, payload);
   }
 
   return eventId;
@@ -1221,6 +1223,91 @@ function checkAndNotifyRoundComplete(roomId: number, round: number): void {
   import('../delivery/party-delivery.ts').then(({ deliverPartyDigest }) =>
     deliverPartyDigest(roomId, round, responses, leaders),
   );
+}
+
+/**
+ * Auto-notify leaders when worker completes (room mode, not party mode).
+ * Fire-and-forget: doesn't block hook processing.
+ */
+function notifyLeadersOnWorkerStop(agentName: string, payload: string): void {
+  const agent = getAgent(agentName);
+  if (!agent || agent.role !== 'worker') return;
+
+  // Skip if party mode is active — party has its own notification flow
+  const partyState = getPartyState(agent.room_id);
+  if (partyState?.active) return;
+
+  // Extract response
+  let response = '';
+  try {
+    const parsed = JSON.parse(payload) as { last_assistant_message?: string };
+    response = parsed.last_assistant_message ?? '';
+  } catch {
+    return;
+  }
+
+  if (!response.trim()) return;
+
+  // Dedupe: skip if completion from this agent in last 5s
+  if (hasRecentCompletionFromAgent(agent.room_id, agentName, 5)) return;
+
+  // Find leaders in room
+  const leaders = getRoomMembers(agent.room_id).filter(
+    (m) => m.role === 'leader' && m.tmux_target,
+  );
+  if (leaders.length === 0) return;
+
+  // Truncate response for notification
+  const truncated = truncateForNotification(response, 500);
+  const room = getRoom(agent.room_id);
+  const roomName = room?.name ?? 'unknown';
+  const message = `[${agentName}@${roomName}] completed:\n${truncated}`;
+
+  // Record completion message in DB
+  addMessage(
+    roomName,
+    agentName,
+    roomName,
+    truncated,
+    'push',
+    null, // broadcast to room
+    'completion',
+  );
+
+  // Fire-and-forget delivery to each leader
+  for (const leader of leaders) {
+    sendKeys(leader.tmux_target!, message).catch(() => {
+      // Ignore delivery failures — best effort
+    });
+  }
+}
+
+function hasRecentCompletionFromAgent(
+  roomId: number,
+  agentName: string,
+  withinSeconds: number,
+): boolean {
+  const db = getDb();
+  const cutoff = new Date(Date.now() - withinSeconds * 1000).toISOString();
+  const row = db
+    .query(
+      `SELECT 1 FROM messages
+       WHERE room_id = ? AND sender = ? AND kind = 'completion' AND timestamp > ?
+       LIMIT 1`,
+    )
+    .get(roomId, agentName, cutoff);
+  return row !== null;
+}
+
+function truncateForNotification(text: string, maxLen: number): string {
+  const cleaned = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join(' ');
+
+  if (cleaned.length <= maxLen) return cleaned;
+  return cleaned.slice(0, maxLen - 3) + '...';
 }
 
 export function getLatestHookEvent(
