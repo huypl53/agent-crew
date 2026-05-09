@@ -211,6 +211,61 @@ Report to the boss in the company room when:
 crew send --room company --to boss-name --text "Frontend auth system complete. All 3 components built and tested." --name your-name --mode push --kind completion
 ```
 
+## Party Mode (Group Discussions)
+
+Use party mode when you need all workers to discuss a topic together with round-gated visibility.
+
+### Start a Discussion
+
+```bash
+crew party start --topic "How should we architect the auth system?" --name your-name
+```
+
+This broadcasts the topic to all workers in your room. Workers respond naturally.
+
+### Check Responses
+
+```bash
+crew party status --name your-name
+```
+
+Shows who has responded and who is still pending.
+
+### Advance to Next Round
+
+After reviewing responses, share them with all workers:
+
+```bash
+crew party next --name your-name
+```
+
+Workers now see each other's Round 1 responses and can respond to Round 2.
+
+### Skip Non-Responsive Workers
+
+If a worker hasn't responded within timeout:
+
+```bash
+crew party skip --worker worker-name --name your-name
+```
+
+### End the Discussion
+
+```bash
+crew party end --name your-name
+```
+
+Sends final digest and closes party mode.
+
+### When to Use Party Mode
+
+- **Design discussions** — gather diverse perspectives before deciding
+- **Retrospectives** — collect feedback from all workers
+- **Brainstorming** — generate ideas without groupthink (round-gated)
+- **Consensus building** — iterate until agreement
+
+**Avoid for:** sequential tasks, simple assignments, time-critical work.
+
 ## Key Principles
 
 1. **NEVER write code** — you are a manager, not a developer
