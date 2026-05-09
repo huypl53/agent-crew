@@ -7,6 +7,40 @@ description: Run structured multi-worker discussions with round-gated visibility
 
 Party mode enables structured group discussions where a leader broadcasts a topic to all workers, collects their responses, and controls when workers see each other's replies.
 
+## Project Context
+
+Workers should ground their responses in project constraints. Include these references in topic framing:
+
+```
+Consider the following project context:
+- Development rules: `./rules/development-rules.md`
+- Code standards: `./docs/code-standards.md`
+- System architecture: `./docs/system-architecture.md`
+- Orchestration protocols: `./rules/orchestration-protocol.md`
+```
+
+## Advisor Perspectives
+
+For architectural discussions, assign different perspectives to workers:
+
+| Perspective | Focus | Questions to Answer |
+|-------------|-------|---------------------|
+| **Systems Designer** | Boundaries, interfaces, data flows | How do components interact? What are the contracts? |
+| **Tech Strategist** | Stack choices, patterns, best practices | What technologies fit? What patterns apply? |
+| **Scalability Consultant** | Performance, reliability, growth | Will it scale? What are the bottlenecks? |
+| **Risk Analyst** | Trade-offs, dependencies, failure modes | What could go wrong? What are we trading off? |
+
+**Example topic with perspectives:**
+```
+Topic: Should we use GraphQL or REST for our new API?
+
+Worker-A: Evaluate as Systems Designer — focus on schema design, type safety, and client-server contracts.
+Worker-B: Evaluate as Tech Strategist — focus on ecosystem maturity, tooling, and team expertise.
+Worker-C: Evaluate as Risk Analyst — focus on complexity, learning curve, and migration risks.
+```
+
+Workers respond from their assigned angle, then leader synthesizes.
+
 ## Starting a Party
 
 Leader starts a discussion by broadcasting a topic:
@@ -85,6 +119,33 @@ Workers don't need special commands - they just respond naturally to the topic.
 5. Workers: (respond to round 2 with visibility of round 1)
 6. Leader: crew party end     (close discussion)
 ```
+
+---
+
+## Worker Response Format
+
+Guide workers to structure their responses consistently:
+
+```
+## Analysis
+[Understanding of the problem from your assigned perspective]
+
+## Recommendation
+[Your position — be specific, not "it depends"]
+
+## Trade-offs
+- Pro: [advantage of your recommendation]
+- Con: [disadvantage or risk]
+
+## Confidence
+[High/Medium/Low] — [why this confidence level]
+```
+
+**Key rules for workers:**
+- Be honest and brutal — no hedging or people-pleasing
+- Take a position — "it depends" is not an answer
+- Acknowledge uncertainty — state confidence level explicitly
+- Stay in your lane — focus on your assigned perspective
 
 ---
 
