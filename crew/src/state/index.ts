@@ -359,12 +359,20 @@ export function removeAgentFully(name: string): void {
   ).map((r) => r.room_id);
   db.run('DELETE FROM agents WHERE name = ?', [name]);
   for (const roomId of roomIds) {
-    const count = (
+    const agentCount = (
       db
         .query('SELECT COUNT(*) as c FROM agents WHERE room_id = ?')
         .get(roomId) as { c: number }
     ).c;
-    if (count === 0) db.run('DELETE FROM rooms WHERE id = ?', [roomId]);
+    const taskCount = (
+      db
+        .query('SELECT COUNT(*) as c FROM tasks WHERE room_id = ?')
+        .get(roomId) as { c: number }
+    ).c;
+    // Only delete room if no agents AND no tasks (tasks cascade delete with room)
+    if (agentCount === 0 && taskCount === 0) {
+      db.run('DELETE FROM rooms WHERE id = ?', [roomId]);
+    }
   }
 }
 

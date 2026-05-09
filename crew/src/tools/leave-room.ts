@@ -1,20 +1,32 @@
 import { clearPaneSnapshot } from '../shared/pane-status.ts';
 import type { ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
-import { getAgent, removeAgent } from '../state/index.ts';
+import { getAgent, getAgentByPane, removeAgent } from '../state/index.ts';
 
 interface LeaveRoomParams {
   room: string;
-  name: string;
+  name?: string;
 }
 
 export async function handleLeaveRoom(
   params: LeaveRoomParams,
 ): Promise<ToolResult> {
-  const { room, name } = params;
+  const { room } = params;
+  let { name } = params;
+
+  // Auto-detect agent by current pane if name not provided
+  if (!name) {
+    const pane = process.env.TMUX_PANE;
+    if (pane) {
+      const agentByPane = getAgentByPane(pane);
+      if (agentByPane) {
+        name = agentByPane.name;
+      }
+    }
+  }
 
   if (!room || !name) {
-    return err('Missing required params: room, name');
+    return err('Missing required params: room, name (or run from agent pane)');
   }
 
   const agent = getAgent(name);

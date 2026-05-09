@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { basename } from 'node:path';
 import { formatError, formatHelp, formatResult } from './cli/formatter.ts';
 import { parseArgs } from './cli/parse.ts';
 import { COMMANDS } from './cli/router.ts';
@@ -114,6 +115,11 @@ if (!cmd) {
     `Unknown command: ${parsed.command}. Run 'crew help' for usage.`,
   );
   process.exit(1);
+}
+
+// Default room to current directory basename if not provided
+if (!parsed.flags.room) {
+  parsed.flags.room = basename(process.cwd());
 }
 
 try {

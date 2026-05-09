@@ -94,10 +94,10 @@ export async function detectAgentType(
 export async function handleJoinRoom(
   params: JoinRoomParams,
 ): Promise<ToolResult> {
-  const { room, role, tmux_target } = params;
+  const { role, tmux_target } = params;
 
-  if (!room || !role) {
-    return err('Missing required params: room, role');
+  if (!role) {
+    return err('Missing required param: role');
   }
 
   if (!VALID_ROLES.includes(role as AgentRole)) {
@@ -127,6 +127,7 @@ export async function handleJoinRoom(
   }
 
   const normalizedPath = normalizePath(cwd);
+  const room = params.room;
 
   // Generate random name if not provided
   const explicitName = params.name?.trim();
