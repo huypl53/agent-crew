@@ -811,18 +811,19 @@ describe('state module', () => {
       addAgent('wk-01', 'worker', mkRoom('test-room').id, '%2');
     });
 
-    test('change_log table has 5 initial rows after initDb', () => {
+    test('change_log table has initial rows after initDb', () => {
       const db = require('../src/state/db.ts').getDb();
       const rows = db.prepare('SELECT * FROM change_log').all() as {
         scope: string;
         version: number;
       }[];
-      expect(rows.length).toBe(6);
+      expect(rows.length).toBe(7);
       const scopes = rows.map((r) => r.scope).sort();
       expect(scopes).toEqual([
         'agents',
         'hook-events',
         'messages',
+        'party',
         'room-templates',
         'tasks',
         'templates',

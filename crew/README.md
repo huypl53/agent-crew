@@ -186,6 +186,11 @@ crew <command>
 | `create-room` | `crew create-room --room proj --name boss --topic "Sprint 1"` | `Created room: proj (Sprint 1)` |
 | `delete-room` | `crew delete-room --room proj --confirm --name boss` | `Deleted room: proj (3 members removed, 12 messages deleted)` |
 | `wait-idle` | `crew wait-idle --target %42 --timeout 30000` | exit 0 = idle, exit 2 = timed out |
+| `party start` | `crew party start --room crew --topic "..." --name lead-01` | `{"started":true,"round":1,...}` |
+| `party next` | `crew party next --room crew --topic "..." --name lead-01` | `{"round":2,...}` |
+| `party end` | `crew party end --room crew --name lead-01` | `{"ended":true,"rounds_completed":2}` |
+| `party skip` | `crew party skip --room crew --worker wk-01 --name lead-01` | `{"skipped":"wk-01","pending":[...]}` |
+| `party status` | `crew party status --room crew` | `{"active":true,"round":1,"topic":"...","responded":[...],"pending":[...]}` |
 | `serve` | `crew serve --port 3456` | `Browser dashboard at http://127.0.0.1:3456` |
 
 ### Flags

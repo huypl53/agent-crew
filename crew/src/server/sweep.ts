@@ -7,8 +7,10 @@ import { getPaneStatus } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
 import type { SweepBusyMode } from '../shared/types.ts';
 import {
+  getActivePartyRooms,
   getAllAgents,
   getLatestHookEvent,
+  getPendingPartyWorkers,
   getRoomMembers,
   getSweepControlState,
   getTasksForAgent,
@@ -37,6 +39,10 @@ const idleEpochNotified = new Map<string, boolean>();
 const deadCounts = new Map<string, number>();
 const deferredByLeader = new Map<string, Map<string, string>>();
 const leaderBusyUntil = new Map<string, number>();
+const partyTimeoutNotified = new Map<string, boolean>();
+
+const PARTY_ROUND_TIMEOUT_MS =
+  parseInt(process.env.CREW_PARTY_TIMEOUT_MS ?? '300000', 10) || 300000;
 
 let coalescedUpdates = 0;
 let lastFlushCount = 0;
@@ -249,6 +255,7 @@ async function runSweep(): Promise<void> {
   tickCount++;
   try {
     await runIdleDetection();
+    await runPartyTimeoutCheck();
     if (tickCount % LIVENESS_TICKS === 0) {
       await runLivenessCheck();
     }
@@ -260,6 +267,57 @@ async function runSweep(): Promise<void> {
   } finally {
     sweeping = false;
   }
+}
+
+async function runPartyTimeoutCheck(): Promise<void> {
+  const activeParties = getActivePartyRooms();
+  const now = Date.now();
+
+  for (const room of activeParties) {
+    const key = `${room.id}:${room.party_round}`;
+
+    if (partyTimeoutNotified.get(key)) continue;
+
+    const startedAt = new Date(room.party_started_at + 'Z').getTime();
+    const elapsed = now - startedAt;
+
+    if (elapsed < PARTY_ROUND_TIMEOUT_MS) continue;
+
+    const pending = getPendingPartyWorkers(room.id, room.party_round);
+    if (pending.length === 0) continue;
+
+    partyTimeoutNotified.set(key, true);
+    await notifyPartyTimeout(room.id, room.name, room.party_round, pending);
+  }
+}
+
+async function notifyPartyTimeout(
+  roomId: number,
+  roomName: string,
+  round: number,
+  pending: string[],
+): Promise<void> {
+  const leaders = getRoomMembers(roomId).filter(
+    (m) => m.role === 'leader' && m.tmux_target,
+  );
+
+  const message = `[party@${roomName}] Round ${round} timeout. Pending workers: ${pending.join(', ')}
+
+Use "crew party skip --worker <name>" to skip, or wait for responses.`;
+
+  for (const leader of leaders) {
+    try {
+      const queue = getQueue(leader.tmux_target!, { role: 'leader' });
+      await queue.enqueue({ type: 'paste', text: message });
+    } catch {
+      // Ignore delivery failures
+    }
+  }
+
+  logServer(
+    'PARTY',
+    `Round ${round} timeout in room ${roomName}, pending: ${pending.join(', ')}`,
+  );
 }
 
 async function runIdleDetection(): Promise<void> {
@@ -429,6 +487,14 @@ async function maybeNotify(
 
 export function resetSweepIdleTracking(): void {
   idleEpochNotified.clear();
+}
+
+export function resetPartyTimeoutTracking(roomId: number): void {
+  for (const key of partyTimeoutNotified.keys()) {
+    if (key.startsWith(`${roomId}:`)) {
+      partyTimeoutNotified.delete(key);
+    }
+  }
 }
 
 export function getWorkerSweepStates(): Record<

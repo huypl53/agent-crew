@@ -328,7 +328,41 @@ export function initDb(path?: string): void {
      VALUES (1, 0, NULL, 'auto', datetime('now'))`,
   );
 
-  const scopes = ['agents', 'messages', 'tasks', 'templates', 'room-templates', 'hook-events'];
+  // Party mode columns on rooms table
+  const roomCols2 = _db.query('PRAGMA table_info(rooms)').all() as Array<{
+    name: string;
+  }>;
+  if (!roomCols2.some((c) => c.name === 'party_active')) {
+    _db.exec('ALTER TABLE rooms ADD COLUMN party_active INTEGER DEFAULT 0');
+  }
+  if (!roomCols2.some((c) => c.name === 'party_round')) {
+    _db.exec('ALTER TABLE rooms ADD COLUMN party_round INTEGER DEFAULT 0');
+  }
+  if (!roomCols2.some((c) => c.name === 'party_topic')) {
+    _db.exec('ALTER TABLE rooms ADD COLUMN party_topic TEXT');
+  }
+  if (!roomCols2.some((c) => c.name === 'party_started_at')) {
+    _db.exec('ALTER TABLE rooms ADD COLUMN party_started_at TEXT');
+  }
+
+  // Party responses table
+  _db.exec(`
+    CREATE TABLE IF NOT EXISTS party_responses (
+      id INTEGER PRIMARY KEY,
+      room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+      round INTEGER NOT NULL,
+      agent_name TEXT NOT NULL,
+      response TEXT NOT NULL,
+      hook_event_id INTEGER REFERENCES hook_events(id),
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(room_id, round, agent_name)
+    )
+  `);
+  _db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_party_responses_room_round ON party_responses(room_id, round)',
+  );
+
+  const scopes = ['agents', 'messages', 'tasks', 'templates', 'room-templates', 'hook-events', 'party'];
   for (const scope of scopes) {
     _db.run(
       'INSERT OR IGNORE INTO change_log (scope, version, updated_at) VALUES (?, 0, datetime("now"))',

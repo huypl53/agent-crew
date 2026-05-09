@@ -1,5 +1,6 @@
 import { handleCheckChanges } from '../tools/check-changes.ts';
 import { handleHookEvent } from '../tools/hook-event.ts';
+import { handleParty } from '../tools/party.ts';
 import { handleClearWorkerSession } from '../tools/clear-worker-session.ts';
 import { handleCreateRoom } from '../tools/create-room.ts';
 import { handleDeleteRoom } from '../tools/delete-room.ts';
@@ -168,5 +169,15 @@ export const COMMANDS: Record<
   'hook-event': {
     handler: handleHookEvent,
     buildParams: () => ({}),
+  },
+  party: {
+    handler: handleParty,
+    buildParams: (f, p) => ({
+      subcommand: p[0],
+      room: f.room,
+      topic: f.topic,
+      worker: f.worker,
+      name: f.name,
+    }),
   },
 };

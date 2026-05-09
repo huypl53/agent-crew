@@ -176,3 +176,22 @@ export interface SweepControlState {
   busy_mode: SweepBusyMode;
   updated_at: string;
 }
+
+/* ── Party mode types ──────────────────────────────────── */
+
+export interface PartyState {
+  active: boolean;
+  round: number;
+  topic: string | null;
+  started_at: string | null;
+}
+
+export interface PartyResponse {
+  id: number;
+  room_id: number;
+  round: number;
+  agent_name: string;
+  response: string;
+  hook_event_id: number | null;
+  created_at: string;
+}

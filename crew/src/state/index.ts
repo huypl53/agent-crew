@@ -5,6 +5,8 @@ import type {
   HookEvent,
   Message,
   MessageKind,
+  PartyResponse,
+  PartyState,
   PricingEntry,
   ReminderPolicy,
   Room,
@@ -1162,9 +1164,55 @@ export function addHookEvent(
     'INSERT INTO hook_events (agent_name, event_type, session_id, payload) VALUES (?, ?, ?, ?)',
     [agentName, eventType, sessionId, payload],
   );
+  const eventId = Number(stmt.lastInsertRowid);
   const newStatus: 'idle' | 'busy' = eventType === 'Stop' ? 'idle' : 'busy';
   setAgentStatus(agentName, newStatus);
-  return Number(stmt.lastInsertRowid);
+
+  // Party mode integration: capture response on Stop
+  if (eventType === 'Stop') {
+    capturePartyResponseIfActive(agentName, payload, eventId);
+  }
+
+  return eventId;
+}
+
+function capturePartyResponseIfActive(
+  agentName: string,
+  payload: string,
+  hookEventId: number,
+): void {
+  const agent = getAgent(agentName);
+  if (!agent || agent.role !== 'worker') return;
+
+  const partyState = getPartyState(agent.room_id);
+  if (!partyState?.active) return;
+
+  let response = '';
+  try {
+    const parsed = JSON.parse(payload) as { last_assistant_message?: string };
+    response = parsed.last_assistant_message ?? '';
+  } catch {
+    return;
+  }
+
+  if (!response.trim()) return;
+
+  addPartyResponse(agent.room_id, partyState.round, agentName, response, hookEventId);
+
+  // Check if round complete → notify leader (async, fire-and-forget)
+  checkAndNotifyRoundComplete(agent.room_id, partyState.round);
+}
+
+function checkAndNotifyRoundComplete(roomId: number, round: number): void {
+  if (!isPartyRoundComplete(roomId, round)) return;
+
+  const responses = getPartyResponses(roomId, round);
+  const leaders = getRoomMembers(roomId).filter((m) => m.role === 'leader');
+
+  // Dynamic import to avoid circular deps, fire-and-forget
+  import('../delivery/party-delivery.ts').then(({ deliverPartyDigest }) =>
+    deliverPartyDigest(roomId, round, responses, leaders),
+  );
 }
 
 export function getLatestHookEvent(
@@ -1284,6 +1332,152 @@ export function getAgentTemplateById(id: number): AgentTemplate | undefined {
   return getDb().query('SELECT * FROM agent_templates WHERE id = ?').get(id) as
     | AgentTemplate
     | undefined;
+}
+
+// --- Party mode operations ---
+
+function bumpChangeLog(scope: string): void {
+  getDb().run(
+    'UPDATE change_log SET version = version + 1, updated_at = datetime("now") WHERE scope = ?',
+    [scope],
+  );
+}
+
+export function startParty(roomId: number, topic: string): void {
+  const db = getDb();
+  db.run(
+    `UPDATE rooms SET party_active = 1, party_round = 1, party_topic = ?, party_started_at = datetime('now') WHERE id = ?`,
+    [topic, roomId],
+  );
+  bumpChangeLog('party');
+}
+
+export function nextPartyRound(roomId: number, topic: string): number {
+  const db = getDb();
+  // Use transaction to ensure atomicity
+  const result = db.transaction(() => {
+    db.run(
+      `UPDATE rooms SET party_round = party_round + 1, party_topic = ?, party_started_at = datetime('now') WHERE id = ?`,
+      [topic, roomId],
+    );
+    const row = db
+      .query('SELECT party_round FROM rooms WHERE id = ?')
+      .get(roomId) as { party_round: number };
+    return row.party_round;
+  })();
+  bumpChangeLog('party');
+  return result;
+}
+
+export function endParty(roomId: number): void {
+  const db = getDb();
+  db.run(
+    `UPDATE rooms SET party_active = 0, party_topic = NULL, party_started_at = NULL WHERE id = ?`,
+    [roomId],
+  );
+  // Clear responses for this room
+  db.run('DELETE FROM party_responses WHERE room_id = ?', [roomId]);
+  bumpChangeLog('party');
+}
+
+export function getPartyState(roomId: number): PartyState | null {
+  const db = getDb();
+  const row = db
+    .query(
+      'SELECT party_active, party_round, party_topic, party_started_at FROM rooms WHERE id = ?',
+    )
+    .get(roomId) as {
+    party_active: number;
+    party_round: number;
+    party_topic: string | null;
+    party_started_at: string | null;
+  } | null;
+  if (!row) return null;
+  return {
+    active: row.party_active === 1,
+    round: row.party_round,
+    topic: row.party_topic,
+    started_at: row.party_started_at,
+  };
+}
+
+export function addPartyResponse(
+  roomId: number,
+  round: number,
+  agentName: string,
+  response: string,
+  hookEventId: number | null,
+): number {
+  const db = getDb();
+  const stmt = db.run(
+    `INSERT INTO party_responses (room_id, round, agent_name, response, hook_event_id)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(room_id, round, agent_name) DO UPDATE SET response = excluded.response, hook_event_id = excluded.hook_event_id`,
+    [roomId, round, agentName, response, hookEventId],
+  );
+  bumpChangeLog('party');
+  return Number(stmt.lastInsertRowid);
+}
+
+export function getPartyResponses(
+  roomId: number,
+  round: number,
+): PartyResponse[] {
+  const db = getDb();
+  return db
+    .query(
+      'SELECT * FROM party_responses WHERE room_id = ? AND round = ? ORDER BY created_at',
+    )
+    .all(roomId, round) as PartyResponse[];
+}
+
+export function getPendingPartyWorkers(roomId: number, round: number): string[] {
+  const db = getDb();
+  const responded = db
+    .query('SELECT agent_name FROM party_responses WHERE room_id = ? AND round = ?')
+    .all(roomId, round) as { agent_name: string }[];
+  const respondedNames = new Set(responded.map((r) => r.agent_name));
+
+  const workers = db
+    .query(`SELECT name FROM agents WHERE room_id = ? AND role = 'worker'`)
+    .all(roomId) as { name: string }[];
+
+  return workers.filter((w) => !respondedNames.has(w.name)).map((w) => w.name);
+}
+
+export function isPartyRoundComplete(roomId: number, round: number): boolean {
+  return getPendingPartyWorkers(roomId, round).length === 0;
+}
+
+export function skipPartyWorker(
+  roomId: number,
+  round: number,
+  agentName: string,
+): void {
+  addPartyResponse(roomId, round, agentName, '[SKIPPED]', null);
+}
+
+export function getAgentByName(name: string): Agent | undefined {
+  return getAgent(name);
+}
+
+export function getActivePartyRooms(): Array<{
+  id: number;
+  name: string;
+  party_round: number;
+  party_started_at: string;
+}> {
+  const db = getDb();
+  return db
+    .query(
+      `SELECT id, name, party_round, party_started_at FROM rooms WHERE party_active = 1`,
+    )
+    .all() as Array<{
+    id: number;
+    name: string;
+    party_round: number;
+    party_started_at: string;
+  }>;
 }
 
 // --- Test helpers ---
