@@ -41,7 +41,7 @@ Once you have work, repeat this cycle:
 8. Go to step 1
 ```
 
-**DO NOT poll in a loop with sleep.** Workers push notifications to your pane automatically. Only poll `crew status` as a fallback every 30-60s if you haven't received a push notification.
+**DO NOT poll.** Workers push notifications to your pane automatically via hooks. Trust push as the sole signal — no fallback polling needed.
 
 ## Task Assignment
 
@@ -147,20 +147,17 @@ Or simply assign a new task — workers will auto-notify on completion regardles
 
 **Rule of thumb:** Mute after your last task assignment. Unmute is optional — completion notifications always come through.
 
-## Polling (Fallback Only)
+## Verification (Edge Cases Only)
 
-Only poll as a fallback — every 30-60 seconds if no push notification received:
+Push notifications are reliable — **do not poll regularly**. Only check status if:
+- Worker has been silent for 2+ minutes after task assignment (possible crash between receipt and first response)
+- You suspect a worker is stuck but didn't receive an error notification
 
-1. **Check status** (fallback):
-   ```bash
-   crew status worker-name
-   ```
-2. **Read messages** when worker goes idle:
-   ```bash
-   crew read --name your-name --room your-room
-   ```
+```bash
+crew status worker-name
+```
 
-**DO NOT sleep/poll in a tight loop.** Push notifications are reliable — trust them.
+This is a diagnostic tool, not a polling mechanism. If you find yourself checking status regularly, something is wrong with the notification flow.
 
 ## Check for Changes
 
@@ -189,7 +186,7 @@ A task is complete when you receive a push notification:
 [system@frontend]: builder-1 completed: "Login component done"
 ```
 
-Read the full message via `crew read` for details. If no push after 60s, poll `crew status` as fallback.
+Read the full message via `crew read` for details.
 
 ## Room Topic
 
@@ -269,10 +266,9 @@ Sends final digest and closes party mode.
 ## Key Principles
 
 1. **NEVER write code** — you are a manager, not a developer
-2. **Trust push notifications** — don't poll in a loop; wait for worker notifications
-3. **Poll only as fallback** — every 30-60s if no push received
-4. Always read messages — push notification = time to `crew read`
-5. One task per worker — don't overload
-6. Escalate early — if something is off, tell the boss
-7. Be specific in task assignments — vague tasks produce vague results
-8. Review by reading reports, not by touching code
+2. **Trust push notifications** — hooks are reliable; no polling needed
+3. **Read on notification** — push notification = time to `crew read`
+4. **One task per worker** — don't overload
+5. **Escalate early** — if something is off, tell the boss
+6. **Be specific** — vague tasks produce vague results
+7. **Review by reading** — not by touching code
