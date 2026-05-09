@@ -328,6 +328,7 @@ When `room` is provided, reads the full room conversation log (all members' mess
 | `boss` | Boss behavior — manage leaders, strategic direction |
 | `leader` | Leader behavior — coordinate workers, assign tasks |
 | `worker` | Worker behavior — execute tasks, report status |
+| `party` | Party mode — round-gated multi-worker discussions |
 
 ## TUI Dashboard
 
