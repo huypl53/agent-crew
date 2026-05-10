@@ -1228,6 +1228,7 @@ function checkAndNotifyRoundComplete(roomId: number, round: number): void {
 /**
  * Auto-notify leaders when worker completes (room mode, not party mode).
  * Fire-and-forget: doesn't block hook processing.
+ * Includes retry logic to handle race with leader prompt submissions.
  */
 function notifyLeadersOnWorkerStop(agentName: string, payload: string): void {
   const agent = getAgent(agentName);
@@ -1274,11 +1275,39 @@ function notifyLeadersOnWorkerStop(agentName: string, payload: string): void {
     'completion',
   );
 
-  // Fire-and-forget delivery to each leader
+  // Deliver to each leader with retry logic (fire-and-forget)
   for (const leader of leaders) {
-    sendKeys(leader.tmux_target!, message).catch(() => {
-      // Ignore delivery failures — best effort
-    });
+    deliverWithRetry(leader, message).catch(() => {});
+  }
+}
+
+/**
+ * Deliver notification to leader with retry if they're busy.
+ * Waits if leader recently submitted a prompt (race condition avoidance).
+ */
+async function deliverWithRetry(leader: Agent, message: string): Promise<void> {
+  const RETRY_DELAY_MS = 1500;
+  const MAX_RETRIES = 2;
+
+  // Check if leader is currently busy (recent UserPromptSubmit event)
+  const latestEvent = getLatestHookEvent(leader.name);
+  if (latestEvent?.event_type === 'UserPromptSubmit') {
+    const eventAge = Date.now() - new Date(latestEvent.created_at + 'Z').getTime();
+    // If leader submitted within last 2s, wait for them to settle
+    if (eventAge < 2000) {
+      await Bun.sleep(RETRY_DELAY_MS);
+    }
+  }
+
+  // Try delivery with retries
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const result = await sendKeys(leader.tmux_target!, message);
+    if (result.delivered) return;
+
+    // If not delivered and retries remain, wait and try again
+    if (attempt < MAX_RETRIES) {
+      await Bun.sleep(RETRY_DELAY_MS);
+    }
   }
 }
 
