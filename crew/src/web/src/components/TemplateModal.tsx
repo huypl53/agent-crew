@@ -94,7 +94,6 @@ export default function TemplateModal({ template, onClose, onSuccess }: Props) {
             >
               <option value="worker">worker</option>
               <option value="leader">leader</option>
-              <option value="boss">boss</option>
             </select>
           </div>
           <div>

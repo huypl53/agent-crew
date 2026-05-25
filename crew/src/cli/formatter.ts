@@ -73,7 +73,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     return d.rooms
       .map(
         (r: any) =>
-          `${r.name} ${r.member_count} members (${r.roles.boss}b ${r.roles.leader}l ${r.roles.worker}w)`,
+          `${r.name} ${r.member_count} members (${r.roles.leader}l ${r.roles.worker}w)`,
       )
       .join('\n');
   },

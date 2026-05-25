@@ -1,4 +1,4 @@
-export type AgentRole = 'boss' | 'leader' | 'worker';
+export type AgentRole = 'leader' | 'worker';
 export type AgentStatus = 'idle' | 'busy' | 'dead' | 'unknown';
 
 export type ReminderCadenceMode = 'always' | 'every_n';

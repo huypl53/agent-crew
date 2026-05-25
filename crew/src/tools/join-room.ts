@@ -12,7 +12,7 @@ import {
 } from '../state/index.ts';
 import { getPaneCwd, paneExists } from '../tmux/index.ts';
 
-const VALID_ROLES: AgentRole[] = ['boss', 'leader', 'worker'];
+const VALID_ROLES: AgentRole[] = ['leader', 'worker'];
 
 interface JoinRoomParams {
   room: string;
@@ -101,7 +101,7 @@ export async function handleJoinRoom(
   }
 
   if (!VALID_ROLES.includes(role as AgentRole)) {
-    return err(`Invalid role: ${role}. Must be one of: boss, leader, worker`);
+    return err(`Invalid role: ${role}. Must be one of: leader, worker`);
   }
 
   // Determine tmux target — null means pull-only (no tmux pane)

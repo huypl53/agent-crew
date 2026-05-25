@@ -52,11 +52,11 @@ describe('state module', () => {
 
   describe('agents', () => {
     test('adds and retrieves an agent', () => {
-      const agent = addAgent('boss', 'boss', mkRoom('company').id, '%100');
-      expect(agent.name).toBe('boss');
-      expect(agent.role).toBe('boss');
+      const agent = addAgent('leader', 'leader', mkRoom('company').id, '%100');
+      expect(agent.name).toBe('leader');
+      expect(agent.role).toBe('leader');
       expect(agent.room_name).toBe('company');
-      expect(getAgent('boss')).toBeDefined();
+      expect(getAgent('leader')).toBeDefined();
     });
 
     test('latest registration determines agent room', () => {
@@ -83,19 +83,19 @@ describe('state module', () => {
 
   describe('rooms', () => {
     test('creates room on first agent join', () => {
-      addAgent('boss', 'boss', mkRoom('company').id, '%100');
+      addAgent('leader', 'leader', mkRoom('company').id, '%100');
       const room = getRoom('company');
       expect(room).toBeDefined();
       const members = getRoomMembers(room!.id);
-      expect(members.map((m) => m.name)).toEqual(['boss']);
+      expect(members.map((m) => m.name)).toEqual(['leader']);
     });
 
     test('room tracks all members', () => {
-      addAgent('boss', 'boss', mkRoom('company').id, '%100');
+      addAgent('leader', 'leader', mkRoom('company').id, '%100');
       addAgent('lead-1', 'leader', mkRoom('company').id, '%101');
       const room = getRoom('company');
       const members = getRoomMembers(room!.id);
-      expect(members.map((m) => m.name)).toEqual(['boss', 'lead-1']);
+      expect(members.map((m) => m.name)).toEqual(['leader', 'lead-1']);
     });
 
     test('room is deleted when last member leaves', () => {
@@ -105,23 +105,23 @@ describe('state module', () => {
     });
 
     test('getAllRooms returns all rooms', () => {
-      addAgent('boss', 'boss', mkRoom('company').id, '%100');
+      addAgent('leader', 'leader', mkRoom('company').id, '%100');
       addAgent('worker-1', 'worker', mkRoom('frontend').id, '%102');
       expect(getAllRooms().length).toBe(2);
     });
 
     test('getRoomMembers returns agents', () => {
-      addAgent('boss', 'boss', mkRoom('company').id, '%100');
+      addAgent('leader', 'leader', mkRoom('company').id, '%100');
       addAgent('lead-1', 'leader', mkRoom('company').id, '%101');
       const members = getRoomMembers(getRoom('company')!.id);
       expect(members.length).toBe(2);
-      expect(members.map((m) => m.name)).toEqual(['boss', 'lead-1']);
+      expect(members.map((m) => m.name)).toEqual(['leader', 'lead-1']);
     });
 
     test('isNameTakenInRoom detects duplicates', () => {
-      addAgent('boss', 'boss', mkRoom('company').id, '%100');
-      expect(isNameTakenInRoom('boss', 'company')).toBe(true);
-      expect(isNameTakenInRoom('boss', 'frontend')).toBe(false);
+      addAgent('leader', 'leader', mkRoom('company').id, '%100');
+      expect(isNameTakenInRoom('leader', 'company')).toBe(true);
+      expect(isNameTakenInRoom('leader', 'frontend')).toBe(false);
       expect(isNameTakenInRoom('nobody', 'company')).toBe(false);
     });
   });

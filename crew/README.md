@@ -8,22 +8,21 @@ Multi-agent coordination for AI coding agents via tmux rooms. Works with **Claud
 
 1. Start AI coding agent sessions in tmux panes
 2. Register each agent into a room: `/crew:join-room myproject --role worker --name builder-1`
-3. Your own session is the boss — give natural language direction
+3. Your own session acts as a leader — give natural language direction
 4. Leaders coordinate workers, workers execute tasks, everyone communicates through rooms
 5. Task tracking with lifecycle statuses — leaders can interrupt or reassign worker tasks
 6. Task context sharing — workers record findings in task notes for handoff, leaders search prior work to avoid repeating investigations
 7. Dashboard visualization — three views (Tab to switch): dashboard (original), task board (grouped by agent/room), timeline (waterfall chart)
 8. Automatic token/cost tracking — collects usage from Claude Code and Codex CLI, displays in dashboard
 9. Worker session management — leaders can clear a worker's Claude Code context and auto-refresh their registration between task sequences
-10. Automatic dead agent cleanup — periodic liveness check every ~30s detects disconnected workers and cleans up their registration (debounced, never removes leaders/boss or agents with active tasks)
+10. Automatic dead agent cleanup — periodic liveness check every ~30s detects disconnected workers and cleans up their registration (debounced, never removes leaders or agents with active tasks)
 11. Role-aware delivery — every push message includes a role reminder suffix so agents remember their responsibilities
 12. Leader idle notification control — leaders can mute/unmute sweep idle notifications from workers
 13. Polling flow control — pause/resume sweep delivery to leaders, or switch between auto/manual busy detection
 
 ## Architecture
 
-- **Boss** (your session) → manages leaders in the company room
-- **Leaders** → manage workers in project rooms
+- **Leaders** (including your session) → manage workers in project rooms
 - **Workers** → execute tasks, report status
 
 Communication: push messages (tmux paste-buffer with bracketed paste, role-aware suffix on content) + pull messages (server-side queue for status updates).
@@ -53,7 +52,7 @@ claude plugins install crew@crew-plugins
 claude --print "list skills" | grep crew
 ```
 
-The plugin provides behavioral skills (`/crew:join-room`, `/crew:refresh`, `boss`, `leader`, `worker`). The CLI (`crew`) provides the actual commands that skills invoke.
+The plugin provides behavioral skills (`/crew:join-room`, `/crew:refresh`, `leader`, `worker`). The CLI (`crew`) provides the actual commands that skills invoke.
 
 ### Local Development
 
@@ -109,7 +108,7 @@ Then install the plugin in Codex (required):
 4. Select `Crew` and choose `Install plugin`
 5. Start a new thread (or restart Codex)
 
-Skills: `crew:boss`, `crew:join-room`, `crew:leader`, `crew:worker`, `crew:refresh`.
+Skills: `crew:join-room`, `crew:leader`, `crew:worker`, `crew:refresh`.
 
 #### Codex Sandbox Configuration (macOS)
 
@@ -166,7 +165,7 @@ crew <command>
 | `rooms` | `crew rooms` | `crew 5 members (1b 1l 3w)` |
 | `members` | `crew members --room crew` | `[crew] topic\n  wk-01 worker idle` |
 | `send` | `crew send --room crew --text "done" --name wk-01 --kind completion` | `msg:42 delivered` |
-| `read` | `crew read --name wk-01 --room crew` | `[boss@crew→wk-01](task): do the thing` |
+| `read` | `crew read --name wk-01 --room crew` | `[leader@crew→wk-01](task): do the thing` |
 | `status` | `crew status wk-01` | `wk-01 idle %33 crew (/path/to/project) task:#5(active)` |
 | `check` | `crew check --name wk-01` | `messages:42 tasks:15 agents:8` |
 | `refresh` | `crew refresh --name wk-01` | `Refreshed wk-01 rooms:crew pane:%42` |
@@ -183,8 +182,8 @@ crew <command>
 | `set-polling-busy` | `crew set-polling-busy --mode manual_busy` | `polling busy_mode=manual_busy paused=false` |
 | `mute-idle` | `crew mute-idle --name lead-01` | `lead-01 idle notifications muted` |
 | `unmute-idle` | `crew unmute-idle --name lead-01` | `lead-01 idle notifications unmuted` |
-| `create-room` | `crew create-room --room proj --name boss --topic "Sprint 1"` | `Created room: proj (Sprint 1)` |
-| `delete-room` | `crew delete-room --room proj --confirm --name boss` | `Deleted room: proj (3 members removed, 12 messages deleted)` |
+| `create-room` | `crew create-room --room proj --name lead-01 --topic "Sprint 1"` | `Created room: proj (Sprint 1)` |
+| `delete-room` | `crew delete-room --room proj --confirm --name lead-01` | `Deleted room: proj (3 members removed, 12 messages deleted)` |
 | `wait-idle` | `crew wait-idle --target %42 --timeout 30000` | exit 0 = idle, exit 2 = timed out |
 | `party start` | `crew party start --room crew --topic "..." --name lead-01` | `{"started":true,"round":1,...}` |
 | `party next` | `crew party next --room crew --topic "..." --name lead-01` | `{"round":2,...}` |
@@ -242,13 +241,13 @@ crew check --name wk-01
 **Sweep** runs every 5 seconds and performs two checks:
 
 1. **Idle detection** — detects workers with unchanged tmux pane content for 60+ seconds, notifies leaders (can be muted per-leader with `mute-idle`)
-2. **Liveness validation** — every ~30s checks all agents' tmux pane processes. Dead workers are removed after 2 consecutive failures (debounced). Leaders/boss are never removed. Workers with active tasks are skipped.
+2. **Liveness validation** — every ~30s checks all agents' tmux pane processes. Dead workers are removed after 2 consecutive failures (debounced). Leaders are never removed. Workers with active tasks are skipped.
 
 **Polling flow control** lets leaders manage sweep delivery timing:
 
 ```bash
 # Pause all sweep deliveries (manual override)
-crew pause-polling --reason "syncing with boss"
+crew pause-polling --reason "syncing with leader"
 
 # Auto mode: defer delivery when leader pane appears busy (default)
 crew set-polling-busy --mode auto
@@ -276,9 +275,9 @@ crew resume-polling
 | `get_status` | Check agent status |
 | `set_room_topic` | Set current objective for a room |
 | `update_task` | Worker: update task status (queued/active/completed/error) — now accepts `context` for handoff notes |
-| `interrupt_worker` | Leader/Boss: send Escape to worker pane, mark task interrupted |
-| `reassign_task` | Leader/Boss: replace worker's current/queued task with a new one |
-| `clear_worker_session` | Leader/Boss: send `/clear` + `/rename` to worker (clears Claude Code context), auto-refresh registration |
+| `interrupt_worker` | Leader: send Escape to worker pane, mark task interrupted |
+| `reassign_task` | Leader: replace worker's current/queued task with a new one |
+| `clear_worker_session` | Leader: send `/clear` + `/rename` to worker (clears Claude Code context), auto-refresh registration |
 | `get_task_details` | Get full details of a task including worker context notes |
 | `search_tasks` | Search completed tasks by room, agent, keyword, or status — find relevant context from previous work |
 | `check_changes` | Return version numbers for `messages`, `tasks`, `agents` scopes — call before `get_status`/`read_messages` to skip polls when nothing changed (~90% cost reduction during quiet periods) |
@@ -325,7 +324,6 @@ When `room` is provided, reads the full room conversation log (all members' mess
 
 | Skill | Description |
 |-------|-------------|
-| `boss` | Boss behavior — manage leaders, strategic direction |
 | `leader` | Leader behavior — coordinate workers, assign tasks |
 | `worker` | Worker behavior — execute tasks, report status |
 | `party` | Party mode — round-gated multi-worker discussions |
@@ -336,8 +334,8 @@ Read-only terminal observer built with React+Ink. Shows rooms, agents with roles
 
 ```
 ┌─ Rooms & Agents ───────────┐┌─ Messages ─────────────────────────┐
-│ ▼ company (2)              ││ 14:32:01 [TASK] boss → lead-1      │
-│   ● boss (boss)    idle    ││   Build the auth system            │
+│ ▼ company (2)              ││ 14:32:01 [TASK] lead-2 → lead-1    │
+│   ● lead-2 (leader) idle   ││   Build the auth system            │
 │   ● lead-1 (leader) busy   ││ 14:33:00 [DONE] builder-1 → lead-1 │
 │ ▼ frontend (3)             │├─ Details ──────────────────────────┤
 │   ◦ lead-1 (leader) busy   ││ lead-1  leader | busy              │
@@ -408,7 +406,7 @@ crew/                 # Crew plugin
     tools/            # Tool handlers (shared by MCP + CLI)
     ...
   commands/           # 2 slash commands — /crew:{join-room,refresh}
-  skills/             # 3 agent skills — boss, leader, worker (model-invoked after join)
+  skills/             # agent skills — leader, worker (model-invoked after join)
   test/               # Test suite
   ...
 ```

@@ -111,7 +111,7 @@ initDb(dbPath);
 try {
   // ─── 1. Create real tmux panes ───
   console.log('1. Creating tmux panes...');
-  const bossPane = await createPane('boss');
+  const bossPane = await createPane('leader');
   const leaderPane = await createPane('leader');
   const worker1Pane = await createPane('worker1');
   const worker2Pane = await createPane('worker2');
@@ -122,13 +122,13 @@ try {
 
   let r = await handleJoinRoom({
     room: 'company',
-    role: 'boss',
-    name: 'boss-1',
+    role: 'leader',
+    name: 'leader-1',
     tmux_target: bossPane,
   });
   assert(
     !r.isError,
-    'boss-1 joined company',
+    'leader-1 joined company',
     r.isError ? parse(r).error : undefined,
   );
 

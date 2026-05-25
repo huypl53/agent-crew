@@ -19,19 +19,17 @@ claude plugins install crew@crew-plugins
 
 1. Start AI coding agent sessions in tmux panes
 2. Register each agent into a room: `/crew:join-room myproject --role worker --name builder-1`
-3. Your own session is the boss — give natural language direction
+3. Your own session acts as a leader — give natural language direction
 4. Leaders coordinate workers, workers execute tasks, everyone communicates through rooms
 5. Browser dashboard at `crew serve` for real-time monitoring
 
 ## Architecture
 
 ```
-Boss (you) → Leaders → Workers
+Leaders (you and peers) → Workers
                 ↑
           tmux rooms (SQLite state)
 ```
-
-- **Boss** — your session, manages leaders
 - **Leader** — coordinates workers, assigns tasks, tracks progress
 - **Worker** — executes tasks, reports status
 

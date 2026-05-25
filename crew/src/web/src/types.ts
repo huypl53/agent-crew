@@ -11,7 +11,7 @@ export interface Room {
 export interface AgentTemplate {
   id: number;
   name: string;
-  role: 'boss' | 'leader' | 'worker';
+  role: 'leader' | 'worker';
   persona?: string;
   capabilities?: string;
   start_command?: string;
@@ -60,7 +60,7 @@ export interface TokenUsage {
 export interface Agent {
   agent_id: string;
   name: string;
-  role: 'boss' | 'leader' | 'worker';
+  role: 'leader' | 'worker';
   room_id: number;
   room_name: string;
   room_path: string;

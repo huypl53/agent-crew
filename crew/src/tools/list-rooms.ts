@@ -7,7 +7,7 @@ export async function handleListRooms(): Promise<ToolResult> {
 
   const rooms = allRooms.map((room) => {
     const members = getRoomMembers(room.id);
-    const roles = { boss: 0, leader: 0, worker: 0 };
+    const roles = { leader: 0, worker: 0 };
     for (const m of members) {
       if (m.role in roles) {
         roles[m.role as keyof typeof roles]++;

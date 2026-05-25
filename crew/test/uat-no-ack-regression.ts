@@ -36,7 +36,7 @@ console.log('\n═══ No-ACK Regression UAT ═══\n');
 initDb(':memory:');
 
 // Register agents
-addAgent('boss-1', 'boss', 'main', null);
+addAgent('leader-1', 'leader', 'main', null);
 addAgent('leader-1', 'leader', 'main', null);
 addAgent('worker-1', 'worker', 'main', null);
 
@@ -196,7 +196,7 @@ console.log('\n--- Group 2: Agent status detection without ACK ---\n');
   const freshMs = Date.now() - 1_000; // 1s ago — fresh
   const workerInterval = getPollingInterval('worker', freshMs);
   const leaderInterval = getPollingInterval('leader', freshMs);
-  const bossInterval = getPollingInterval('boss', freshMs);
+  const bossInterval = getPollingInterval('leader', freshMs);
 
   // In reduced profile (default), role-based intervals apply
   assert(
@@ -209,7 +209,7 @@ console.log('\n--- Group 2: Agent status detection without ACK ---\n');
   );
   assert(
     bossInterval === 10_000,
-    `TC-6: boss interval = 10000ms (got ${bossInterval}ms)`,
+    `TC-6: leader interval = 10000ms (got ${bossInterval}ms)`,
   );
 }
 
@@ -249,7 +249,7 @@ console.log('\n--- Group 3: ACK infrastructure present but unused ---\n');
   addAgent('worker-3', 'worker', 'beta', null);
   const msg = addMessage(
     'worker-3',
-    'boss-1',
+    'leader-1',
     'beta',
     'no-ack task',
     'pull',

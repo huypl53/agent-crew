@@ -366,7 +366,7 @@ async function testE11_RoleBasedIntervals() {
 
   ok(getPollingInterval('worker', now) === 2000, `Worker interval is 2000ms`);
   ok(getPollingInterval('leader', now) === 5000, `Leader interval is 5000ms`);
-  ok(getPollingInterval('boss', now) === 10000, `Boss interval is 10000ms`);
+  ok(getPollingInterval('leader', now) === 10000, `Leader interval is 10000ms`);
   ok(
     getPollingInterval('unknown-role', now) === 2000,
     `Unknown role defaults to 2000ms`,

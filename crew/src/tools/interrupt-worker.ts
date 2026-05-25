@@ -24,9 +24,9 @@ export async function handleInterruptWorker(
     return err('Missing required params: worker_name, room, name');
   }
 
-  // Role check: leader or boss only
+  // Role check: leader only
   try {
-    assertRole(name, ['leader', 'boss'], 'interrupt_worker');
+    assertRole(name, ['leader'], 'interrupt_worker');
   } catch (e) {
     return err(e instanceof Error ? e.message : String(e));
   }

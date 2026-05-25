@@ -13,7 +13,7 @@ describe('assertRole', () => {
     clearState();
     addAgent('lead-1', 'leader', mkRoom('frontend').id, '%1');
     addAgent('worker-1', 'worker', mkRoom('frontend').id, '%2');
-    addAgent('boss-1', 'boss', mkRoom('company').id, '%3');
+    addAgent('leader-1', 'leader', mkRoom('company').id, '%3');
   });
 
   afterAll(() => {
@@ -21,25 +21,25 @@ describe('assertRole', () => {
   });
 
   test('allows leader for leader-allowed action', () => {
-    const agent = assertRole('lead-1', ['leader', 'boss'], 'interrupt_worker');
+    const agent = assertRole('lead-1', ['leader', 'leader'], 'interrupt_worker');
     expect(agent.name).toBe('lead-1');
     expect(agent.role).toBe('leader');
   });
 
-  test('allows boss for leader/boss-allowed action', () => {
-    const agent = assertRole('boss-1', ['leader', 'boss'], 'interrupt_worker');
-    expect(agent.name).toBe('boss-1');
+  test('allows leader for leader/leader-allowed action', () => {
+    const agent = assertRole('leader-1', ['leader', 'leader'], 'interrupt_worker');
+    expect(agent.name).toBe('leader-1');
   });
 
   test('rejects worker for leader-only action', () => {
     expect(() =>
-      assertRole('worker-1', ['leader', 'boss'], 'interrupt_worker'),
-    ).toThrow('Only leader/boss can interrupt_worker');
+      assertRole('worker-1', ['leader', 'leader'], 'interrupt_worker'),
+    ).toThrow('Only leader/leader can interrupt_worker');
   });
 
   test('rejects unknown agent', () => {
     expect(() =>
-      assertRole('nobody', ['leader', 'boss'], 'interrupt_worker'),
+      assertRole('nobody', ['leader', 'leader'], 'interrupt_worker'),
     ).toThrow('not registered');
   });
 

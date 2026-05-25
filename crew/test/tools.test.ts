@@ -86,14 +86,14 @@ describe('MCP tools', () => {
     test('registers agent with valid params', async () => {
       const result = await handleJoinRoom({
         room: 'company',
-        role: 'boss',
-        name: 'boss-1',
+        role: 'leader',
+        name: 'leader-1',
         tmux_target: testPaneA,
       });
       expect(result.isError).toBeUndefined();
       const data = JSON.parse(result.content[0]?.text);
-      expect(data.name).toBe('boss-1');
-      expect(data.role).toBe('boss');
+      expect(data.name).toBe('leader-1');
+      expect(data.role).toBe('leader');
       expect(data.room).toBe('company');
     });
 
@@ -142,19 +142,19 @@ describe('MCP tools', () => {
     test('adds suffix for duplicate name in same room with different pane', async () => {
       await handleJoinRoom({
         room: 'company',
-        role: 'boss',
-        name: 'boss-1',
+        role: 'leader',
+        name: 'leader-1',
         tmux_target: testPaneA,
       });
       const result = await handleJoinRoom({
         room: 'company',
         role: 'worker',
-        name: 'boss-1',
+        name: 'leader-1',
         tmux_target: testPaneB,
       });
       expect(result.isError).toBeUndefined();
       const data = JSON.parse(result.content[0]?.text);
-      expect(data.name).toMatch(/^boss-1-[a-z0-9]{4}$/);
+      expect(data.name).toMatch(/^leader-1-[a-z0-9]{4}$/);
     });
 
     test('allows same agent in multiple rooms', async () => {
@@ -198,11 +198,11 @@ describe('MCP tools', () => {
     test('removes agent from room', async () => {
       await handleJoinRoom({
         room: 'company',
-        role: 'boss',
-        name: 'boss-1',
+        role: 'leader',
+        name: 'leader-1',
         tmux_target: testPaneA,
       });
-      const result = await handleLeaveRoom({ room: 'company', name: 'boss-1' });
+      const result = await handleLeaveRoom({ room: 'company', name: 'leader-1' });
       const data = JSON.parse(result.content[0]?.text);
       expect(data.success).toBe(true);
     });
@@ -210,13 +210,13 @@ describe('MCP tools', () => {
     test('errors when not in room', async () => {
       await handleJoinRoom({
         room: 'company',
-        role: 'boss',
-        name: 'boss-1',
+        role: 'leader',
+        name: 'leader-1',
         tmux_target: testPaneA,
       });
       const result = await handleLeaveRoom({
         room: 'frontend',
-        name: 'boss-1',
+        name: 'leader-1',
       });
       expect(result.isError).toBe(true);
     });
@@ -226,8 +226,8 @@ describe('MCP tools', () => {
     test('lists all rooms with counts', async () => {
       await handleJoinRoom({
         room: 'company',
-        role: 'boss',
-        name: 'boss-1',
+        role: 'leader',
+        name: 'leader-1',
         tmux_target: testPaneA,
       });
       await handleJoinRoom({
@@ -241,8 +241,7 @@ describe('MCP tools', () => {
       expect(data.rooms.length).toBe(1);
       expect(data.rooms[0].name).toBe('company');
       expect(data.rooms[0].member_count).toBe(2);
-      expect(data.rooms[0].roles.boss).toBe(1);
-      expect(data.rooms[0].roles.leader).toBe(1);
+      expect(data.rooms[0].roles.leader).toBe(2);
     });
   });
 
@@ -250,14 +249,14 @@ describe('MCP tools', () => {
     test('lists members of a room', async () => {
       await handleJoinRoom({
         room: 'company',
-        role: 'boss',
-        name: 'boss-1',
+        role: 'leader',
+        name: 'leader-1',
         tmux_target: testPaneA,
       });
       const result = await handleListMembers({ room: 'company' });
       const data = JSON.parse(result.content[0]?.text);
       expect(data.members.length).toBe(1);
-      expect(data.members[0].name).toBe('boss-1');
+      expect(data.members[0].name).toBe('leader-1');
     });
 
     test('errors for non-existent room', async () => {

@@ -41,14 +41,12 @@ const ROLE_SUFFIX: Record<string, string> = {
   leader:
     '--- Remember: You are a leader. Manage workers, assign tasks, track progress.',
   worker: '--- Remember: You are a worker. Execute tasks, report results.',
-  boss: '--- Remember: You are the boss. Direct leaders, review milestones.',
 };
 
 // Role-based intervals for 'reduced' profile (ms)
 const POLL_INTERVALS: Record<string, number> = {
   worker: 2_000,
   leader: 5_000,
-  boss: 10_000,
   default: 2_000,
 };
 

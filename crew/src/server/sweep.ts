@@ -392,7 +392,7 @@ async function runLivenessCheck(): Promise<void> {
     const count = (deadCounts.get(agent.name) ?? 0) + 1;
     deadCounts.set(agent.name, count);
 
-    if (agent.role === 'boss' || agent.role === 'leader') {
+    if (agent.role === 'leader') {
       setAgentStatus(agent.name, 'dead');
       logServer(
         'LIVENESS',

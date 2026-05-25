@@ -10,7 +10,7 @@ export const config = {
 
   // Polling profile:
   //   conservative — 500ms fixed interval
-  //   reduced      — role-based: worker=2s, leader=5s, boss=10s (default)
+  //   reduced      — role-based: worker=2s, leader=5s (default)
   pollingProfile: (process.env.CREW_POLLING_PROFILE || 'reduced') as
     | 'conservative'
     | 'reduced',

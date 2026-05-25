@@ -23,7 +23,7 @@ describe('create-room tool', () => {
   });
 
   test('creates a room with valid name', () => {
-    const result = handleCreateRoom({ room: 'alpha', name: 'boss-1' });
+    const result = handleCreateRoom({ room: 'alpha', name: 'leader-1' });
     expect(result.isError).toBeUndefined();
     const data = JSON.parse(result.content[0]!.text);
     expect(data.room).toBe('alpha');
@@ -35,37 +35,37 @@ describe('create-room tool', () => {
     const result = handleCreateRoom({
       room: 'beta',
       topic: 'planning',
-      name: 'boss-1',
+      name: 'leader-1',
     });
     const data = JSON.parse(result.content[0]!.text);
     expect(data.topic).toBe('planning');
   });
 
   test('room row exists in state after creation', () => {
-    handleCreateRoom({ room: 'gamma', name: 'boss-1' });
+    handleCreateRoom({ room: 'gamma', name: 'leader-1' });
     expect(getRoom('gamma')).toBeDefined();
   });
 
   test('rejects duplicate room name', () => {
-    handleCreateRoom({ room: 'dup', name: 'boss-1' });
-    const result = handleCreateRoom({ room: 'dup', name: 'boss-1' });
+    handleCreateRoom({ room: 'dup', name: 'leader-1' });
+    const result = handleCreateRoom({ room: 'dup', name: 'leader-1' });
     expect(result.isError).toBe(true);
     const data = JSON.parse(result.content[0]!.text);
     expect(data.error).toMatch(/already exists/);
   });
 
   test('rejects room name with spaces', () => {
-    const result = handleCreateRoom({ room: 'bad name', name: 'boss-1' });
+    const result = handleCreateRoom({ room: 'bad name', name: 'leader-1' });
     expect(result.isError).toBe(true);
   });
 
   test('rejects room name over 32 chars', () => {
-    const result = handleCreateRoom({ room: 'a'.repeat(33), name: 'boss-1' });
+    const result = handleCreateRoom({ room: 'a'.repeat(33), name: 'leader-1' });
     expect(result.isError).toBe(true);
   });
 
   test('rejects missing room param', () => {
-    const result = handleCreateRoom({ room: '', name: 'boss-1' });
+    const result = handleCreateRoom({ room: '', name: 'leader-1' });
     expect(result.isError).toBe(true);
   });
 });
@@ -79,19 +79,19 @@ describe('delete-room tool', () => {
   });
 
   test('refuses without --confirm', () => {
-    handleCreateRoom({ room: 'target', name: 'boss-1' });
-    const result = handleDeleteRoom({ room: 'target', name: 'boss-1' });
+    handleCreateRoom({ room: 'target', name: 'leader-1' });
+    const result = handleDeleteRoom({ room: 'target', name: 'leader-1' });
     expect(result.isError).toBe(true);
     const data = JSON.parse(result.content[0]!.text);
     expect(data.error).toMatch(/--confirm/);
   });
 
   test('deletes empty room with --confirm', () => {
-    handleCreateRoom({ room: 'empty-room', name: 'boss-1' });
+    handleCreateRoom({ room: 'empty-room', name: 'leader-1' });
     const result = handleDeleteRoom({
       room: 'empty-room',
       confirm: true,
-      name: 'boss-1',
+      name: 'leader-1',
     });
     expect(result.isError).toBeUndefined();
     const data = JSON.parse(result.content[0]!.text);
@@ -106,7 +106,7 @@ describe('delete-room tool', () => {
     const result = handleDeleteRoom({
       room: 'crew-room',
       confirm: true,
-      name: 'boss-1',
+      name: 'leader-1',
     });
     expect(result.isError).toBeUndefined();
     const data = JSON.parse(result.content[0]!.text);
@@ -117,14 +117,14 @@ describe('delete-room tool', () => {
   test('cleans up agent with no remaining rooms', () => {
     addAgent('solo-wk', 'worker', mkRoom('solo-room').id, '%20');
     expect(getAgent('solo-wk')).toBeDefined();
-    handleDeleteRoom({ room: 'solo-room', confirm: true, name: 'boss-1' });
+    handleDeleteRoom({ room: 'solo-room', confirm: true, name: 'leader-1' });
     expect(getAgent('solo-wk')).toBeUndefined();
   });
 
   test('deleting one room does not remove agent in another room', () => {
     addAgent('shared-wk', 'worker', mkRoom('room-a').id, '%30');
     addAgent('shared-wk', 'worker', mkRoom('room-b').id, '%30');
-    handleDeleteRoom({ room: 'room-a', confirm: true, name: 'boss-1' });
+    handleDeleteRoom({ room: 'room-a', confirm: true, name: 'leader-1' });
     const remaining = getAllRooms();
     expect(remaining.some((r) => r.name === 'room-b')).toBe(true);
   });
@@ -133,7 +133,7 @@ describe('delete-room tool', () => {
     const result = handleDeleteRoom({
       room: 'ghost',
       confirm: true,
-      name: 'boss-1',
+      name: 'leader-1',
     });
     expect(result.isError).toBe(true);
     expect(JSON.parse(result.content[0]!.text).error).toMatch(/does not exist/);

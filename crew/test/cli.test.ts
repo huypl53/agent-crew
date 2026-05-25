@@ -69,7 +69,7 @@ describe('CLI formatter', () => {
         {
           name: 'crew',
           member_count: 5,
-          roles: { boss: 1, leader: 1, worker: 3 },
+          roles: { leader: 1, leader: 1, worker: 3 },
         },
       ],
     };
@@ -82,7 +82,7 @@ describe('CLI formatter', () => {
     const data = {
       messages: [
         {
-          from: 'boss',
+          from: 'leader',
           room: 'crew',
           text: 'hello',
           kind: 'chat',
@@ -101,7 +101,7 @@ describe('CLI formatter', () => {
     const out = formatResult('read', data);
     const lines = out.trim().split('\n');
     expect(lines.length).toBe(2);
-    expect(lines[0]).toContain('[boss@crew]');
+    expect(lines[0]).toContain('[leader@crew]');
     expect(lines[0]).toContain('hello');
   });
 

@@ -26,9 +26,9 @@ export async function handleReassignTask(
     return err('Missing required params: worker_name, room, text, name');
   }
 
-  // Role check: leader or boss only
+  // Role check: leader only
   try {
-    assertRole(name, ['leader', 'boss'], 'reassign_task');
+    assertRole(name, ['leader'], 'reassign_task');
   } catch (e) {
     return err(e instanceof Error ? e.message : String(e));
   }

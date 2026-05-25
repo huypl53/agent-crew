@@ -19,9 +19,9 @@ export async function handleClearWorkerSession(
     return err('Missing required params: worker_name, room, name');
   }
 
-  // Role check: leader or boss only
+  // Role check: leader only
   try {
-    assertRole(name, ['leader', 'boss'], 'clear_worker_session');
+    assertRole(name, ['leader'], 'clear_worker_session');
   } catch (e) {
     return err(e instanceof Error ? e.message : String(e));
   }
