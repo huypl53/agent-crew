@@ -1,3 +1,10 @@
+// Max chars for worker → leader completion notifications.
+// Covers most worker reports without overwhelming leader's pane.
+const NOTIFY_MAX_CHARS = (() => {
+  const parsed = Number(process.env.CREW_NOTIFY_MAX_CHARS ?? 5000);
+  return Number.isFinite(parsed) && parsed >= 100 ? parsed : 5000;
+})();
+
 export const config = {
   // Sender verification mode:
   //   off      — disabled (no check)
@@ -20,4 +27,7 @@ export const config = {
     const parsed = Number(process.env.CREW_LEADER_PACE_MS ?? 7000);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : 7000;
   })(),
+
+  // Max chars for worker → leader completion notifications
+  notifyMaxChars: NOTIFY_MAX_CHARS,
 };

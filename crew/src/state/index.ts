@@ -1,3 +1,4 @@
+import { config } from '../config.ts';
 import type {
   Agent,
   AgentRole,
@@ -1259,7 +1260,7 @@ function notifyLeadersOnWorkerStop(agentName: string, payload: string): void {
   if (leaders.length === 0) return;
 
   // Truncate response for notification
-  const truncated = truncateForNotification(response, 500);
+  const truncated = truncateForNotification(response, config.notifyMaxChars);
   const room = getRoom(agent.room_id);
   const roomName = room?.name ?? 'unknown';
   const message = `[${agentName}@${roomName}] completed:\n${truncated}`;

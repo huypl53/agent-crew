@@ -1,4 +1,5 @@
 import type { Agent, MessageKind } from '../shared/types.ts';
+import { config } from '../config.ts';
 import { dbClearAgentPane } from '../state/db-write.ts';
 import {
   addMessage,
@@ -247,7 +248,7 @@ export async function deliverMessage(
       );
 
       if (leaders.length > 0) {
-        const summary = text.length > 200 ? `${text.slice(0, 197)}...` : text;
+        const summary = text.length > config.notifyMaxChars ? `${text.slice(0, config.notifyMaxChars - 3)}...` : text;
         let notifyText = `[system@${room}]: ${senderName} ${kind}: "${summary}"`;
 
         if (sender.tmux_target) {
