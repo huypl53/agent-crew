@@ -1,6 +1,16 @@
-import { initDb } from '../state/db.ts';
-import { addHookEvent, getAgentByPane } from '../state/index.ts';
 import type { ToolResult } from '../shared/types.ts';
+import { initDb } from '../state/db.ts';
+import {
+  addHookEvent,
+  canonicalizeHintIdentity,
+  getAgentByPane,
+  tickHintCadence,
+} from '../state/index.ts';
+
+/** Strip control characters and cap length to prevent prompt-injection via agent names. */
+function sanitizeAgentName(name: string): string {
+  return name.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 64);
+}
 
 export async function handleHookEvent(_params?: unknown): Promise<ToolResult> {
   const input = await Bun.stdin.text();
@@ -29,6 +39,43 @@ export async function handleHookEvent(_params?: unknown): Promise<ToolResult> {
     typeof payload.session_id === 'string' ? payload.session_id : null;
 
   addHookEvent(agent.name, eventType, sessionId, input);
+
+  // Canonicalize hint identity when session_id is first available
+  if (sessionId) {
+    try {
+      canonicalizeHintIdentity(agent.name, pane, sessionId);
+    } catch (e) {
+      // Fail-open: don't block hook processing on canonicalization errors
+      console.error(`[crew hint] canonicalize error: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // Hint reminder injection: every 3rd UserPromptSubmit, emit reminder text to
+  // stdout. Stdout from hook commands is injected into the conversation by
+  // Claude Code, providing gentle agent-identity reminders without polling.
+  if (eventType === 'UserPromptSubmit') {
+    try {
+      const { shouldShow, hint } = tickHintCadence(pane, sessionId);
+      if (shouldShow && hint) {
+        const safeName = sanitizeAgentName(hint.agent_name);
+        const reminder = `[crew] Registered as agent "${safeName}". Run \`crew hint unset\` from this pane to clear.`;
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                ok: true,
+                hint: { agent_name: safeName, message: reminder },
+              }),
+            },
+          ],
+        };
+      }
+    } catch (e) {
+      // Fail-open: never block hook processing on hint errors
+      console.error(`[crew hint] cadence error: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   return { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] };
 }

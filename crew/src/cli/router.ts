@@ -1,4 +1,5 @@
 import { handleCheckChanges } from '../tools/check-changes.ts';
+import { handleHintLookup, handleHintSet, handleHintUnset } from '../tools/hint.ts';
 import { handleHookEvent } from '../tools/hook-event.ts';
 import { handleParty } from '../tools/party.ts';
 import { handleClearWorkerSession } from '../tools/clear-worker-session.ts';
@@ -178,6 +179,23 @@ export const COMMANDS: Record<
       topic: f.topic,
       worker: f.worker,
       name: f.name,
+    }),
+  },
+  hint: {
+    handler: async (p) => {
+      const subcommand = p.subcommand;
+      if (subcommand === 'set') return handleHintSet(p);
+      if (subcommand === 'unset') return handleHintUnset(p);
+      if (subcommand === 'lookup') return handleHintLookup(p);
+      return { content: [{ type: 'text', text: JSON.stringify({ error: 'Unknown hint subcommand' }) }] };
+    },
+    buildParams: (f, p) => ({
+      subcommand: p[0],
+      agent: f.agent,
+      room: f.room,
+      name: f.name,
+      session: f.session,
+      pane: f.pane,
     }),
   },
 };
