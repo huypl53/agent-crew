@@ -838,14 +838,6 @@ export async function handleApi(req: Request): Promise<Response> {
     ).catch(() => null);
     if (!paneId) return err('Failed to create pane in target window', 400);
 
-    // Ensure hooks installed in room directory
-    try {
-      const { installHooks } = await import('../hooks/install-hooks.ts');
-      await installHooks(room.path);
-    } catch {
-      // Non-critical — hooks are best-effort
-    }
-
     const cmd = template.start_command || 'claude';
     const sendResult = await sendKeys(paneId, cmd);
     if (!sendResult.delivered) {
@@ -945,13 +937,6 @@ export async function handleApi(req: Request): Promise<Response> {
     }
 
     // Install Claude Code hooks for idle/busy detection
-    try {
-      const { installHooks } = await import('../hooks/install-hooks.ts');
-      await installHooks(normalizedPath);
-    } catch {
-      // Non-critical — hooks are best-effort
-    }
-
     // Launch agents and send join commands
     const { getQueue } = await import('../delivery/pane-queue.ts');
     const results: Array<{

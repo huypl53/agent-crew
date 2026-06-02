@@ -169,17 +169,6 @@ export async function handleJoinRoom(
     agentType,
   );
 
-  // Install hooks for hook-driven idle detection
-  try {
-    const { installHooks } = await import('../hooks/install-hooks.ts');
-    await installHooks(normalizedPath);
-  } catch (e) {
-    logServer(
-      'WARN',
-      `Hook install failed for ${name}: ${e instanceof Error ? e.message : String(e)}`,
-    );
-  }
-
   // Pre-seed pane status snapshot so first getPaneStatus call has a baseline
   if (target) {
     await getPaneStatus(target).catch((e) => {
