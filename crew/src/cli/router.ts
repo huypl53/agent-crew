@@ -196,6 +196,8 @@ export const COMMANDS: Record<
       name: f.name,
       session: f.session,
       pane: f.pane,
+      message: f.message,
+      cadence: f.cadence != null ? parseInt(String(f.cadence), 10) : undefined,
     }),
   },
 };

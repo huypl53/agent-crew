@@ -905,7 +905,7 @@ describe('state module', () => {
     test('setHint creates a pane-bootstrap record', () => {
       const room = mkRoom('test-room');
       const agent = addAgent('test-agent', 'worker', room.id, '%100');
-      const hint = setHint('test-agent', room.id, '%100');
+      const hint = setHint('test-agent', room.id, 'Test hint message', { pane: '%100' });
 
       expect(hint.agent_name).toBe('test-agent');
       expect(hint.pane_bootstrap).toBe('%100');
@@ -916,7 +916,7 @@ describe('state module', () => {
     test('setHint uses agent pane if not provided', () => {
       const room = mkRoom('test-room');
       addAgent('test-agent', 'worker', room.id, '%101');
-      const hint = setHint('test-agent', room.id);
+      const hint = setHint('test-agent', room.id, 'Test hint message');
 
       expect(hint.pane_bootstrap).toBe('%101');
     });
@@ -924,7 +924,7 @@ describe('state module', () => {
     test('getHint returns pane-bootstrap hint before canonicalization', () => {
       const room = mkRoom('test-room');
       addAgent('test-agent', 'worker', room.id, '%102');
-      setHint('test-agent', room.id, '%102');
+      setHint('test-agent', room.id, 'Test hint message', { pane: '%102' });
 
       const hint = getHint('%102', null);
       expect(hint).toBeDefined();
@@ -934,7 +934,7 @@ describe('state module', () => {
     test('getHint returns session-bound hint after canonicalization', () => {
       const room = mkRoom('test-room');
       addAgent('test-agent', 'worker', room.id, '%103');
-      setHint('test-agent', room.id, '%103');
+      setHint('test-agent', room.id, 'Test hint message', { pane: '%103' });
 
       // Canonicalize to session
       canonicalizeHintIdentity('test-agent', '%103', 'sess-123');
@@ -950,7 +950,7 @@ describe('state module', () => {
     test('canonicalizeHintIdentity is idempotent', () => {
       const room = mkRoom('test-room');
       addAgent('test-agent', 'worker', room.id, '%104');
-      setHint('test-agent', room.id, '%104');
+      setHint('test-agent', room.id, 'Test hint message', { pane: '%104' });
 
       canonicalizeHintIdentity('test-agent', '%104', 'sess-456');
       canonicalizeHintIdentity('test-agent', '%104', 'sess-456'); // Second call
@@ -963,7 +963,7 @@ describe('state module', () => {
     test('canonicalizeHintIdentity retires stale session-bound row on Claude restart same pane', () => {
       const room = mkRoom('test-room');
       addAgent('test-agent', 'worker', room.id, '%200');
-      setHint('test-agent', room.id, '%200');
+      setHint('test-agent', room.id, 'Test hint message', { pane: '%200' });
       // First Claude session: pane migrates to session S1
       canonicalizeHintIdentity('test-agent', '%200', 'S1');
       expect(getHint('%200', 'S1')?.session_id).toBe('S1');
@@ -983,7 +983,7 @@ describe('state module', () => {
     test('tickHintCadence increments turn count', () => {
       const room = mkRoom('test-room');
       addAgent('test-agent', 'worker', room.id, '%105');
-      setHint('test-agent', room.id, '%105');
+      setHint('test-agent', room.id, 'Test hint message', { pane: '%105' });
 
       const result1 = tickHintCadence('%105', null);
       expect(result1.shouldShow).toBe(false); // Turn 1
@@ -999,7 +999,7 @@ describe('state module', () => {
     test('tickHintCadence shows hint on turns 3, 6, 9', () => {
       const room = mkRoom('test-room');
       addAgent('test-agent', 'worker', room.id, '%106');
-      setHint('test-agent', room.id, '%106');
+      setHint('test-agent', room.id, 'Test hint message', { pane: '%106' });
 
       const showTurns: number[] = [];
       for (let i = 1; i <= 9; i++) {
@@ -1013,7 +1013,7 @@ describe('state module', () => {
     test('tickHintCadence works with session-bound hints', () => {
       const room = mkRoom('test-room');
       addAgent('test-agent', 'worker', room.id, '%107');
-      setHint('test-agent', room.id, '%107');
+      setHint('test-agent', room.id, 'Test hint message', { pane: '%107' });
       canonicalizeHintIdentity('test-agent', '%107', 'sess-789');
 
       const result1 = tickHintCadence('%107', 'sess-789');
@@ -1030,7 +1030,7 @@ describe('state module', () => {
     test('unsetHint removes both pane-bootstrap and session-bound hints', () => {
       const room = mkRoom('test-room');
       addAgent('test-agent', 'worker', room.id, '%108');
-      setHint('test-agent', room.id, '%108');
+      setHint('test-agent', room.id, 'Test hint message', { pane: '%108' });
 
       expect(getHint('%108', null)).toBeDefined();
 
@@ -1050,7 +1050,7 @@ describe('state module', () => {
     test('new session on same pane does not inherit old hint', () => {
       const room = mkRoom('test-room');
       addAgent('test-agent', 'worker', room.id, '%110');
-      setHint('test-agent', room.id, '%110');
+      setHint('test-agent', room.id, 'Test hint message', { pane: '%110' });
 
       // Canonicalize to first session
       canonicalizeHintIdentity('test-agent', '%110', 'sess-old');
@@ -1068,10 +1068,10 @@ describe('state module', () => {
     test('setHint clears existing hint for agent in room', () => {
       const room = mkRoom('test-room');
       addAgent('test-agent', 'worker', room.id, '%111');
-      setHint('test-agent', room.id, '%111');
+      setHint('test-agent', room.id, 'Test hint message', { pane: '%111' });
 
       // Set again - should replace, not duplicate
-      const hint2 = setHint('test-agent', room.id, '%111');
+      const hint2 = setHint('test-agent', room.id, 'Test hint message', { pane: '%111' });
 
       // Should only have one hint record
       const db = require('../src/state/db.ts').getDb();
@@ -1089,7 +1089,7 @@ describe('state module', () => {
     test('getHint with wrong session returns null (no pane cross-fallback)', () => {
       const room = mkRoom('test-room');
       addAgent('test-agent', 'worker', room.id, '%112');
-      setHint('test-agent', room.id, '%112');
+      setHint('test-agent', room.id, 'Test hint message', { pane: '%112' });
 
       // getHint(pane, sessionId) is strict: only matches by session_id when provided.
       // No cross-fallback to pane — that's tickHintCadence's job via COALESCE.
@@ -1105,7 +1105,7 @@ describe('state module', () => {
     test('tickHintCadence falls back to pane bootstrap when session row is missing', () => {
       const room = mkRoom('test-room');
       addAgent('test-agent', 'worker', room.id, '%113');
-      setHint('test-agent', room.id, '%113');
+      setHint('test-agent', room.id, 'Test hint message', { pane: '%113' });
 
       expect(tickHintCadence('%113', 'sess-missing').shouldShow).toBe(false);
       expect(tickHintCadence('%113', 'sess-missing').shouldShow).toBe(false);
@@ -1115,14 +1115,14 @@ describe('state module', () => {
     test('removeAgent clears pane-bootstrap hints so a reused pane starts clean', () => {
       const room = mkRoom('test-room');
       addAgent('old-agent', 'worker', room.id, '%114');
-      setHint('old-agent', room.id, '%114');
+      setHint('old-agent', room.id, 'Test hint message', { pane: '%114' });
 
       expect(removeAgent('old-agent', 'test-room')).toBe(true);
       expect(getHint('%114', null)).toBeNull();
 
       const recycledRoom = mkRoom('test-room');
       addAgent('new-agent', 'worker', recycledRoom.id, '%114');
-      const hint = setHint('new-agent', recycledRoom.id, '%114');
+      const hint = setHint('new-agent', recycledRoom.id, 'Test hint message', { pane: '%114' });
       expect(hint.agent_name).toBe('new-agent');
       expect(getHint('%114', null)?.agent_name).toBe('new-agent');
     });
@@ -1132,8 +1132,8 @@ describe('state module', () => {
       const roomB = mkRoom('room-b');
       addAgent('shared-agent', 'worker', roomA.id, '%115');
       addAgent('shared-agent', 'worker', roomB.id, '%116');
-      setHint('shared-agent', roomA.id, '%115');
-      setHint('shared-agent', roomB.id, '%116');
+      setHint('shared-agent', roomA.id, 'Test hint message', { pane: '%115' });
+      setHint('shared-agent', roomB.id, 'Test hint message', { pane: '%116' });
 
       removeAgentFully('shared-agent');
 
@@ -1144,7 +1144,7 @@ describe('state module', () => {
     test('clearState clears hint and hook-event tables', () => {
       const room = mkRoom('test-room');
       addAgent('test-agent', 'worker', room.id, '%117');
-      setHint('test-agent', room.id, '%117');
+      setHint('test-agent', room.id, 'Test hint message', { pane: '%117' });
       addHookEvent('test-agent', 'UserPromptSubmit', 'sess-clear', '{}');
 
       clearState();
@@ -1165,11 +1165,11 @@ describe('state module', () => {
       addAgent('multi-agent', 'worker', roomB.id, '%200');
 
       // Both setHint calls use the same pane — should not crash with UNIQUE constraint
-      const hintA = setHint('multi-agent', roomA.id, '%200');
+      const hintA = setHint('multi-agent', roomA.id, 'Test hint message', { pane: '%200' });
       expect(hintA.agent_name).toBe('multi-agent');
       expect(hintA.room_id).toBe(roomA.id);
 
-      const hintB = setHint('multi-agent', roomB.id, '%200');
+      const hintB = setHint('multi-agent', roomB.id, 'Test hint message', { pane: '%200' });
       expect(hintB.agent_name).toBe('multi-agent');
       expect(hintB.room_id).toBe(roomB.id);
     });
@@ -1180,8 +1180,8 @@ describe('state module', () => {
       addAgent('multi-agent2', 'worker', roomA.id, '%201');
       addAgent('multi-agent2', 'worker', roomB.id, '%201');
 
-      setHint('multi-agent2', roomA.id, '%201');
-      setHint('multi-agent2', roomB.id, '%201');
+      setHint('multi-agent2', roomA.id, 'Test hint message', { pane: '%201' });
+      setHint('multi-agent2', roomB.id, 'Test hint message', { pane: '%201' });
 
       // Canonicalize both — should not crash with UNIQUE constraint on session_id
       canonicalizeHintIdentity('multi-agent2', '%201', 'sess-shared-1');
@@ -1194,7 +1194,7 @@ describe('state module', () => {
     test('BUG-3: getHint(pane, null) works after canonicalization', () => {
       const room = mkRoom('room-c3');
       addAgent('pane-agent', 'worker', room.id, '%202');
-      setHint('pane-agent', room.id, '%202');
+      setHint('pane-agent', room.id, 'Test hint message', { pane: '%202' });
 
       canonicalizeHintIdentity('pane-agent', '%202', 'sess-after');
 
@@ -1212,8 +1212,8 @@ describe('state module', () => {
       addAgent('tick-agent', 'worker', roomA.id, '%203');
       addAgent('tick-agent', 'worker', roomB.id, '%204');
 
-      setHint('tick-agent', roomA.id, '%203');
-      setHint('tick-agent', roomB.id, '%204');
+      setHint('tick-agent', roomA.id, 'Test hint message', { pane: '%203' });
+      setHint('tick-agent', roomB.id, 'Test hint message', { pane: '%204' });
 
       // Tick room A 3 times
       tickHintCadence('%203', null, roomA.id);
@@ -1225,6 +1225,68 @@ describe('state module', () => {
       // Room B should still be at turn 0
       const hintB = getHint('%204', null);
       expect(hintB?.turn_count).toBe(0);
+    });
+
+    // ===== Custom message and cadence tests =====
+
+    test('setHint stores custom message', () => {
+      const room = mkRoom('msg-room');
+      addAgent('msg-agent', 'worker', room.id, '%300');
+      const hint = setHint('msg-agent', room.id, 'You are worker-1 in project-x.', { pane: '%300' });
+      expect(hint.message).toBe('You are worker-1 in project-x.');
+      expect(hint.cadence).toBe(3); // default
+    });
+
+    test('setHint stores custom cadence', () => {
+      const room = mkRoom('cadence-room');
+      addAgent('cadence-agent', 'worker', room.id, '%301');
+      const hint = setHint('cadence-agent', room.id, 'Every turn', { pane: '%301', cadence: 1 });
+      expect(hint.cadence).toBe(1);
+      expect(hint.message).toBe('Every turn');
+    });
+
+    test('setHint defaults cadence to 3', () => {
+      const room = mkRoom('default-cadence');
+      addAgent('dc-agent', 'worker', room.id, '%302');
+      const hint = setHint('dc-agent', room.id, 'Default cadence', { pane: '%302' });
+      expect(hint.cadence).toBe(3);
+    });
+
+    test('tickHintCadence respects cadence of 1 (every turn)', () => {
+      const room = mkRoom('every-turn');
+      addAgent('et-agent', 'worker', room.id, '%303');
+      setHint('et-agent', room.id, 'Every single turn', { pane: '%303', cadence: 1 });
+
+      const r1 = tickHintCadence('%303', null);
+      expect(r1.shouldShow).toBe(true); // Turn 1: 1 % 1 === 0
+      const r2 = tickHintCadence('%303', null);
+      expect(r2.shouldShow).toBe(true); // Turn 2: 2 % 1 === 0
+      expect(r2.hint?.message).toBe('Every single turn');
+    });
+
+    test('tickHintCadence respects cadence of 5', () => {
+      const room = mkRoom('every-5');
+      addAgent('e5-agent', 'worker', room.id, '%304');
+      setHint('e5-agent', room.id, 'Every fifth turn', { pane: '%304', cadence: 5 });
+
+      for (let i = 1; i <= 4; i++) {
+        expect(tickHintCadence('%304', null).shouldShow).toBe(false);
+      }
+      const r5 = tickHintCadence('%304', null);
+      expect(r5.shouldShow).toBe(true); // Turn 5: 5 % 5 === 0
+      expect(r5.hint?.message).toBe('Every fifth turn');
+    });
+
+    test('custom message is returned in tickHintCadence result', () => {
+      const room = mkRoom('msg-tick');
+      addAgent('mt-agent', 'worker', room.id, '%305');
+      setHint('mt-agent', room.id, 'Custom reminder text here', { pane: '%305' });
+
+      tickHintCadence('%305', null);
+      tickHintCadence('%305', null);
+      const result = tickHintCadence('%305', null);
+      expect(result.shouldShow).toBe(true);
+      expect(result.hint?.message).toBe('Custom reminder text here');
     });
   });
 });

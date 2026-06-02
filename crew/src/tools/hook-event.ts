@@ -7,11 +7,6 @@ import {
   tickHintCadence,
 } from '../state/index.ts';
 
-/** Strip control characters and cap length to prevent prompt-injection via agent names. */
-function sanitizeAgentName(name: string): string {
-  return name.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 64);
-}
-
 export async function handleHookEvent(_params?: unknown): Promise<ToolResult> {
   const input = await Bun.stdin.text();
   let payload: Record<string, unknown>;
@@ -50,22 +45,20 @@ export async function handleHookEvent(_params?: unknown): Promise<ToolResult> {
     }
   }
 
-  // Hint reminder injection: every 3rd UserPromptSubmit, emit reminder text to
-  // stdout. Stdout from hook commands is injected into the conversation by
-  // Claude Code, providing gentle agent-identity reminders without polling.
+  // Hint injection: on every Nth UserPromptSubmit (where N = cadence),
+  // emit the user-defined message to stdout. Claude Code injects hook
+  // stdout into the conversation, providing custom context reminders.
   if (eventType === 'UserPromptSubmit') {
     try {
       const { shouldShow, hint } = tickHintCadence(pane, sessionId, agent.room_id);
       if (shouldShow && hint) {
-        const safeName = sanitizeAgentName(hint.agent_name);
-        const reminder = `[crew] Registered as agent "${safeName}". Run \`crew hint unset\` from this pane to clear.`;
         return {
           content: [
             {
               type: 'text',
               text: JSON.stringify({
                 ok: true,
-                hint: { agent_name: safeName, message: reminder },
+                hint: { agent_name: hint.agent_name, message: hint.message },
               }),
             },
           ],

@@ -1630,6 +1630,8 @@ export interface HintRecord {
   session_id: string | null;
   room_id: number;
   turn_count: number;
+  message: string;
+  cadence: number;
   created_at: string;
   updated_at: string;
 }
@@ -1637,8 +1639,10 @@ export interface HintRecord {
 /**
  * Set a hint for an agent. Creates a pane-bootstrap record that will later
  * be migrated to a session-bound record when session_id is available.
+ * Message is required — it's the text injected into the agent's conversation.
+ * Cadence controls how often (every N turns) the hint fires (default 3).
  */
-export function setHint(agentName: string, roomId: number, pane?: string): HintRecord {
+export function setHint(agentName: string, roomId: number, message: string, options?: { pane?: string; cadence?: number }): HintRecord {
   const db = getDb();
   const ts = now();
   const agent = getAgentByRoomAndName(roomId, agentName);
@@ -1646,13 +1650,16 @@ export function setHint(agentName: string, roomId: number, pane?: string): HintR
     throw new Error(`Agent not found: ${agentName} in room ${roomId}`);
   }
 
+  const pane = options?.pane ?? agent.tmux_target ?? null;
+  const cadence = options?.cadence ?? 3;
+
   // DELETE + INSERT as a single transaction so concurrent setHint calls
   // cannot leave a window with no row.
   const result = db.transaction(() => {
     db.run('DELETE FROM agent_hints WHERE agent_name = ? AND room_id = ?', [agentName, roomId]);
     const stmt = db.run(
-      'INSERT INTO agent_hints (agent_name, pane_bootstrap, session_id, room_id, turn_count, created_at, updated_at) VALUES (?, ?, NULL, ?, 0, ?, ?)',
-      [agentName, pane ?? agent.tmux_target ?? null, roomId, ts, ts]
+      'INSERT INTO agent_hints (agent_name, pane_bootstrap, session_id, room_id, turn_count, message, cadence, created_at, updated_at) VALUES (?, ?, NULL, ?, 0, ?, ?, ?, ?)',
+      [agentName, pane, roomId, message, cadence, ts, ts]
     );
     return Number(stmt.lastInsertRowid);
   })();
@@ -1721,7 +1728,7 @@ export function tickHintCadence(pane: string, sessionId: string | null, roomId?:
     if (!row) return { shouldShow: false, hint: null };
 
     const hint = rowToHint(row);
-    const shouldShow = hint.turn_count % 3 === 0;
+    const shouldShow = hint.turn_count % hint.cadence === 0;
     return { shouldShow, hint: shouldShow ? hint : null };
   }
 
@@ -1734,7 +1741,7 @@ export function tickHintCadence(pane: string, sessionId: string | null, roomId?:
   if (!row) return { shouldShow: false, hint: null };
 
   const hint = rowToHint(row);
-  const shouldShow = hint.turn_count % 3 === 0;
+  const shouldShow = hint.turn_count % hint.cadence === 0;
   return { shouldShow, hint: shouldShow ? hint : null };
 }
 
@@ -1805,6 +1812,8 @@ function rowToHint(row: Record<string, unknown>): HintRecord {
     session_id: (row.session_id as string | null) ?? null,
     room_id: row.room_id as number,
     turn_count: row.turn_count as number,
+    message: (row.message as string) ?? '',
+    cadence: (row.cadence as number) ?? 3,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };

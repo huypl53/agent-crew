@@ -71,19 +71,32 @@ function resolveHintTarget(params: { agent?: string; room?: string; name?: strin
 
 /**
  * Set a registered-agent hint for an agent.
- * Usage: crew hint set [--agent <name> --room <room>]
+ * Usage: crew hint set --message "..." [--cadence N] [--agent <name> --room <room>]
  */
 export async function handleHintSet(params: {
   agent?: string;
   room?: string;
   name?: string;
+  message?: string;
+  cadence?: number;
 }): Promise<ToolResult> {
   initDb();
+
+  if (!params.message?.trim()) {
+    return err('--message is required. Example: crew hint set --message "You are worker-1 in project-x."');
+  }
+  const cadence = params.cadence != null ? Math.max(1, Math.floor(params.cadence)) : 3;
+  if (params.cadence != null && cadence !== params.cadence) {
+    return err(`--cadence must be a positive integer (got ${params.cadence})`);
+  }
 
   const target = resolveHintTarget(params);
   if ('error' in target) return err(target.error);
 
-  const hint = setHint(target.agentName, target.roomId, target.agent.tmux_target ?? target.pane ?? undefined);
+  const hint = setHint(target.agentName, target.roomId, params.message.trim(), {
+    pane: target.agent.tmux_target ?? target.pane ?? undefined,
+    cadence,
+  });
 
   return ok({
     ok: true,
@@ -92,7 +105,9 @@ export async function handleHintSet(params: {
       pane_bootstrap: hint.pane_bootstrap,
       room_id: hint.room_id,
       room_name: target.roomName,
-      message: `Hint set for ${target.agentName} in ${target.roomName}. Will inject on every 3rd user turn after first prompt.`,
+      message: hint.message,
+      cadence: hint.cadence,
+      status: `Hint set for ${target.agentName} in ${target.roomName}. Will inject your message every ${cadence} turn(s).`,
     },
   });
 }
@@ -149,7 +164,9 @@ export async function handleHintLookup(params: {
     hint: {
       agent_name: hint.agent_name,
       turn_count: hint.turn_count,
-      next_reminder_at: 3 - (hint.turn_count % 3),
+      message: hint.message,
+      cadence: hint.cadence,
+      next_reminder_at: hint.cadence - (hint.turn_count % hint.cadence),
     },
   });
 }

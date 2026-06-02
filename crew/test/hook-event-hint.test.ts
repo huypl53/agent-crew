@@ -2,10 +2,10 @@
  * Tests for hook-event hint reminder emission via formatter and hint CLI.
  *
  * The crew plugin's `crew hook-event` runs on UserPromptSubmit. When a hint
- * is registered and the cadence counter hits a multiple of 3, the handler
- * returns `{ ok: true, hint: { agent_name, message } }` and the formatter
- * emits the reminder text to stdout. Claude Code injects that stdout into
- * the conversation as context.
+ * is registered and the cadence counter hits a multiple of the configured
+ * cadence (default 3), the handler returns `{ ok: true, hint: { agent_name,
+ * message } }` and the formatter emits the user-defined message to stdout.
+ * Claude Code injects that stdout into the conversation as context.
  *
  * Cadence logic is covered in state.test.ts. These tests verify the
  * formatter contract, hint CLI room scoping, and read-only lookup.
@@ -23,12 +23,11 @@ function parseResult(
 }
 
 describe('hook-event formatter (hint reminder emission)', () => {
-  test('emits reminder message when hint is due', () => {
-    const message =
-      '[crew] Registered as agent "alice". Run `crew hint unset` from this pane to clear.';
+  test('passes through user message verbatim', () => {
+    const message = 'You are worker-1 in project-x. Check inbox before responding.';
     const out = formatResult('hook-event', {
       ok: true,
-      hint: { agent_name: 'alice', message },
+      hint: { agent_name: 'worker-1', message },
     });
     expect(out).toBe(message);
   });
@@ -45,18 +44,6 @@ describe('hook-event formatter (hint reminder emission)', () => {
     });
     expect(out).toBe('');
   });
-
-  test('sanitizes control characters in agent name', () => {
-    const message =
-      '[crew] Registered as agent "bad\\nagent". Run `crew hint unset` from this pane to clear.';
-    const out = formatResult('hook-event', {
-      ok: true,
-      hint: { agent_name: 'bad\nagent', message },
-    });
-    // The message still contains the raw name; sanitization happens in hook-event.ts
-    // before constructing the message. This test verifies the formatter passes it through.
-    expect(out).toBe(message);
-  });
 });
 
 describe('hint command room scoping', () => {
@@ -72,13 +59,48 @@ describe('hint command room scoping', () => {
     delete process.env.TMUX_PANE;
   });
 
+  test('handleHintSet errors when --message is missing', async () => {
+    const result = await handleHintSet({ agent: 'lead-1', room: 'company' });
+    const data = parseResult(result);
+
+    expect(result.isError).toBe(true);
+    expect(data.error).toContain('--message is required');
+  });
+
+  test('handleHintSet accepts custom message and cadence', async () => {
+    const company = getOrCreateRoom('/test/company', 'company');
+    addAgent('lead-1', 'leader', company.id, '%210');
+    process.env.TMUX_PANE = '%210';
+
+    const result = await handleHintSet({ message: 'You are lead-1 in company.', cadence: 1 });
+    const data = parseResult(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(data.hint.agent_name).toBe('lead-1');
+    expect(data.hint.cadence).toBe(1);
+    expect(data.hint.message).toBe('You are lead-1 in company.');
+    expect(data.hint.status).toContain('every 1 turn');
+  });
+
+  test('handleHintSet rejects invalid cadence', async () => {
+    const company = getOrCreateRoom('/test/company', 'company');
+    addAgent('lead-1', 'leader', company.id, '%211');
+    process.env.TMUX_PANE = '%211';
+
+    const result = await handleHintSet({ message: 'Test', cadence: 0 });
+    const data = parseResult(result);
+
+    expect(result.isError).toBe(true);
+    expect(data.error).toContain('--cadence must be a positive integer');
+  });
+
   test('handleHintSet resolves the agent inside the requested room', async () => {
     const company = getOrCreateRoom('/test/company', 'company');
     const frontend = getOrCreateRoom('/test/frontend', 'frontend');
     addAgent('lead-1', 'leader', company.id, '%201');
     addAgent('lead-1', 'leader', frontend.id, '%202');
 
-    const result = await handleHintSet({ agent: 'lead-1', room: 'company' });
+    const result = await handleHintSet({ agent: 'lead-1', room: 'company', message: 'You are lead in company.' });
     const data = parseResult(result);
 
     expect(result.isError).toBeUndefined();
@@ -93,7 +115,7 @@ describe('hint command room scoping', () => {
     addAgent('lead-1', 'leader', company.id, '%203');
     process.env.TMUX_PANE = '%203';
 
-    const result = await handleHintSet({});
+    const result = await handleHintSet({ message: 'Auto-detected agent.' });
     const data = parseResult(result);
 
     expect(result.isError).toBeUndefined();
@@ -108,7 +130,7 @@ describe('hint command room scoping', () => {
     addAgent('lead-1', 'leader', company.id, '%204');
     process.env.TMUX_PANE = '%204';
 
-    const setResult = await handleHintSet({});
+    const setResult = await handleHintSet({ message: 'Test message' });
     expect(setResult.isError).toBeUndefined();
     expect(getHint('%204', null)?.agent_name).toBe('lead-1');
 
@@ -121,7 +143,7 @@ describe('hint command room scoping', () => {
   });
 
   test('handleHintSet errors clearly when no current agent can be inferred', async () => {
-    const result = await handleHintSet({});
+    const result = await handleHintSet({ message: 'Test' });
     const data = parseResult(result);
 
     expect(result.isError).toBe(true);
@@ -129,7 +151,7 @@ describe('hint command room scoping', () => {
   });
 
   test('handleHintSet errors when room not found', async () => {
-    const result = await handleHintSet({ agent: 'lead-1', room: 'nonexistent' });
+    const result = await handleHintSet({ agent: 'lead-1', room: 'nonexistent', message: 'Test' });
     const data = parseResult(result);
 
     expect(result.isError).toBe(true);
@@ -140,7 +162,7 @@ describe('hint command room scoping', () => {
     const company = getOrCreateRoom('/test/company', 'company');
     // No agent registered in company room
 
-    const result = await handleHintSet({ agent: 'ghost', room: 'company' });
+    const result = await handleHintSet({ agent: 'ghost', room: 'company', message: 'Test' });
     const data = parseResult(result);
 
     expect(result.isError).toBe(true);
@@ -166,7 +188,7 @@ describe('hint lookup (read-only)', () => {
     addAgent('worker-1', 'worker', room.id, '%300');
     process.env.TMUX_PANE = '%300';
 
-    await handleHintSet({});
+    await handleHintSet({ message: 'You are worker-1.' });
 
     // Lookup is read-only — turn_count stays at 0
     const result = await handleHintLookup({ pane: '%300' });
@@ -176,6 +198,8 @@ describe('hint lookup (read-only)', () => {
     expect(data.hint.agent_name).toBe('worker-1');
     expect(data.hint.turn_count).toBe(0);
     expect(data.hint.next_reminder_at).toBe(3);
+    expect(data.hint.message).toBe('You are worker-1.');
+    expect(data.hint.cadence).toBe(3);
 
     // Verify turn_count was NOT incremented
     const hintAfter = getHint('%300', null);

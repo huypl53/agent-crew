@@ -371,6 +371,8 @@ export function initDb(path?: string): void {
       session_id TEXT,
       room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
       turn_count INTEGER NOT NULL DEFAULT 0,
+      message TEXT NOT NULL DEFAULT '',
+      cadence INTEGER NOT NULL DEFAULT 3,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       CHECK (pane_bootstrap IS NOT NULL OR session_id IS NOT NULL)
@@ -383,6 +385,17 @@ export function initDb(path?: string): void {
   _db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_hints_pane ON agent_hints(pane_bootstrap, room_id) WHERE pane_bootstrap IS NOT NULL');
   _db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_hints_session ON agent_hints(session_id, room_id) WHERE session_id IS NOT NULL');
   _db.exec('CREATE INDEX IF NOT EXISTS idx_agent_hints_agent_room ON agent_hints(agent_name, room_id)');
+
+  // Additive column migrations for agent_hints (custom message + cadence)
+  const hintCols = _db.query('PRAGMA table_info(agent_hints)').all() as Array<{
+    name: string;
+  }>;
+  if (!hintCols.some((c) => c.name === 'message')) {
+    _db.exec("ALTER TABLE agent_hints ADD COLUMN message TEXT NOT NULL DEFAULT ''");
+  }
+  if (!hintCols.some((c) => c.name === 'cadence')) {
+    _db.exec('ALTER TABLE agent_hints ADD COLUMN cadence INTEGER NOT NULL DEFAULT 3');
+  }
 
   const scopes = ['agents', 'messages', 'tasks', 'templates', 'room-templates', 'hook-events', 'party', 'hints'];
   for (const scope of scopes) {

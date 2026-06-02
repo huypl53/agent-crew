@@ -41,6 +41,7 @@ Commands:
   polling-status                                           Show sweep pause/busy control state
   set-polling-busy --mode <auto|manual_busy|manual_free> Set busy mode behavior
   hint       set|unset|lookup                              Manage registered-agent hint (auto-detects current agent)
+             set requires --message, optional --cadence N (default 3)
              lookup is read-only; use hook-event for cadence ticking
   wait-idle  --target <pane> [--timeout <ms>]             Wait until pane is idle (stable content)
              [--stable-count N] [--idle-seconds N]        exit 0 = idle, exit 2 = timed out
@@ -146,6 +147,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     `polling busy_mode=${d.busy_mode} paused=${d.paused}`,
   hint: (d) => {
     if (d.error) return `Error: ${d.error}`;
+    if (d.hint?.status) return d.hint.status;
     if (d.hint?.message) return d.hint.message;
     if (d.message) return d.message;
     if (d.hint?.agent_name) return `Registered agent: ${d.hint.agent_name}`;
