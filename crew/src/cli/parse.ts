@@ -13,6 +13,11 @@ const BOOLEAN_FLAGS = new Set([
   'headless',
 ]);
 
+/** Short flag aliases: -c → cadence, etc. */
+const SHORT_FLAGS: Record<string, string> = {
+  c: 'cadence',
+};
+
 export function parseArgs(argv: string[]): ParsedArgs {
   if (argv.length === 0) return { command: 'help', positional: [], flags: {} };
 
@@ -28,7 +33,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
       if (BOOLEAN_FLAGS.has(key)) {
         flags[key] = true;
         i++;
-      } else if (i + 1 < argv.length && !argv[i + 1].startsWith('--')) {
+      } else if (i + 1 < argv.length && !argv[i + 1].startsWith('-')) {
+        flags[key] = argv[i + 1];
+        i += 2;
+      } else {
+        flags[key] = true;
+        i++;
+      }
+    } else if (arg.startsWith('-') && arg.length === 2 && SHORT_FLAGS[arg[1]]) {
+      const key = SHORT_FLAGS[arg[1]];
+      if (i + 1 < argv.length && !argv[i + 1].startsWith('-')) {
         flags[key] = argv[i + 1];
         i += 2;
       } else {

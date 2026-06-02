@@ -59,12 +59,12 @@ describe('hint command room scoping', () => {
     delete process.env.TMUX_PANE;
   });
 
-  test('handleHintSet errors when --message is missing', async () => {
+  test('handleHintSet errors when message is missing', async () => {
     const result = await handleHintSet({ agent: 'lead-1', room: 'company' });
     const data = parseResult(result);
 
     expect(result.isError).toBe(true);
-    expect(data.error).toContain('--message is required');
+    expect(data.error).toContain('Message is required');
   });
 
   test('handleHintSet accepts custom message and cadence', async () => {
@@ -91,7 +91,7 @@ describe('hint command room scoping', () => {
     const data = parseResult(result);
 
     expect(result.isError).toBe(true);
-    expect(data.error).toContain('--cadence must be a positive integer');
+    expect(data.error).toContain('-c/--cadence must be a positive integer');
   });
 
   test('handleHintSet resolves the agent inside the requested room', async () => {

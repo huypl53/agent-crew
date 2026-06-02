@@ -190,7 +190,7 @@ crew <command>
 | `party end` | `crew party end --room crew --name lead-01` | `{"ended":true,"rounds_completed":2}` |
 | `party skip` | `crew party skip --room crew --worker wk-01 --name lead-01` | `{"skipped":"wk-01","pending":[...]}` |
 | `party status` | `crew party status --room crew` | `{"active":true,"round":1,"topic":"...","responded":[...],"pending":[...]}` |
-| `hint set` | `crew hint set --message "You are builder-1 in project-x." --cadence 3` | `Hint set for builder-1 in crew. Will inject your message every 3 turn(s).` |
+| `hint set` | `crew hint set "You are builder-1 in project-x." -c 3` | `Hint set for builder-1 in crew. Will inject your message every 3 turn(s).` |
 | `hint unset` | `crew hint unset --agent builder-1 --room crew` | `Hint removed for builder-1 in crew` |
 | `hint lookup` | `crew hint lookup --pane %42` | `agent_name: builder-1, cadence: 3, next_reminder_at: 2` |
 | `serve` | `crew serve --port 3456` | `Browser dashboard at http://127.0.0.1:3456` |
@@ -337,13 +337,13 @@ Custom context reminders injected into the agent's conversation on a configurabl
 
 ```bash
 # Set a hint with a custom message (required) and cadence (default: every 3 turns)
-crew hint set --message "You are builder-1 in project-x. Check inbox before responding." --cadence 1
+crew hint set "You are builder-1 in project-x. Check inbox before responding." -c 1
 
 # Set with auto-detection from current tmux pane
-crew hint set --message "Remember: follow the coding standards in /docs/style.md"
+crew hint set "Remember: follow the coding standards in /docs/style.md"
 
 # Set for a specific agent/room explicitly
-crew hint set --agent builder-1 --room myproject --message "You own the auth module. Only touch files in src/auth/."
+crew hint set --agent builder-1 --room myproject "You own the auth module. Only touch files in src/auth/."
 
 # Look up current hint state (read-only, does not advance cadence)
 crew hint lookup --pane %42
@@ -352,9 +352,9 @@ crew hint lookup --pane %42
 crew hint unset --agent builder-1 --room myproject
 ```
 
-**`--message`** (required) — the text injected into the conversation. Use it to provide role context, project constraints, or task-specific reminders.
+The message is a positional argument after `set` — no flag needed. Use quotes for multi-word messages.
 
-**`--cadence N`** (default 3) — how often the hint fires. `--cadence 1` fires every turn, `--cadence 5` fires on the 5th, 10th, 15th, etc.
+**`-c N`** (default 3) — how often the hint fires. `-c 1` fires every turn, `-c 5` fires on the 5th, 10th, 15th, etc.
 
 **Identity precedence:** The hook handler looks up hints by `session_id` first, falling back to `TMUX_PANE` bootstrap. When Claude Code first emits a `session_id`, the pane-bound hint is migrated to the session — survives tmux reattach, won't leak to a new session on the same pane.
 

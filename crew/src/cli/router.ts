@@ -196,7 +196,7 @@ export const COMMANDS: Record<
       name: f.name,
       session: f.session,
       pane: f.pane,
-      message: f.message,
+      message: p.slice(1).join(' ') || undefined,
       cadence: f.cadence != null ? parseInt(String(f.cadence), 10) : undefined,
     }),
   },

@@ -71,7 +71,7 @@ function resolveHintTarget(params: { agent?: string; room?: string; name?: strin
 
 /**
  * Set a registered-agent hint for an agent.
- * Usage: crew hint set --message "..." [--cadence N] [--agent <name> --room <room>]
+ * Usage: crew hint set "message text" [-c N] [--agent <name> --room <room>]
  */
 export async function handleHintSet(params: {
   agent?: string;
@@ -83,11 +83,11 @@ export async function handleHintSet(params: {
   initDb();
 
   if (!params.message?.trim()) {
-    return err('--message is required. Example: crew hint set --message "You are worker-1 in project-x."');
+    return err('Message is required. Example: crew hint set "You are worker-1 in project-x."');
   }
   const cadence = params.cadence != null ? Math.max(1, Math.floor(params.cadence)) : 3;
   if (params.cadence != null && cadence !== params.cadence) {
-    return err(`--cadence must be a positive integer (got ${params.cadence})`);
+    return err(`-c/--cadence must be a positive integer (got ${params.cadence})`);
   }
 
   const target = resolveHintTarget(params);

@@ -41,7 +41,7 @@ Commands:
   polling-status                                           Show sweep pause/busy control state
   set-polling-busy --mode <auto|manual_busy|manual_free> Set busy mode behavior
   hint       set|unset|lookup                              Manage registered-agent hint (auto-detects current agent)
-             set requires --message, optional --cadence N (default 3)
+             set "your message" [-c N] (default cadence: 3)
              lookup is read-only; use hook-event for cadence ticking
   wait-idle  --target <pane> [--timeout <ms>]             Wait until pane is idle (stable content)
              [--stable-count N] [--idle-seconds N]        exit 0 = idle, exit 2 = timed out
