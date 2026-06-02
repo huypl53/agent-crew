@@ -1675,18 +1675,21 @@ export function unsetHint(agentName: string, roomId: number): boolean {
  * Get hint by pane (bootstrap) or session_id (canonical).
  * Returns null if no hint exists.
  */
-export function getHint(pane: string, sessionId: string | null): HintRecord | null {
+export function getHint(pane: string | null, sessionId: string | null, roomId?: number): HintRecord | null {
   const db = getDb();
+  const roomFilter = roomId ? ' AND room_id = ?' : '';
+  const roomArgs: (string | number)[] = roomId ? [roomId] : [];
   let row: Record<string, unknown> | null = null;
 
   if (sessionId) {
-    // Try session_id first (canonical)
-    row = db.query('SELECT * FROM agent_hints WHERE session_id = ?').get(sessionId) as Record<string, unknown> | null;
-  }
-
-  if (!row) {
-    // Fallback to pane bootstrap until canonicalization succeeds
-    row = db.query('SELECT * FROM agent_hints WHERE pane_bootstrap = ?').get(pane) as Record<string, unknown> | null;
+    // When session is provided, match only by session_id — don't fall through
+    // to pane. This ensures getHint(pane, 'old-session') returns null after
+    // the session is rotated, even though pane_bootstrap is still populated.
+    row = db.query(`SELECT * FROM agent_hints WHERE session_id = ?${roomFilter}`).get(sessionId, ...roomArgs) as Record<string, unknown> | null;
+  } else if (pane) {
+    // No session — look up by pane_bootstrap only.
+    // Works after canonicalization since we keep pane_bootstrap populated.
+    row = db.query(`SELECT * FROM agent_hints WHERE pane_bootstrap = ?${roomFilter}`).get(pane, ...roomArgs) as Record<string, unknown> | null;
   }
 
   if (!row) return null;
@@ -1697,20 +1700,24 @@ export function getHint(pane: string, sessionId: string | null): HintRecord | nu
  * Increment turn count and return whether to show hint (every 3rd turn).
  * Atomically increments the counter.
  */
-export function tickHintCadence(pane: string, sessionId: string | null): { shouldShow: boolean; hint: HintRecord | null } {
+export function tickHintCadence(pane: string, sessionId: string | null, roomId?: number): { shouldShow: boolean; hint: HintRecord | null } {
   const db = getDb();
   const ts = now();
+
+  // Scope by room_id when available to prevent multi-room cross-contamination.
+  const roomFilter = roomId ? ' AND room_id = ?' : '';
+  const roomArgs: (string | number)[] = roomId ? [roomId] : [];
 
   if (sessionId) {
     const row = db.query(
       `UPDATE agent_hints
        SET turn_count = turn_count + 1, updated_at = ?
        WHERE id = COALESCE(
-         (SELECT id FROM agent_hints WHERE session_id = ?),
-         (SELECT id FROM agent_hints WHERE pane_bootstrap = ?)
+         (SELECT id FROM agent_hints WHERE session_id = ?${roomFilter}),
+         (SELECT id FROM agent_hints WHERE pane_bootstrap = ?${roomFilter})
        )
        RETURNING *`
-    ).get(ts, sessionId, pane) as Record<string, unknown> | null;
+    ).get(ts, sessionId, ...roomArgs, pane, ...roomArgs) as Record<string, unknown> | null;
     if (!row) return { shouldShow: false, hint: null };
 
     const hint = rowToHint(row);
@@ -1721,9 +1728,9 @@ export function tickHintCadence(pane: string, sessionId: string | null): { shoul
   const row = db.query(
     `UPDATE agent_hints
      SET turn_count = turn_count + 1, updated_at = ?
-     WHERE pane_bootstrap = ?
+     WHERE pane_bootstrap = ?${roomFilter}
      RETURNING *`
-  ).get(ts, pane) as Record<string, unknown> | null;
+  ).get(ts, pane, ...roomArgs) as Record<string, unknown> | null;
   if (!row) return { shouldShow: false, hint: null };
 
   const hint = rowToHint(row);
@@ -1746,15 +1753,15 @@ export function canonicalizeHintIdentity(agentName: string, pane: string, sessio
   if (!agent || agent.name !== agentName) return;
   const roomId = agent.room_id;
 
-  // Idempotent: this session is already canonicalized. Clear pane_bootstrap
-  // (in case setHint was re-run) and bail.
+  // Idempotent: this session is already canonicalized. Ensure pane_bootstrap
+  // is preserved (in case setHint was re-run) and bail.
   const existing = db.query(
     'SELECT id FROM agent_hints WHERE session_id = ? AND room_id = ?',
   ).get(sessionId, roomId) as { id: number } | null;
   if (existing) {
     db.run(
-      'UPDATE agent_hints SET pane_bootstrap = NULL, updated_at = ? WHERE id = ?',
-      [ts, existing.id],
+      'UPDATE agent_hints SET pane_bootstrap = COALESCE(pane_bootstrap, ?), updated_at = ? WHERE id = ?',
+      [pane, ts, existing.id],
     );
     bumpChangeLog('hints');
     return;
@@ -1771,10 +1778,10 @@ export function canonicalizeHintIdentity(agentName: string, pane: string, sessio
   ).get(agentName, roomId, pane) as { id: number } | null;
   if (!prior) return;
 
-  // Rebind to new session and clear pane_bootstrap in one stroke.
-  // Preserve turn_count so cadence stays continuous across Claude restarts.
+  // Rebind to new session. Keep pane_bootstrap so getHint(pane, null) still works
+  // after canonicalization (BUG-3 fix). Preserve turn_count across Claude restarts.
   db.run(
-    'UPDATE agent_hints SET session_id = ?, pane_bootstrap = NULL, updated_at = ? WHERE id = ?',
+    'UPDATE agent_hints SET session_id = ?, updated_at = ? WHERE id = ?',
     [sessionId, ts, prior.id],
   );
   bumpChangeLog('hints');

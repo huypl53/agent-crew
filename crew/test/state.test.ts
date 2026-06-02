@@ -943,7 +943,8 @@ describe('state module', () => {
       const hintBySession = getHint('%103', 'sess-123');
       expect(hintBySession).toBeDefined();
       expect(hintBySession!.session_id).toBe('sess-123');
-      expect(hintBySession!.pane_bootstrap).toBeNull();
+      // pane_bootstrap is preserved after canonicalization so getHint(pane, null) still works
+      expect(hintBySession!.pane_bootstrap).toBe('%103');
     });
 
     test('canonicalizeHintIdentity is idempotent', () => {
@@ -1085,15 +1086,20 @@ describe('state module', () => {
       expect(hint).toBeNull();
     });
 
-    test('getHint falls back to pane bootstrap when session row is missing', () => {
+    test('getHint with wrong session returns null (no pane cross-fallback)', () => {
       const room = mkRoom('test-room');
       addAgent('test-agent', 'worker', room.id, '%112');
       setHint('test-agent', room.id, '%112');
 
+      // getHint(pane, sessionId) is strict: only matches by session_id when provided.
+      // No cross-fallback to pane — that's tickHintCadence's job via COALESCE.
       const hint = getHint('%112', 'sess-missing');
-      expect(hint).toBeDefined();
-      expect(hint!.agent_name).toBe('test-agent');
-      expect(hint!.session_id).toBeNull();
+      expect(hint).toBeNull();
+
+      // Pane-only lookup works
+      const hintByPane = getHint('%112', null);
+      expect(hintByPane).toBeDefined();
+      expect(hintByPane!.agent_name).toBe('test-agent');
     });
 
     test('tickHintCadence falls back to pane bootstrap when session row is missing', () => {
@@ -1148,6 +1154,77 @@ describe('state module', () => {
       const hookEventCount = db.query('SELECT COUNT(*) as c FROM hook_events').get() as { c: number };
       expect(hintCount.c).toBe(0);
       expect(hookEventCount.c).toBe(0);
+    });
+
+    // ===== Regression tests for e2e-discovered bugs =====
+
+    test('BUG-1: setHint works for same agent with same pane across rooms', () => {
+      const roomA = mkRoom('room-a');
+      const roomB = mkRoom('room-b');
+      addAgent('multi-agent', 'worker', roomA.id, '%200');
+      addAgent('multi-agent', 'worker', roomB.id, '%200');
+
+      // Both setHint calls use the same pane — should not crash with UNIQUE constraint
+      const hintA = setHint('multi-agent', roomA.id, '%200');
+      expect(hintA.agent_name).toBe('multi-agent');
+      expect(hintA.room_id).toBe(roomA.id);
+
+      const hintB = setHint('multi-agent', roomB.id, '%200');
+      expect(hintB.agent_name).toBe('multi-agent');
+      expect(hintB.room_id).toBe(roomB.id);
+    });
+
+    test('BUG-2: canonicalizeHintIdentity works across rooms with shared pane', () => {
+      const roomA = mkRoom('room-a2');
+      const roomB = mkRoom('room-b2');
+      addAgent('multi-agent2', 'worker', roomA.id, '%201');
+      addAgent('multi-agent2', 'worker', roomB.id, '%201');
+
+      setHint('multi-agent2', roomA.id, '%201');
+      setHint('multi-agent2', roomB.id, '%201');
+
+      // Canonicalize both — should not crash with UNIQUE constraint on session_id
+      canonicalizeHintIdentity('multi-agent2', '%201', 'sess-shared-1');
+      canonicalizeHintIdentity('multi-agent2', '%201', 'sess-shared-2');
+
+      // Only one agent resolved via getAgentByPane — the other canonicalize returns
+      // early because getAgentByPane returns one agent. But neither should crash.
+    });
+
+    test('BUG-3: getHint(pane, null) works after canonicalization', () => {
+      const room = mkRoom('room-c3');
+      addAgent('pane-agent', 'worker', room.id, '%202');
+      setHint('pane-agent', room.id, '%202');
+
+      canonicalizeHintIdentity('pane-agent', '%202', 'sess-after');
+
+      // pane_bootstrap is preserved, so pane-only lookup still works
+      const hint = getHint('%202', null);
+      expect(hint).toBeDefined();
+      expect(hint!.agent_name).toBe('pane-agent');
+      expect(hint!.session_id).toBe('sess-after');
+      expect(hint!.pane_bootstrap).toBe('%202');
+    });
+
+    test('multi-room: tickHintCadence with roomId scopes correctly', () => {
+      const roomA = mkRoom('room-ta');
+      const roomB = mkRoom('room-tb');
+      addAgent('tick-agent', 'worker', roomA.id, '%203');
+      addAgent('tick-agent', 'worker', roomB.id, '%204');
+
+      setHint('tick-agent', roomA.id, '%203');
+      setHint('tick-agent', roomB.id, '%204');
+
+      // Tick room A 3 times
+      tickHintCadence('%203', null, roomA.id);
+      tickHintCadence('%203', null, roomA.id);
+      const rA = tickHintCadence('%203', null, roomA.id);
+      expect(rA.shouldShow).toBe(true);
+      expect(rA.hint?.room_id).toBe(roomA.id);
+
+      // Room B should still be at turn 0
+      const hintB = getHint('%204', null);
+      expect(hintB?.turn_count).toBe(0);
     });
   });
 });

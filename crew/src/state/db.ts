@@ -376,8 +376,12 @@ export function initDb(path?: string): void {
       CHECK (pane_bootstrap IS NOT NULL OR session_id IS NOT NULL)
     )
   `);
-  _db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_hints_pane ON agent_hints(pane_bootstrap) WHERE pane_bootstrap IS NOT NULL');
-  _db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_hints_session ON agent_hints(session_id) WHERE session_id IS NOT NULL');
+  // Unique per-room: same pane/session can exist across rooms for multi-room agents.
+  // Migration: drop old single-column unique indexes if they exist.
+  _db.exec('DROP INDEX IF EXISTS idx_agent_hints_pane');
+  _db.exec('DROP INDEX IF EXISTS idx_agent_hints_session');
+  _db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_hints_pane ON agent_hints(pane_bootstrap, room_id) WHERE pane_bootstrap IS NOT NULL');
+  _db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_hints_session ON agent_hints(session_id, room_id) WHERE session_id IS NOT NULL');
   _db.exec('CREATE INDEX IF NOT EXISTS idx_agent_hints_agent_room ON agent_hints(agent_name, room_id)');
 
   const scopes = ['agents', 'messages', 'tasks', 'templates', 'room-templates', 'hook-events', 'party', 'hints'];

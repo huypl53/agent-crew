@@ -55,7 +55,7 @@ export async function handleHookEvent(_params?: unknown): Promise<ToolResult> {
   // Claude Code, providing gentle agent-identity reminders without polling.
   if (eventType === 'UserPromptSubmit') {
     try {
-      const { shouldShow, hint } = tickHintCadence(pane, sessionId);
+      const { shouldShow, hint } = tickHintCadence(pane, sessionId, agent.room_id);
       if (shouldShow && hint) {
         const safeName = sanitizeAgentName(hint.agent_name);
         const reminder = `[crew] Registered as agent "${safeName}". Run \`crew hint unset\` from this pane to clear.`;
