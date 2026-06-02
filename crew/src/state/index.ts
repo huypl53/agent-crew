@@ -326,11 +326,17 @@ export function removeAgent(name: string, room: string): boolean {
   const roomObj = getRoom(room);
   if (!roomObj) return false;
 
+  const hintChanges = db.run(
+    'DELETE FROM agent_hints WHERE agent_name = ? AND room_id = ?',
+    [name, roomObj.id],
+  ).changes;
   const changes = db.run('DELETE FROM agents WHERE room_id = ? AND name = ?', [
     roomObj.id,
     name,
   ]).changes;
   if (changes === 0) return false;
+
+  if (hintChanges > 0) bumpChangeLog('hints');
 
   const count = (
     db
@@ -358,7 +364,11 @@ export function removeAgentFully(name: string): void {
       .query('SELECT DISTINCT room_id FROM agents WHERE name = ?')
       .all(name) as { room_id: number }[]
   ).map((r) => r.room_id);
+  const hintChanges = db.run('DELETE FROM agent_hints WHERE agent_name = ?', [
+    name,
+  ]).changes;
   db.run('DELETE FROM agents WHERE name = ?', [name]);
+  if (hintChanges > 0) bumpChangeLog('hints');
   for (const roomId of roomIds) {
     const agentCount = (
       db
@@ -380,12 +390,18 @@ export function removeAgentFully(name: string): void {
 /** Remove agent by database ID (for precise deletion) */
 export function removeAgentById(id: number): void {
   const db = getDb();
-  const row = db.query('SELECT room_id FROM agents WHERE id = ?').get(id) as {
+  const row = db.query('SELECT room_id, name FROM agents WHERE id = ?').get(id) as {
     room_id: number;
+    name: string;
   } | null;
   if (!row) return;
 
+  const hintChanges = db.run(
+    'DELETE FROM agent_hints WHERE agent_name = ? AND room_id = ?',
+    [row.name, row.room_id],
+  ).changes;
   db.run('DELETE FROM agents WHERE id = ?', [id]);
+  if (hintChanges > 0) bumpChangeLog('hints');
 
   const count = (
     db
@@ -1605,11 +1621,193 @@ export function getActivePartyRooms(): Array<{
   }>;
 }
 
+// --- Registered-agent hint operations ---
+
+export interface HintRecord {
+  id: number;
+  agent_name: string;
+  pane_bootstrap: string | null;
+  session_id: string | null;
+  room_id: number;
+  turn_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Set a hint for an agent. Creates a pane-bootstrap record that will later
+ * be migrated to a session-bound record when session_id is available.
+ */
+export function setHint(agentName: string, roomId: number, pane?: string): HintRecord {
+  const db = getDb();
+  const ts = now();
+  const agent = getAgentByRoomAndName(roomId, agentName);
+  if (!agent) {
+    throw new Error(`Agent not found: ${agentName} in room ${roomId}`);
+  }
+
+  // DELETE + INSERT as a single transaction so concurrent setHint calls
+  // cannot leave a window with no row.
+  const result = db.transaction(() => {
+    db.run('DELETE FROM agent_hints WHERE agent_name = ? AND room_id = ?', [agentName, roomId]);
+    const stmt = db.run(
+      'INSERT INTO agent_hints (agent_name, pane_bootstrap, session_id, room_id, turn_count, created_at, updated_at) VALUES (?, ?, NULL, ?, 0, ?, ?)',
+      [agentName, pane ?? agent.tmux_target ?? null, roomId, ts, ts]
+    );
+    return Number(stmt.lastInsertRowid);
+  })();
+  bumpChangeLog('hints');
+
+  return getHintById(result)!;
+}
+
+/**
+ * Remove hint for an agent in a room. Clears both pane-bootstrap and session-bound records.
+ */
+export function unsetHint(agentName: string, roomId: number): boolean {
+  const db = getDb();
+  const result = db.run('DELETE FROM agent_hints WHERE agent_name = ? AND room_id = ?', [agentName, roomId]);
+  if (result.changes > 0) bumpChangeLog('hints');
+  return result.changes > 0;
+}
+
+/**
+ * Get hint by pane (bootstrap) or session_id (canonical).
+ * Returns null if no hint exists.
+ */
+export function getHint(pane: string, sessionId: string | null): HintRecord | null {
+  const db = getDb();
+  let row: Record<string, unknown> | null = null;
+
+  if (sessionId) {
+    // Try session_id first (canonical)
+    row = db.query('SELECT * FROM agent_hints WHERE session_id = ?').get(sessionId) as Record<string, unknown> | null;
+  }
+
+  if (!row) {
+    // Fallback to pane bootstrap until canonicalization succeeds
+    row = db.query('SELECT * FROM agent_hints WHERE pane_bootstrap = ?').get(pane) as Record<string, unknown> | null;
+  }
+
+  if (!row) return null;
+  return rowToHint(row);
+}
+
+/**
+ * Increment turn count and return whether to show hint (every 3rd turn).
+ * Atomically increments the counter.
+ */
+export function tickHintCadence(pane: string, sessionId: string | null): { shouldShow: boolean; hint: HintRecord | null } {
+  const db = getDb();
+  const ts = now();
+
+  if (sessionId) {
+    const row = db.query(
+      `UPDATE agent_hints
+       SET turn_count = turn_count + 1, updated_at = ?
+       WHERE id = COALESCE(
+         (SELECT id FROM agent_hints WHERE session_id = ?),
+         (SELECT id FROM agent_hints WHERE pane_bootstrap = ?)
+       )
+       RETURNING *`
+    ).get(ts, sessionId, pane) as Record<string, unknown> | null;
+    if (!row) return { shouldShow: false, hint: null };
+
+    const hint = rowToHint(row);
+    const shouldShow = hint.turn_count % 3 === 0;
+    return { shouldShow, hint: shouldShow ? hint : null };
+  }
+
+  const row = db.query(
+    `UPDATE agent_hints
+     SET turn_count = turn_count + 1, updated_at = ?
+     WHERE pane_bootstrap = ?
+     RETURNING *`
+  ).get(ts, pane) as Record<string, unknown> | null;
+  if (!row) return { shouldShow: false, hint: null };
+
+  const hint = rowToHint(row);
+  const shouldShow = hint.turn_count % 3 === 0;
+  return { shouldShow, hint: shouldShow ? hint : null };
+}
+
+/**
+ * Canonicalize hint identity: migrate pane-bootstrap hint to session-bound.
+ * Called from hook-event when session_id is first available.
+ * Idempotent: safe to call multiple times for same session.
+ */
+export function canonicalizeHintIdentity(agentName: string, pane: string, sessionId: string): void {
+  const db = getDb();
+  const ts = now();
+
+  // Scope operations by the agent's current room so multi-room setups (same
+  // agent name registered in different rooms) don't cross-contaminate.
+  const agent = getAgentByPane(pane);
+  if (!agent || agent.name !== agentName) return;
+  const roomId = agent.room_id;
+
+  // Idempotent: this session is already canonicalized. Clear pane_bootstrap
+  // (in case setHint was re-run) and bail.
+  const existing = db.query(
+    'SELECT id FROM agent_hints WHERE session_id = ? AND room_id = ?',
+  ).get(sessionId, roomId) as { id: number } | null;
+  if (existing) {
+    db.run(
+      'UPDATE agent_hints SET pane_bootstrap = NULL, updated_at = ? WHERE id = ?',
+      [ts, existing.id],
+    );
+    bumpChangeLog('hints');
+    return;
+  }
+
+  // Find any prior row for (agent, room). Prefer a pane-bootstrap match so
+  // normal first-canonicalization migration wins; fall back to any stale
+  // session-bound row so Claude restart on the same pane re-binds the hint
+  // instead of orphaning it.
+  const prior = db.query(
+    `SELECT id FROM agent_hints
+     WHERE agent_name = ? AND room_id = ?
+     ORDER BY (pane_bootstrap = ?) DESC, updated_at DESC LIMIT 1`,
+  ).get(agentName, roomId, pane) as { id: number } | null;
+  if (!prior) return;
+
+  // Rebind to new session and clear pane_bootstrap in one stroke.
+  // Preserve turn_count so cadence stays continuous across Claude restarts.
+  db.run(
+    'UPDATE agent_hints SET session_id = ?, pane_bootstrap = NULL, updated_at = ? WHERE id = ?',
+    [sessionId, ts, prior.id],
+  );
+  bumpChangeLog('hints');
+}
+
+/**
+ * Get hint by database ID.
+ */
+function getHintById(id: number): HintRecord | null {
+  const db = getDb();
+  const row = db.query('SELECT * FROM agent_hints WHERE id = ?').get(id) as Record<string, unknown> | null;
+  if (!row) return null;
+  return rowToHint(row);
+}
+
+function rowToHint(row: Record<string, unknown>): HintRecord {
+  return {
+    id: row.id as number,
+    agent_name: row.agent_name as string,
+    pane_bootstrap: (row.pane_bootstrap as string | null) ?? null,
+    session_id: (row.session_id as string | null) ?? null,
+    room_id: row.room_id as number,
+    turn_count: row.turn_count as number,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+  };
+}
+
 // --- Test helpers ---
 
 export function clearState(): void {
   const db = getDb();
   db.exec(
-    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM tasks; DELETE FROM messages; DELETE FROM cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
+    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM party_responses; DELETE FROM hook_events; DELETE FROM agent_hints; DELETE FROM tasks; DELETE FROM messages; DELETE FROM cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
   );
 }

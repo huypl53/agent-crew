@@ -328,6 +328,25 @@ When `room` is provided, reads the full room conversation log (all members' mess
 | `worker` | Worker behavior — execute tasks, report status |
 | `party` | Party mode — round-gated multi-worker discussions |
 
+## Registered-Agent Hints
+
+Optional identity reminders injected into the conversation every 3rd UserPromptSubmit turn. Useful when an agent session loses track of which role/room it belongs to.
+
+```bash
+# Register a hint for the current tmux pane
+crew hint set --name builder-1 --room myproject
+
+# Look up the hint (called automatically by crew hook-event)
+crew hint lookup --session <claude-session-id>
+
+# Remove a hint
+crew hint unset --name builder-1 --room myproject
+```
+
+**Identity precedence:** The hook handler looks up hints by `session_id` first, falling back to `TMUX_PANE` bootstrap. When Claude Code first emits a `session_id`, the pane-bound hint is migrated to the session — survives tmux reattach, won't leak to a new session on the same pane.
+
+**Cadence:** Hint reminders emit on the 3rd, 6th, 9th, etc. UserPromptSubmit — quiet by default, unobtrusive when active.
+
 ## TUI Dashboard
 
 Read-only terminal observer built with React+Ink. Shows rooms, agents with roles and live status, message feed, task tracking, and cost analytics in a 3-panel layout.

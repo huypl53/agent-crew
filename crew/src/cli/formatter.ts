@@ -40,6 +40,8 @@ Commands:
   resume-polling                                           Resume sweep delivery and flush deferred queue
   polling-status                                           Show sweep pause/busy control state
   set-polling-busy --mode <auto|manual_busy|manual_free> Set busy mode behavior
+  hint       set|unset|lookup                              Manage registered-agent hint (auto-detects current agent)
+             lookup is read-only; use hook-event for cadence ticking
   wait-idle  --target <pane> [--timeout <ms>]             Wait until pane is idle (stable content)
              [--stable-count N] [--idle-seconds N]        exit 0 = idle, exit 2 = timed out
   serve      [--port N] [--host H] [--summary-interval N] Start browser dashboard server (default port 3456)
@@ -142,4 +144,17 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     `polling paused=${d.paused} mode=${d.busy_mode}${d.reason ? ` reason:${d.reason}` : ''}`,
   'set-polling-busy': (d) =>
     `polling busy_mode=${d.busy_mode} paused=${d.paused}`,
+  hint: (d) => {
+    if (d.error) return `Error: ${d.error}`;
+    if (d.hint?.message) return d.hint.message;
+    if (d.message) return d.message;
+    if (d.hint?.agent_name) return `Registered agent: ${d.hint.agent_name}`;
+    return '(no hint)';
+  },
+  'hook-event': (d) => {
+    // Hook stdout is injected into Claude Code conversations.
+    // Emit reminder text only when a hint is due; otherwise stay silent.
+    if (d.hint?.message) return d.hint.message;
+    return '';
+  },
 };

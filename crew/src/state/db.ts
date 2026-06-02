@@ -362,7 +362,25 @@ export function initDb(path?: string): void {
     'CREATE INDEX IF NOT EXISTS idx_party_responses_room_round ON party_responses(room_id, round)',
   );
 
-  const scopes = ['agents', 'messages', 'tasks', 'templates', 'room-templates', 'hook-events', 'party'];
+  // Registered-agent hint table (session-scoped, pane-bootstrap capable)
+  _db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_hints (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agent_name TEXT NOT NULL,
+      pane_bootstrap TEXT,
+      session_id TEXT,
+      room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+      turn_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK (pane_bootstrap IS NOT NULL OR session_id IS NOT NULL)
+    )
+  `);
+  _db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_hints_pane ON agent_hints(pane_bootstrap) WHERE pane_bootstrap IS NOT NULL');
+  _db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_hints_session ON agent_hints(session_id) WHERE session_id IS NOT NULL');
+  _db.exec('CREATE INDEX IF NOT EXISTS idx_agent_hints_agent_room ON agent_hints(agent_name, room_id)');
+
+  const scopes = ['agents', 'messages', 'tasks', 'templates', 'room-templates', 'hook-events', 'party', 'hints'];
   for (const scope of scopes) {
     _db.run(
       'INSERT OR IGNORE INTO change_log (scope, version, updated_at) VALUES (?, 0, datetime("now"))',

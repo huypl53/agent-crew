@@ -137,7 +137,10 @@ try {
   if (parsed.flags.json) {
     console.log(JSON.stringify(data, null, 2));
   } else {
-    console.log(formatResult(parsed.command, data));
+    const out = formatResult(parsed.command, data);
+    // Skip stdout emission for empty formatted output (e.g., silent hook events).
+    // This avoids injecting blank lines into Claude Code hook stdout.
+    if (out !== '') console.log(out);
   }
 } catch (e) {
   console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
