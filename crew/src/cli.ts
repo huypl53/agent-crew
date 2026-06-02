@@ -117,8 +117,9 @@ if (!cmd) {
   process.exit(1);
 }
 
-// Default room to current directory basename if not provided
-if (!parsed.flags.room) {
+// Default room to current directory basename if not provided.
+// Skip for hint commands — they auto-detect room from TMUX_PANE.
+if (!parsed.flags.room && parsed.command !== 'hint') {
   parsed.flags.room = basename(process.cwd());
 }
 
