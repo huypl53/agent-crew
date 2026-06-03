@@ -8,7 +8,7 @@
     {
       "name": "crew",
       "description": "Room-based coordination for AI coding agents via tmux",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "source": "./crew/"
     }
   ]
