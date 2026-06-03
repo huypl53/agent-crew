@@ -5,7 +5,6 @@ import {
   getAllRooms,
   getChangeVersions,
   getRecentHookEvents,
-  searchTasks,
 } from '../state/index.ts';
 import { capturePane } from '../tmux/index.ts';
 import { getPaneStatus } from '../shared/pane-status.ts';
@@ -13,7 +12,6 @@ import { getPaneStatus } from '../shared/pane-status.ts';
 const POLL_SCOPES = [
   'messages',
   'agents',
-  'tasks',
   'rooms',
   'templates',
   'room-templates',
@@ -103,15 +101,6 @@ async function broadcastChanges(): Promise<void> {
           type: 'agent-status',
           name: agent.name,
           status: 'unknown',
-        });
-      }
-    } else if (scope === 'tasks') {
-      const tasks = searchTasks({});
-      for (const task of tasks) {
-        broadcast({
-          type: 'task-update',
-          taskId: task.id,
-          status: task.status,
         });
       }
     } else if (scope === 'rooms') {

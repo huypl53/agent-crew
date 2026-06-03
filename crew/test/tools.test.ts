@@ -7,22 +7,18 @@ import {
   test,
 } from 'bun:test';
 import { config } from '../src/config.ts';
-import type { Task, TaskStatus } from '../src/shared/types.ts';
 import { closeDb, initDb } from '../src/state/db.ts';
 import {
   addAgent,
   clearState,
-  createTask,
   getOrCreateRoom,
   getRoom,
   getSweepControlState,
   setSweepBusyMode,
   setSweepPaused,
-  updateTaskStatus,
 } from '../src/state/index.ts';
 import { handleClearWorkerSession } from '../src/tools/clear-worker-session.ts';
 import { handleGetStatus } from '../src/tools/get-status.ts';
-import { handleGetTaskDetails } from '../src/tools/get-task-details.ts';
 import { handleInterruptWorker } from '../src/tools/interrupt-worker.ts';
 import { handleJoinRoom } from '../src/tools/join-room.ts';
 import { handleLeaveRoom } from '../src/tools/leave-room.ts';
@@ -37,10 +33,8 @@ import {
 import { handleReadMessages } from '../src/tools/read-messages.ts';
 import { handleReassignTask } from '../src/tools/reassign-task.ts';
 import { handleRefresh } from '../src/tools/refresh.ts';
-import { handleSearchTasks } from '../src/tools/search-tasks.ts';
 import { handleSendMessage } from '../src/tools/send-message.ts';
 import { handleSetRoomTopic } from '../src/tools/set-room-topic.ts';
-import { handleUpdateTask } from '../src/tools/update-task.ts';
 import {
   captureFromPane,
   cleanupAllTestSessions,
@@ -541,7 +535,7 @@ describe('MCP tools', () => {
       expect(typeof captured).toBe('string');
     }, 15000);
 
-    test('send_message with kind=task creates task record and returns task_id', async () => {
+    test('send_message with kind=task sends an assignment without task metadata', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -563,8 +557,8 @@ describe('MCP tools', () => {
         kind: 'task',
       });
       const data = JSON.parse(result.content[0]?.text);
-      expect(data.task_id).toBeDefined();
-      expect(data.task_id).toBeGreaterThan(0);
+      expect(data.message_id).toBeDefined();
+      expect(data.task_id).toBeUndefined();
     });
 
     test('send_message with kind=task requires to param', async () => {
@@ -655,111 +649,6 @@ describe('MCP tools', () => {
       expect(w3Data.messages.some((m: any) => m.text === 'Hello team')).toBe(
         true,
       );
-    });
-  });
-
-  describe('update_task', () => {
-    test('worker can update own task', async () => {
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'leader',
-        name: 'lead-1',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'worker',
-        name: 'builder-1',
-        tmux_target: testPaneB,
-      });
-
-      // Create a task via send_message
-      const sendResult = await handleSendMessage({
-        room: 'frontend',
-        text: 'Build login',
-        to: 'builder-1',
-        name: 'lead-1',
-        kind: 'task',
-      });
-      const taskId = JSON.parse(sendResult.content[0]!.text).task_id;
-
-      const result = await handleUpdateTask({
-        task_id: taskId,
-        status: 'active',
-        name: 'builder-1',
-      });
-      const data = JSON.parse(result.content[0]?.text);
-      expect(result.isError).toBeUndefined();
-      expect(data.updated).toBe(true);
-      expect(data.status).toBe('active');
-    });
-
-    test('worker cannot update another workers task', async () => {
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'leader',
-        name: 'lead-1',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'worker',
-        name: 'builder-1',
-        tmux_target: testPaneB,
-      });
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'worker',
-        name: 'builder-2',
-        tmux_target: testPaneA,
-      });
-
-      const sendResult = await handleSendMessage({
-        room: 'frontend',
-        text: 'Build login',
-        to: 'builder-1',
-        name: 'lead-1',
-        kind: 'task',
-      });
-      const taskId = JSON.parse(sendResult.content[0]!.text).task_id;
-
-      const result = await handleUpdateTask({
-        task_id: taskId,
-        status: 'active',
-        name: 'builder-2',
-      });
-      expect(result.isError).toBe(true);
-    });
-
-    test('non-worker is rejected', async () => {
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'leader',
-        name: 'lead-1',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'worker',
-        name: 'builder-1',
-        tmux_target: testPaneB,
-      });
-
-      const sendResult = await handleSendMessage({
-        room: 'frontend',
-        text: 'Build login',
-        to: 'builder-1',
-        name: 'lead-1',
-        kind: 'task',
-      });
-      const taskId = JSON.parse(sendResult.content[0]!.text).task_id;
-
-      const result = await handleUpdateTask({
-        task_id: taskId,
-        status: 'active',
-        name: 'lead-1',
-      });
-      expect(result.isError).toBe(true);
     });
   });
 
@@ -862,7 +751,7 @@ describe('MCP tools', () => {
   });
 
   describe('interrupt_worker', () => {
-    test('leader can interrupt worker with active task', async () => {
+    test('leader can interrupt worker with current assignment', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -876,20 +765,13 @@ describe('MCP tools', () => {
         tmux_target: testPaneB,
       });
 
-      // Create and activate a task
-      const sendResult = await handleSendMessage({
+      await handleSendMessage({
         room: 'frontend',
         text: 'Build login',
         to: 'builder-1',
         name: 'lead-1',
         kind: 'task',
         mode: 'pull',
-      });
-      const taskId = JSON.parse(sendResult.content[0]!.text).task_id;
-      await handleUpdateTask({
-        task_id: taskId,
-        status: 'active',
-        name: 'builder-1',
       });
 
       const result = await handleInterruptWorker({
@@ -900,7 +782,6 @@ describe('MCP tools', () => {
       expect(result.isError).toBeUndefined();
       const data = JSON.parse(result.content[0]?.text);
       expect(data.interrupted).toBe(true);
-      expect(data.task_id).toBe(taskId);
     });
 
     test('worker cannot interrupt', async () => {
@@ -925,7 +806,7 @@ describe('MCP tools', () => {
       expect(result.isError).toBe(true);
     });
 
-    test('errors when no active task', async () => {
+    test('can interrupt a worker even without persisted task state', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -944,7 +825,7 @@ describe('MCP tools', () => {
         room: 'frontend',
         name: 'lead-1',
       });
-      expect(result.isError).toBe(true);
+      expect(result.isError).toBeUndefined();
     });
   });
 
@@ -1067,7 +948,7 @@ describe('MCP tools', () => {
   });
 
   describe('reassign_task', () => {
-    test('leader can reassign active task', async () => {
+    test('leader can replace a current assignment', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -1081,18 +962,12 @@ describe('MCP tools', () => {
         tmux_target: testPaneB,
       });
 
-      const sendResult = await handleSendMessage({
+      await handleSendMessage({
         room: 'frontend',
         text: 'Build login',
         to: 'builder-1',
         name: 'lead-1',
         kind: 'task',
-      });
-      const taskId = JSON.parse(sendResult.content[0]!.text).task_id;
-      await handleUpdateTask({
-        task_id: taskId,
-        status: 'active',
-        name: 'builder-1',
       });
 
       const result = await handleReassignTask({
@@ -1104,11 +979,9 @@ describe('MCP tools', () => {
       expect(result.isError).toBeUndefined();
       const data = JSON.parse(result.content[0]?.text);
       expect(data.reassigned).toBe(true);
-      expect(data.old_task_id).toBe(taskId);
-      expect(data.new_task_id).toBeDefined();
     }, 15000);
 
-    test('leader can reassign queued task', async () => {
+    test('leader can replace an assignment without task ids', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -1122,20 +995,6 @@ describe('MCP tools', () => {
         tmux_target: testPaneB,
       });
 
-      const sendResult = await handleSendMessage({
-        room: 'frontend',
-        text: 'Build login',
-        to: 'builder-1',
-        name: 'lead-1',
-        kind: 'task',
-      });
-      const taskId = JSON.parse(sendResult.content[0]!.text).task_id;
-      await handleUpdateTask({
-        task_id: taskId,
-        status: 'queued',
-        name: 'builder-1',
-      });
-
       const result = await handleReassignTask({
         worker_name: 'builder-1',
         room: 'frontend',
@@ -1144,7 +1003,6 @@ describe('MCP tools', () => {
       });
       const data = JSON.parse(result.content[0]?.text);
       expect(data.reassigned).toBe(true);
-      expect(data.old_task_id).toBe(taskId);
     }, 15000);
 
     test('leader can reassign to idle worker', async () => {
@@ -1169,8 +1027,6 @@ describe('MCP tools', () => {
       });
       const data = JSON.parse(result.content[0]?.text);
       expect(data.reassigned).toBe(true);
-      expect(data.old_task_id).toBeUndefined();
-      expect(data.new_task_id).toBeDefined();
     });
 
     test('worker cannot reassign', async () => {
@@ -1197,144 +1053,4 @@ describe('MCP tools', () => {
     });
   });
 
-  describe('get_status with tasks', () => {
-    test('includes current and queued tasks in response', async () => {
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'leader',
-        name: 'lead-1',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'worker',
-        name: 'builder-1',
-        tmux_target: testPaneB,
-      });
-
-      // Create two tasks using state functions directly
-      const t1 = createTask('frontend', 'builder-1', 'lead-1', null, 'Task A');
-      const t2 = createTask('frontend', 'builder-1', 'lead-1', null, 'Task B');
-      updateTaskStatus(t1.id, 'active');
-      updateTaskStatus(t2.id, 'queued');
-
-      const result = await handleGetStatus({ agent_name: 'builder-1' });
-      const data = JSON.parse(result.content[0]?.text);
-      expect(data.current_task).toBeDefined();
-      expect(data.current_task.id).toBe(t1.id);
-      expect(data.current_task.status).toBe('active');
-      expect(data.queued_tasks).toBeDefined();
-      expect(data.queued_tasks.length).toBe(1);
-      expect(data.queued_tasks[0].id).toBe(t2.id);
-    });
-  });
-
-  describe('get_task_details', () => {
-    test('returns full task with context', async () => {
-      await handleJoinRoom({
-        room: 'test-room',
-        role: 'leader',
-        name: 'lead-01',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'test-room',
-        role: 'worker',
-        name: 'wk-01',
-        tmux_target: testPaneB,
-      });
-      const task = createTask(
-        'test-room',
-        'wk-01',
-        'lead-01',
-        null,
-        'detail test task',
-      );
-      updateTaskStatus(task.id, 'active');
-      updateTaskStatus(
-        task.id,
-        'completed',
-        undefined,
-        'Found auth issue in middleware',
-      );
-
-      const result = await handleGetTaskDetails({ task_id: task.id });
-      const data = JSON.parse(result.content[0]?.text);
-      expect(data.context).toContain('auth issue');
-    });
-
-    test('returns error for nonexistent task', async () => {
-      const result = await handleGetTaskDetails({ task_id: 99999 });
-      expect(result.isError).toBe(true);
-    });
-  });
-
-  describe('search_tasks', () => {
-    test('searches by keyword', async () => {
-      await handleJoinRoom({
-        room: 'test-room',
-        role: 'leader',
-        name: 'lead-01',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'test-room',
-        role: 'worker',
-        name: 'wk-01',
-        tmux_target: testPaneB,
-      });
-      const task = createTask(
-        'test-room',
-        'wk-01',
-        'lead-01',
-        null,
-        'search test auth fix',
-      );
-      updateTaskStatus(task.id, 'active');
-      updateTaskStatus(
-        task.id,
-        'completed',
-        undefined,
-        'JWT tokens expire too early',
-      );
-
-      const result = await handleSearchTasks({ keyword: 'JWT' });
-      const data = JSON.parse(result.content[0]?.text);
-      expect(data.length).toBeGreaterThan(0);
-    });
-
-    test('searches by room', async () => {
-      await handleJoinRoom({
-        room: 'test-room',
-        role: 'leader',
-        name: 'lead-search',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'test-room',
-        role: 'worker',
-        name: 'wk-search',
-        tmux_target: testPaneB,
-      });
-      createTask(
-        'test-room',
-        'wk-search',
-        'lead-search',
-        null,
-        'search room task',
-      );
-      const result = await handleSearchTasks({ room: 'test-room' });
-      const data = JSON.parse(result.content[0]?.text);
-      expect(Array.isArray(data)).toBe(true);
-      expect(data.length).toBeGreaterThan(0);
-    });
-
-    test('returns empty for no matches', async () => {
-      const result = await handleSearchTasks({
-        keyword: 'zzz_nonexistent_zzz',
-      });
-      const data = JSON.parse(result.content[0]?.text);
-      expect(data).toEqual([]);
-    });
-  });
 });

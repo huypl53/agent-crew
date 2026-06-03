@@ -22,18 +22,15 @@ Commands:
   read       --name <name> [--room <room>] [--limit N]    Read messages
              [--kinds task,completion]
   status     <agent_name> [--name <self>]                 Check agent status
-  check      --name <name> [--scopes messages,tasks]      Check for changes
+  check      --name <name> [--scopes messages,agents]     Check for changes
   refresh    --name <name>                                Re-register agent
   topic      --room <room> --text <text> --name <name>    Set room topic
-  update-task --task <id> --status <s> --name <name>      Update task status
   interrupt  --worker <name> --room <room> --name <name>  Interrupt worker
   inspect    --worker <name> --name <leader>              Inspect recent worker turns
              [--room <room>] [--turns N]
   clear      --worker <name> --room <room> --name <name>  Clear worker session
-  reassign   --worker <name> --room <room> --text <t>     Reassign task
+  reassign   --worker <name> --room <room> --text <t>     Replace current assignment
              --name <name>
-  task-details <task_id>                                  Get task details
-  search-tasks [--room <r>] [--keyword <k>] [--status <s>] Search tasks
   create-room --room <name> --name <self> [--topic <t>]   Create a new room
   delete-room --room <name> --confirm --name <self>       Delete room (removes members + messages)
   mute-idle  --name <name>                                Mute idle notifications (leader only)
@@ -64,13 +61,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
       .join(' '),
 
   status: (d) => {
-    const task = d.current_task
-      ? ` task:#${d.current_task.id}(${d.current_task.status})`
-      : '';
-    const queued = d.queued_tasks?.length
-      ? ` queued:${d.queued_tasks.length}`
-      : '';
-    return `${d.name} ${d.status} ${d.tmux_target} ${d.room_name ?? d.room ?? ''}${d.room_path ? ` (${d.room_path})` : ''}${task}${queued}`;
+    return `${d.name} ${d.status} ${d.tmux_target} ${d.room_name ?? d.room ?? ''}${d.room_path ? ` (${d.room_path})` : ''}`;
   },
 
   rooms: (d) => {
@@ -105,8 +96,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
   send: (d) => {
     if (d.broadcast)
       return `broadcast to ${d.recipients} (${d.delivered} delivered)`;
-    const task = d.task_id ? ` task:#${d.task_id}` : '';
-    return `msg:${d.message_id} ${d.delivered ? 'delivered' : 'queued'}${task}`;
+    return `msg:${d.message_id} ${d.delivered ? 'delivered' : 'queued'}`;
   },
 
   join: (d) =>
@@ -115,8 +105,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
   refresh: (d) =>
     `Refreshed ${d.name} room:${d.room ?? d.room_name ?? ''} pane:${d.tmux_target}`,
   topic: (d) => `Topic set: ${d.topic}`,
-  'update-task': (d) => `task:#${d.task_id} → ${d.status}`,
-  interrupt: (d) => `Interrupted task:#${d.task_id} (was ${d.previous_status})`,
+  interrupt: () => 'Interrupted worker',
   inspect: (d) => {
     const lines = [
       `worker: ${d.agent_name}`,
@@ -141,20 +130,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     return lines.join('\n');
   },
   clear: (d) => `Cleared ${d.worker_name} session`,
-  reassign: (d) =>
-    `Reassigned: old:#${d.old_task_id ?? 'none'} → new:#${d.new_task_id}`,
-  'task-details': (d) => {
-    let out = `#${d.id} [${d.status}] ${d.assigned_to} — ${d.summary}`;
-    if (d.context) out += `\nContext: ${d.context}`;
-    if (d.note) out += `\nNote: ${d.note}`;
-    return out;
-  },
-  'search-tasks': (d) => {
-    if (!d.tasks?.length) return '(no tasks found)';
-    return d.tasks
-      .map((t: any) => `#${t.id} [${t.status}] ${t.assigned_to} — ${t.summary}`)
-      .join('\n');
-  },
+  reassign: () => 'Sent replacement assignment',
   'create-room': (d) =>
     `Created room: ${d.room}${d.topic ? ` (${d.topic})` : ''}`,
   'delete-room': (d) =>

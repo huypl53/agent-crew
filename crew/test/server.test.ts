@@ -377,30 +377,6 @@ describe('DELETE /api/agents/:name', () => {
   });
 });
 
-// ── GET /api/tasks ───────────────────────────────────────────────────────────
-
-describe('GET /api/tasks', () => {
-  test('returns array', async () => {
-    const { status, body } = await get('/api/tasks');
-    expect(status).toBe(200);
-    expect(Array.isArray(body)).toBe(true);
-  });
-
-  test('accepts room and status filters', async () => {
-    const { status } = await get('/api/tasks?room=general&status=sent');
-    expect(status).toBe(200);
-  });
-});
-
-// ── GET /api/tasks/:id ───────────────────────────────────────────────────────
-
-describe('GET /api/tasks/:id', () => {
-  test('returns 404 for nonexistent task', async () => {
-    const { status } = await get('/api/tasks/99999');
-    expect(status).toBe(404);
-  });
-});
-
 // ── POST /api/messages ───────────────────────────────────────────────────────
 
 describe('POST /api/messages', () => {

@@ -9,13 +9,12 @@ Multi-agent coordination for AI coding agents via tmux rooms. Works with **Claud
 1. Start AI coding agent sessions in tmux panes
 2. Register each agent into a room: `/crew:join-room myproject --role worker --name builder-1`
 3. Your own session acts as a leader — give natural language direction
-4. Leaders coordinate workers, workers execute tasks, everyone communicates through rooms
-5. Task tracking with lifecycle statuses — leaders can interrupt or reassign worker tasks
-6. Task context sharing — workers record findings in task notes for handoff, leaders search prior work to avoid repeating investigations
-7. Dashboard visualization — three views (Tab to switch): dashboard (original), task board (grouped by agent/room), timeline (waterfall chart)
+4. Leaders coordinate workers, workers execute assignments, everyone communicates through rooms
+5. Assignment delivery via pushed messages — leaders can interrupt or replace worker assignments
+6. Dashboard visualization — dashboard plus room/template management views
 8. Automatic token/cost tracking — collects usage from Claude Code and Codex CLI, displays in dashboard
-9. Worker session management — leaders can clear a worker's Claude Code context and auto-refresh their registration between task sequences
-10. Automatic dead agent cleanup — periodic liveness check every ~30s detects disconnected workers and cleans up their registration (debounced, never removes leaders or agents with active tasks)
+9. Worker session management — leaders can clear a worker's Claude Code context and auto-refresh their registration between assignment sequences
+9. Automatic dead agent cleanup — periodic liveness check every ~30s detects disconnected workers and cleans up their registration (debounced, leaders are never removed)
 11. Role-aware delivery — every push message includes a role reminder suffix so agents remember their responsibilities
 12. Leader idle notification control — leaders can mute/unmute sweep idle notifications from workers
 13. Polling flow control — pause/resume sweep delivery to leaders, or switch between auto/manual busy detection
@@ -23,7 +22,7 @@ Multi-agent coordination for AI coding agents via tmux rooms. Works with **Claud
 ## Architecture
 
 - **Leaders** (including your session) → manage workers in project rooms
-- **Workers** → execute tasks, report status
+- **Workers** → execute assignments, report status
 
 Communication: push messages (tmux paste-buffer with bracketed paste, role-aware suffix on content) + pull messages (server-side queue for status updates).
 
@@ -166,16 +165,13 @@ crew <command>
 | `members` | `crew members --room crew` | `[crew] topic\n  wk-01 worker idle` |
 | `send` | `crew send --room crew --text "done" --name wk-01 --kind completion` | `msg:42 delivered` |
 | `read` | `crew read --name wk-01 --room crew` | `[leader@crew→wk-01](task): do the thing` |
-| `status` | `crew status wk-01` | `wk-01 idle %33 crew (/path/to/project) task:#5(active)` |
-| `check` | `crew check --name wk-01` | `messages:42 tasks:15 agents:8` |
+| `status` | `crew status wk-01` | `wk-01 idle %33 crew (/path/to/project)` |
+| `check` | `crew check --name wk-01` | `messages:42 agents:8` |
 | `refresh` | `crew refresh --name wk-01` | `Refreshed wk-01 rooms:crew pane:%42` |
 | `topic` | `crew topic --room crew --text "Sprint 3" --name lead-01` | `Topic set: Sprint 3` |
-| `update-task` | `crew update-task --task 5 --status completed --name wk-01` | `task:#5 → completed` |
-| `interrupt` | `crew interrupt --worker wk-01 --room crew --name lead-01` | `Interrupted task:#5 (was active)` |
+| `interrupt` | `crew interrupt --worker wk-01 --room crew --name lead-01` | `Interrupted worker` |
 | `clear` | `crew clear --worker wk-01 --room crew --name lead-01` | `Cleared wk-01 session` (sends `/clear` + `/rename` to reset context and session name) |
-| `reassign` | `crew reassign --worker wk-01 --room crew --text "new task" --name lead-01` | `Reassigned: old:#5 → new:#6` |
-| `task-details` | `crew task-details 5` | `#5 [completed] wk-01 — summary` |
-| `search-tasks` | `crew search-tasks --room crew --status completed` | `#5 [completed] wk-01 — summary` |
+| `reassign` | `crew reassign --worker wk-01 --room crew --text "new task" --name lead-01` | `Sent replacement assignment` |
 | `pause-polling` | `crew pause-polling --reason "leader sync"` | `polling paused=true mode=auto reason:leader sync` |
 | `resume-polling` | `crew resume-polling` | `polling paused=false mode=auto` |
 | `polling-status` | `crew polling-status` | `polling paused=false mode=auto` |
@@ -235,7 +231,7 @@ crew send --room crew --to wk-01 --file /tmp/task.txt --name lead-01 --kind task
 Call before expensive reads to skip polls when nothing changed:
 
 ```bash
-# Returns: messages:42 tasks:15 agents:8
+# Returns: messages:42 agents:8
 crew check --name wk-01
 
 # If versions haven't changed, skip read_messages/get_status entirely
@@ -253,7 +249,7 @@ crew check --name wk-01
 **Sweep** runs every 5 seconds and performs two checks:
 
 1. **Idle detection** — detects workers with unchanged tmux pane content for 60+ seconds, notifies leaders (can be muted per-leader with `mute-idle`)
-2. **Liveness validation** — every ~30s checks all agents' tmux pane processes. Dead workers are removed after 2 consecutive failures (debounced). Leaders are never removed. Workers with active tasks are skipped.
+2. **Liveness validation** — every ~30s checks all agents' tmux pane processes. Dead workers are removed after 2 consecutive failures (debounced). Leaders are never removed.
 
 **Polling flow control** lets leaders manage sweep delivery timing:
 
@@ -286,13 +282,10 @@ crew resume-polling
 | `read_messages` | Read room log or inbox with optional `kinds` filter |
 | `get_status` | Check agent status |
 | `set_room_topic` | Set current objective for a room |
-| `update_task` | Worker: update task status (queued/active/completed/error) — now accepts `context` for handoff notes |
-| `interrupt_worker` | Leader: send Escape to worker pane, mark task interrupted |
-| `reassign_task` | Leader: replace worker's current/queued task with a new one |
+| `interrupt_worker` | Leader: send Escape to worker pane and notify the worker |
+| `reassign_task` | Leader: interrupt and send a replacement assignment |
 | `clear_worker_session` | Leader: send `/clear` + `/rename` to worker (clears Claude Code context), auto-refresh registration |
-| `get_task_details` | Get full details of a task including worker context notes |
-| `search_tasks` | Search completed tasks by room, agent, keyword, or status — find relevant context from previous work |
-| `check_changes` | Return version numbers for `messages`, `tasks`, `agents` scopes — call before `get_status`/`read_messages` to skip polls when nothing changed (~90% cost reduction during quiet periods) |
+| `check_changes` | Return version numbers for `messages` and `agents` scopes — call before `get_status`/`read_messages` to skip polls when nothing changed (~90% cost reduction during quiet periods) |
 | `create_room` | Create a new room with optional topic |
 | `delete_room` | Delete a room and remove all members + messages (requires `--confirm`) |
 | `mute_idle` | Leader: mute sweep idle notifications from workers |
@@ -336,8 +329,8 @@ When `room` is provided, reads the full room conversation log (all members' mess
 
 | Skill | Description |
 |-------|-------------|
-| `leader` | Leader behavior — coordinate workers, assign tasks |
-| `worker` | Worker behavior — execute tasks, report status |
+| `leader` | Leader behavior — coordinate workers, assign work |
+| `worker` | Worker behavior — execute assignments, report status |
 | `party` | Party mode — round-gated multi-worker discussions |
 
 ## Registered-Agent Hints
@@ -369,7 +362,7 @@ The message is a positional argument after `set` — no flag needed. Use quotes 
 
 ## TUI Dashboard
 
-Read-only terminal observer built with React+Ink. Shows rooms, agents with roles and live status, message feed, task tracking, and cost analytics in a 3-panel layout.
+Read-only terminal observer built with React+Ink. Shows rooms, agents with roles and live status, message feed, and cost analytics in a 3-panel layout.
 
 ```
 ┌─ Rooms & Agents ───────────┐┌─ Messages ─────────────────────────┐

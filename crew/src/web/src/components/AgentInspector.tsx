@@ -222,9 +222,8 @@ export default function AgentInspector({
 
   const tu = selected?.token_usage;
   const ms = selected?.message_stats;
-  const ts = selected?.task_stats;
   const hasCost = tu != null;
-  const hasStats = ms != null || ts != null || selected?.joined_at != null;
+  const hasStats = ms != null || selected?.joined_at != null;
 
   const onboardPanelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(onboardPanelRef);

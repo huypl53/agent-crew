@@ -13,7 +13,6 @@ import {
   getPendingPartyWorkers,
   getRoomMembers,
   getSweepControlState,
-  getTasksForAgent,
   isAgentIdleMuted,
   markAgentStale,
   setAgentStatus,
@@ -401,23 +400,10 @@ async function runLivenessCheck(): Promise<void> {
       continue;
     }
 
-    const activeTasks = getTasksForAgent(agent.name, [
-      'active',
-      'sent',
-      'queued',
-    ]);
-    if (activeTasks.length > 0) {
-      logServer(
-        'LIVENESS',
-        `Worker ${agent.name} appears dead but has ${activeTasks.length} active task(s), skipping removal`,
-      );
-      continue;
-    }
-
     if (count >= DEAD_THRESHOLD) {
       logServer(
         'LIVENESS',
-        `Removing dead worker ${agent.name} (confirmed dead ${count}x, no active tasks)`,
+        `Removing dead worker ${agent.name} (confirmed dead ${count}x)`,
       );
       markAgentStale(agent.name);
       deadCounts.delete(agent.name);

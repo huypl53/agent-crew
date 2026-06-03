@@ -2,7 +2,7 @@ import { getQueue } from '../delivery/pane-queue.ts';
 import { assertRole } from '../shared/role-guard.ts';
 import type { ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
-import { cancelQueuedTasksForAgent, getAgent } from '../state/index.ts';
+import { getAgent } from '../state/index.ts';
 
 interface ClearWorkerSessionParams {
   worker_name: string;
@@ -38,11 +38,7 @@ export async function handleClearWorkerSession(
     return err(`Worker "${worker_name}" has no tmux target`);
   }
 
-  // Step 1: Cancel queued/sent tasks in DB — worker's context is about to be wiped,
-  // so any pending work targeting the old session is no longer valid.
-  const cancelled = cancelQueuedTasksForAgent(worker_name, name);
-
-  // Step 2: Send /clear to the worker's pane
+  // Step 1: Send /clear to the worker's pane
   try {
     await getQueue(worker.tmux_target).enqueue({
       type: 'command',
@@ -52,10 +48,10 @@ export async function handleClearWorkerSession(
     return err(e instanceof Error ? e.message : String(e));
   }
 
-  // Step 3: Wait 2 seconds for CC to process /clear
+  // Step 2: Wait 2 seconds for CC to process /clear
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
-  // Step 4: Send crew:refresh command to re-register the worker
+  // Step 3: Send crew:refresh command to re-register the worker
   const refreshText = `/crew:refresh --name ${worker_name}`;
   try {
     await getQueue(worker.tmux_target).enqueue({
@@ -66,7 +62,7 @@ export async function handleClearWorkerSession(
     return err(e instanceof Error ? e.message : String(e));
   }
 
-  // Step 5: Rename Claude Code session to worker name (same as join flow)
+  // Step 4: Rename Claude Code session to worker name (same as join flow)
   try {
     await getQueue(worker.tmux_target, { role: 'worker' }).enqueue({
       type: 'command',
@@ -80,7 +76,6 @@ export async function handleClearWorkerSession(
     cleared: true,
     worker_name,
     room,
-    cancelled_tasks: cancelled,
-    message: `Session cleared and refresh sent. ${cancelled} queued task(s) cancelled. IMPORTANT: ${worker_name}'s context is now blank. Your next task message must be fully self-contained — do not reference prior conversation.`,
+    message: `Session cleared and refresh sent. IMPORTANT: ${worker_name}'s context is now blank. Your next task message must be fully self-contained — do not reference prior conversation.`,
   });
 }

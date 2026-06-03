@@ -90,7 +90,7 @@ describe('CLI integration', () => {
 
   test('crew check --name test returns version numbers', async () => {
     const { out } = await runCli(['check', '--name', 'test']);
-    expect(out).toMatch(/messages:\d+ tasks:\d+ agents:\d+/);
+    expect(out).toMatch(/messages:\d+ agents:\d+/);
   });
 
   test('crew rooms --json flag returns JSON', async () => {

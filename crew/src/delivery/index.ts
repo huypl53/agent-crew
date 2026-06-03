@@ -3,7 +3,6 @@ import { config } from '../config.ts';
 import { dbClearAgentPane } from '../state/db-write.ts';
 import {
   addMessage,
-  createTask,
   getAgent,
   getRoom,
   getRoomMembers,
@@ -26,7 +25,6 @@ interface DeliveryResult {
   delivered: boolean;
   queued: boolean;
   error?: string;
-  task_id?: number;
 }
 
 interface DeliveryContext {
@@ -87,18 +85,6 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
     replyTo,
   );
 
-  let taskId: number | undefined;
-  if (kind === 'task') {
-    const task = createTask(
-      roomName,
-      targetName ?? to,
-      senderName,
-      Number(msg.message_id),
-      text,
-    );
-    taskId = task.id;
-  }
-
   if (mode === 'push') {
     const agent = ctx.agent ?? getAgent(to);
     if (agent) {
@@ -108,7 +94,6 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
           delivered: false,
           queued: true,
           error: 'pull-only agent: no tmux pane',
-          task_id: taskId,
         };
       }
       if (!(await paneExists(agent.tmux_target))) {
@@ -118,7 +103,6 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
           delivered: false,
           queued: true,
           error: `Agent pane ${agent.tmux_target} no longer exists. Agent may need to rejoin.`,
-          task_id: taskId,
         };
       }
       if (agent.agent_type === 'claude-code' || agent.agent_type === 'codex') {
@@ -129,7 +113,6 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
             delivered: false,
             queued: true,
             error: `stale-target: pane ${agent.tmux_target} is not running an agent process`,
-            task_id: taskId,
           };
         }
       }
@@ -143,7 +126,6 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
           message_id: msg.message_id,
           delivered: true,
           queued: true,
-          task_id: taskId,
         };
       } catch (e) {
         return {
@@ -151,7 +133,6 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
           delivered: false,
           queued: true,
           error: e instanceof Error ? e.message : String(e),
-          task_id: taskId,
         };
       }
     } else {
@@ -160,7 +141,6 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
         delivered: false,
         queued: true,
         error: 'Agent not found',
-        task_id: taskId,
       };
     }
   }
@@ -169,7 +149,6 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
     message_id: msg.message_id,
     delivered: false,
     queued: true,
-    task_id: taskId,
   };
 }
 

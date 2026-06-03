@@ -7,10 +7,13 @@ import {
   test,
 } from 'bun:test';
 import { getQueue, removeQueue } from '../src/delivery/pane-queue.ts';
+import { closeDb, initDb } from '../src/state/db.ts';
+import { addAgent, getOrCreateRoom } from '../src/state/index.ts';
 import {
   captureFromPane,
   cleanupAllTestSessions,
   createTestSession,
+  sendToPane,
 } from './helpers.ts';
 
 // PaneQueue tests involve real tmux delivery: waitForReady (~1s) + paste settle (500ms) + Enter retry.
@@ -22,6 +25,7 @@ const SESSION = 'pane-queue-test';
 
 describe('PaneQueue', () => {
   beforeEach(async () => {
+    initDb(':memory:');
     const s = await createTestSession(SESSION);
     testPane = s.pane;
     removeQueue(testPane);
@@ -29,6 +33,7 @@ describe('PaneQueue', () => {
 
   afterAll(async () => {
     await cleanupAllTestSessions();
+    closeDb();
   });
 
   test('getQueue returns same instance for same pane', () => {
@@ -76,6 +81,26 @@ describe('PaneQueue', () => {
     await Bun.sleep(200);
     const output = await captureFromPane(testPane);
     expect(output).toContain('typing-gate-smoke');
+  });
+
+  test('fresh registered agent with no hook history still accepts first delivery', async () => {
+    const room = getOrCreateRoom('/test/pane-queue', 'pane-queue');
+    addAgent('fresh-worker', 'worker', room.id, testPane, 'claude-code');
+
+    await sendToPane(
+      testPane,
+      `printf 'top\n────────────────────────────\n❯ Try "fix lint errors"\n────────────────────────────\nfooter\n'`,
+    );
+    await Bun.sleep(200);
+
+    const q = getQueue(testPane);
+    const startedAt = performance.now();
+    await q.enqueue({ type: 'paste', text: 'first-assignment' });
+    const elapsed = performance.now() - startedAt;
+
+    const output = await captureFromPane(testPane);
+    expect(output).toContain('first-assignment');
+    expect(elapsed).toBeLessThan(2000);
   });
 
   test('leader queue applies configured pace between paste deliveries', async () => {

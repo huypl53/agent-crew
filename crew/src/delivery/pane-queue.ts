@@ -9,7 +9,6 @@ export class PaneDeliveryError extends Error {
     this.name = 'PaneDeliveryError';
   }
 }
-import { getPaneStatus } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
 import type { AgentRole } from '../shared/types.ts';
 import { getAgentByPane, getLatestHookEvent } from '../state/index.ts';
@@ -33,14 +32,13 @@ interface QueueEntry {
   reject: (err: Error) => void;
 }
 
-const MAX_WAIT_MS = 5_000;
 const HEARTBEAT_STALE_MS = 30_000;
 
 // Role-aware suffix appended to every push message
 const ROLE_SUFFIX: Record<string, string> = {
   leader:
-    '--- Remember: You are a leader. Manage workers, assign tasks, track progress.',
-  worker: '--- Remember: You are a worker. Execute tasks, report results.',
+    '--- Remember: You are a leader. Manage workers, assign work, track progress.',
+  worker: '--- Remember: You are a worker. Execute assignments, report results.',
 };
 
 // Role-based intervals for 'reduced' profile (ms)
@@ -146,7 +144,9 @@ export class PaneQueue {
   }
 
   private async waitForReady(): Promise<void> {
-    // Fast-path: if agent has a recent hook event, it's ready to receive
+    // Hook events are the only reliable readiness signal we have for Claude.
+    // If a pane has no recent hook history yet, do not guess based on prompt
+    // text captured from tmux — first-delivery bootstrap should proceed.
     try {
       const agent = getAgentByPane(this.target);
       if (agent) {
@@ -158,20 +158,9 @@ export class PaneQueue {
         }
       }
     } catch {
-      // DB not available — fall through to polling
+      // DB not available — allow delivery instead of guessing from pane text
     }
-
-    // Fallback: poll typingActive via tmux capture
-    const start = Date.now();
-    while (Date.now() - start < MAX_WAIT_MS) {
-      const result = await getPaneStatus(this.target);
-      if (!result.typingActive) return;
-      await Bun.sleep(1000);
-    }
-    throw new PaneDeliveryError(
-      `pane ${this.target} not ready: typing/busy timeout`,
-      'PANE_NOT_READY_TYPING',
-    );
+    return;
   }
 
   private async applyLeaderPacing(item: QueueItem): Promise<void> {

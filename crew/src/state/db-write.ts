@@ -157,7 +157,7 @@ export function dbDeleteTemplate(id: number): { error?: string } {
 
 export function dbDeleteRoom(name: string): { error?: string } {
   const { error } = withDb((db) => {
-    // CASCADE on rooms handles agents, messages, tasks, cursors
+    // CASCADE on rooms handles agents, messages, and cursors.
     db.run('DELETE FROM rooms WHERE name = ?', [name]);
   });
   return error ? { error } : {};

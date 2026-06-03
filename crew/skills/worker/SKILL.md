@@ -1,35 +1,39 @@
 ---
 name: crew:worker
-description: Guidance for worker agents on task execution and status reporting in crew rooms
+description: Guidance for worker agents on assignment execution and status reporting in crew rooms
 ---
 
 # Worker Agent Guidance
 
-You are a worker agent in a crew room. Your job is to execute tasks assigned by your leader and report status.
+You are a worker agent in a crew room. Your job is to execute assignments from your leader and report status.
 
 ## CLI Usage
 
 All crew operations use the `crew` CLI via Bash. No MCP tools needed.
 
-## CRITICAL: Tasks Are Pushed To You
+## CRITICAL: Assignments Are Pushed To You
 
-**DO NOT poll for tasks.** Your leader sends tasks directly to your pane via push messages. You do NOT need to call `crew read` to check for new tasks — they appear automatically as user input.
+**DO NOT poll for assignments.** Your leader sends work directly to your pane via push messages. You do NOT need to call `crew read` to check for new assignments — they appear automatically as user input.
 
 ## Recognizing Commands
 
-Your leader sends you tasks via push messages that appear as user input in your pane:
+Your leader sends you assignments via push messages that appear as user input in your pane:
 
 ```
 [leader-name@room]: Create the login component in src/components/Login.tsx
 ```
 
+<<<<<<< HEAD
 Leaders may compose these briefs with `crew send --file ...`, so multiline task messages with exact formatting are expected.
 
-When you see a `[name@room]:` message, this is a task command from your leader. Execute it.
+When you see a `[name@room]:` message, this is an assignment from your leader. Execute it.
+=======
+When you see a `[name@room]:` message, this is an assignment from your leader. Execute it.
+>>>>>>> remove-task-flow
 
 ## CRITICAL: Always Report Completion
 
-**You MUST send a completion or error message when you finish a task.** This triggers a push notification to your leader and updates your status to `idle`. Without this message, you'll appear "busy" forever.
+**You MUST send a completion or error message when you finish an assignment.** This triggers a push notification to your leader and updates your status to `idle`. Without this message, you'll appear "busy" forever.
 
 ### On Success
 
@@ -51,37 +55,15 @@ crew send --room your-room --to leader-name --text "Question: Should I use REST 
 
 **Always include `--kind completion/error/question`** — this triggers the push notification to your leader.
 
-## Task Status Tracking
+## No Task Lifecycle Commands
 
-When you receive a task, update its status using `crew update-task`:
-
-1. **If you're busy** when a task arrives, report it as queued:
-   ```bash
-   crew update-task --task <id> --status queued --name your-name
-   ```
-
-2. **When you start working** on a task:
-   ```bash
-   crew update-task --task <id> --status active --name your-name
-   ```
-
-3. **When you finish** a task:
-   ```bash
-   crew update-task --task <id> --status completed --name your-name
-   ```
-
-4. **If you hit an error:**
-   ```bash
-   crew update-task --task <id> --status error --note "Description of what went wrong" --name your-name
-   ```
-
-The `task_id` is returned in the original task message from your leader.
+There is no separate task status command anymore. The pushed assignment message is the source of truth for what you should work on, and your completion/error/question reply is the source of truth for the outcome.
 
 ## Handling Interruptions
 
-If your leader sends an Escape to interrupt your current task, you'll see a system notification:
+If your leader interrupts your current assignment, you'll see a system notification:
 ```
-[system@room]: Your current task was interrupted by leader-name
+[system@room]: Your current assignment was interrupted by leader-name
 ```
 
 When this happens:
@@ -106,5 +88,5 @@ crew members --room your-room
 2. **ALWAYS send completion/error message** — this updates your status and notifies leader
 3. **DO NOT poll for tasks** — tasks are pushed to your pane automatically
 4. Use `--kind completion/error/question` — triggers push notification to leader
-5. One task at a time — finish what you have before asking for more
+5. One assignment at a time — finish what you have before asking for more
 6. Stay in your lane — work within your assigned room and scope

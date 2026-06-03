@@ -14,9 +14,6 @@ import type {
   RoomTemplate,
   SweepBusyMode,
   SweepControlState,
-  Task,
-  TaskEvent,
-  TaskStatus,
   TokenUsage,
 } from '../shared/types.ts';
 import { isPaneDead, paneCommandLooksAlive, sendKeys } from '../tmux/index.ts';
@@ -375,13 +372,7 @@ export function removeAgentFully(name: string): void {
         .query('SELECT COUNT(*) as c FROM agents WHERE room_id = ?')
         .get(roomId) as { c: number }
     ).c;
-    const taskCount = (
-      db
-        .query('SELECT COUNT(*) as c FROM tasks WHERE room_id = ?')
-        .get(roomId) as { c: number }
-    ).c;
-    // Only delete room if no agents AND no tasks (tasks cascade delete with room)
-    if (agentCount === 0 && taskCount === 0) {
+    if (agentCount === 0) {
       db.run('DELETE FROM rooms WHERE id = ?', [roomId]);
     }
   }
@@ -762,9 +753,8 @@ export async function refreshAgent(
 
 // --- Liveness ---
 
-/** Error-out tasks and remove an agent from the registry when its pane is stale. */
+/** Remove an agent from the registry when its pane is stale. */
 export function markAgentStale(agentName: string): void {
-  cleanupDeadAgentTasks(agentName);
   removeAgentFully(agentName);
 }
 
@@ -787,251 +777,6 @@ export async function validateLiveness(): Promise<string[]> {
     }
   }
   return dead;
-}
-
-// --- Task operations ---
-
-export function createTask(
-  room: string,
-  assignedTo: string,
-  createdBy: string,
-  messageId: number | null,
-  summary: string,
-): Task {
-  const db = getDb();
-  const roomObj = getRoom(room);
-  if (!roomObj) {
-    throw new Error(`Room not found: ${room}`);
-  }
-
-  const ts = now();
-  const truncated =
-    summary.length > 200 ? `${summary.slice(0, 197)}...` : summary;
-  const stmt = db.run(
-    'INSERT INTO tasks (room_id, assigned_to, created_by, message_id, summary, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [roomObj.id, assignedTo, createdBy, messageId, truncated, 'sent', ts, ts],
-  );
-  const taskId = stmt.lastInsertRowid as number;
-
-  recordTaskEvent(taskId, null, 'sent', createdBy);
-
-  return getTask(taskId)!;
-}
-
-export function getTask(id: number): Task | undefined {
-  const row = getDb()
-    .query('SELECT * FROM tasks WHERE id = ?')
-    .get(id) as Record<string, unknown> | null;
-  if (!row) return undefined;
-  return rowToTask(row);
-}
-
-export function getTaskDetails(id: number): Task | undefined {
-  return getTask(id);
-}
-
-export function getTasksForAgent(
-  agentName: string,
-  statuses?: TaskStatus[],
-): Task[] {
-  const db = getDb();
-  let sql = 'SELECT * FROM tasks WHERE assigned_to = ?';
-  const params: unknown[] = [agentName];
-  if (statuses && statuses.length > 0) {
-    sql += ` AND status IN (${statuses.map(() => '?').join(',')})`;
-    params.push(...statuses);
-  }
-  sql += ' ORDER BY id';
-  return (db.query(sql).all(...params) as Record<string, unknown>[]).map(
-    rowToTask,
-  );
-}
-
-const VALID_TRANSITIONS: Record<string, TaskStatus[]> = {
-  sent: ['queued', 'active', 'error'],
-  queued: ['active', 'cancelled', 'error'],
-  active: ['completed', 'error', 'interrupted'],
-  interrupted: ['active', 'error'],
-};
-
-export function updateTaskStatus(
-  id: number,
-  status: TaskStatus,
-  note?: string,
-  context?: string,
-  triggeredBy?: string,
-): Task | undefined {
-  const db = getDb();
-  const existing = getTask(id);
-  if (!existing) return undefined;
-
-  // Validate transition
-  const allowed = VALID_TRANSITIONS[existing.status];
-  if (!allowed || !allowed.includes(status)) {
-    throw new Error(`Invalid transition: ${existing.status} → ${status}`);
-  }
-
-  const ts = now();
-  let sql = 'UPDATE tasks SET status = ?, updated_at = ?';
-  const params: unknown[] = [status, ts];
-  if (note !== undefined) {
-    sql += ', note = ?';
-    params.push(note);
-  }
-  if (context !== undefined) {
-    sql += ', context = ?';
-    params.push(context);
-  }
-  sql += ' WHERE id = ?';
-  params.push(id);
-  db.run(sql, params);
-
-  // Record the event
-  recordTaskEvent(id, existing.status, status, triggeredBy ?? null);
-
-  return getTask(id);
-}
-
-/** Bypass transition validation — force-transition all non-terminal tasks to error */
-export function cleanupDeadAgentTasks(agentName: string): void {
-  const db = getDb();
-  const ts = now();
-  db.run(
-    `UPDATE tasks SET status = 'error', note = 'agent pane died', updated_at = ?
-     WHERE assigned_to = ? AND status IN ('sent', 'queued', 'active', 'interrupted')`,
-    [ts, agentName],
-  );
-}
-
-/**
- * Cancel all queued/sent tasks for an agent. Used when clearing a worker's
- * session so their context wipe doesn't leave orphaned work in the queue.
- * Returns the number of tasks cancelled. Does not touch active/terminal tasks.
- */
-export function cancelQueuedTasksForAgent(
-  agentName: string,
-  triggeredBy?: string,
-): number {
-  const db = getDb();
-  const ts = now();
-  const rows = db
-    .query(
-      `SELECT id, status FROM tasks WHERE assigned_to = ? AND status IN ('sent', 'queued')`,
-    )
-    .all(agentName) as Array<{ id: number; status: TaskStatus }>;
-  if (rows.length === 0) return 0;
-  db.run(
-    `UPDATE tasks SET status = 'cancelled', note = 'worker session cleared', updated_at = ?
-     WHERE assigned_to = ? AND status IN ('sent', 'queued')`,
-    [ts, agentName],
-  );
-  for (const row of rows) {
-    recordTaskEvent(row.id, row.status, 'cancelled', triggeredBy ?? null);
-  }
-  return rows.length;
-}
-
-export interface SearchTasksParams {
-  keyword?: string;
-  room?: string;
-}
-
-export interface SearchTaskResult {
-  id: number;
-  room: string;
-  summary: string;
-  status: TaskStatus;
-  context_preview?: string;
-}
-
-export function searchTasks(params: SearchTasksParams): SearchTaskResult[] {
-  const db = getDb();
-  let sql = `
-    SELECT t.id, t.room_id, r.name as room_name, t.summary, t.status, t.context
-    FROM tasks t
-    JOIN rooms r ON r.id = t.room_id
-    WHERE 1=1
-  `;
-  const queryParams: unknown[] = [];
-
-  if (params.room) {
-    const roomObj = getRoom(params.room);
-    if (!roomObj) return [];
-    sql += ' AND t.room_id = ?';
-    queryParams.push(roomObj.id);
-  }
-
-  if (params.keyword) {
-    sql += ' AND (t.summary LIKE ? OR t.context LIKE ?)';
-    const searchTerm = `%${params.keyword}%`;
-    queryParams.push(searchTerm, searchTerm);
-  }
-
-  sql += ' ORDER BY t.id';
-  const rows = db.query(sql).all(...queryParams) as Array<
-    Record<string, unknown>
-  >;
-
-  return rows.map((row) => {
-    const context = row.context as string | null;
-    let preview: string | undefined;
-    if (context) {
-      preview = context.length > 200 ? `${context.slice(0, 200)}...` : context;
-    }
-    return {
-      id: row.id as number,
-      room: row.room_name as string,
-      summary: row.summary as string,
-      status: row.status as TaskStatus,
-      context_preview: preview,
-    };
-  });
-}
-
-function rowToTask(row: Record<string, unknown>): Task {
-  return {
-    id: row.id as number,
-    room_id: row.room_id as number,
-    assigned_to: row.assigned_to as string,
-    created_by: row.created_by as string,
-    message_id: row.message_id as number | null,
-    summary: row.summary as string,
-    status: row.status as TaskStatus,
-    note: row.note as string | undefined,
-    context: row.context as string | undefined,
-    created_at: row.created_at as string,
-    updated_at: row.updated_at as string,
-  };
-}
-
-// --- Task event operations ---
-
-export function recordTaskEvent(
-  taskId: number,
-  fromStatus: string | null,
-  toStatus: string,
-  triggeredBy: string | null,
-): void {
-  const db = getDb();
-  const ts = now();
-  db.run(
-    'INSERT INTO task_events (task_id, from_status, to_status, triggered_by, timestamp) VALUES (?, ?, ?, ?, ?)',
-    [taskId, fromStatus, toStatus, triggeredBy, ts],
-  );
-}
-
-export function getTaskEvents(taskId: number): TaskEvent[] {
-  const db = getDb();
-  return db
-    .query('SELECT * FROM task_events WHERE task_id = ? ORDER BY timestamp')
-    .all(taskId) as TaskEvent[];
-}
-
-export function getAllTaskEvents(): TaskEvent[] {
-  const db = getDb();
-  return db
-    .query('SELECT * FROM task_events ORDER BY timestamp')
-    .all() as TaskEvent[];
 }
 
 // --- Token usage operations ---
@@ -1107,25 +852,6 @@ export function getAgentMessageCounts(name: string): {
         .get(name) as any
     )?.cnt ?? 0;
   return { sent, received };
-}
-
-export function getAgentTaskStats(name: string): {
-  done: number;
-  active: number;
-  queued: number;
-  error: number;
-} {
-  const db = getDb();
-  const rows = db
-    .query(
-      'SELECT status, COUNT(*) as cnt FROM tasks WHERE assigned_to = ? GROUP BY status',
-    )
-    .all(name) as { status: string; cnt: number }[];
-  const counts = { done: 0, active: 0, queued: 0, error: 0 };
-  for (const row of rows) {
-    if (row.status in counts) (counts as any)[row.status] = row.cnt;
-  }
-  return counts;
 }
 
 export function getTotalCost(): number {
@@ -1829,6 +1555,6 @@ function rowToHint(row: Record<string, unknown>): HintRecord {
 export function clearState(): void {
   const db = getDb();
   db.exec(
-    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM party_responses; DELETE FROM hook_events; DELETE FROM agent_hints; DELETE FROM tasks; DELETE FROM messages; DELETE FROM cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
+    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM party_responses; DELETE FROM hook_events; DELETE FROM agent_hints; DELETE FROM messages; DELETE FROM cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
   );
 }

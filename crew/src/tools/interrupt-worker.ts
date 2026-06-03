@@ -2,12 +2,7 @@ import { getQueue } from '../delivery/pane-queue.ts';
 import { assertRole } from '../shared/role-guard.ts';
 import type { ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
-import {
-  addMessage,
-  getAgent,
-  getTasksForAgent,
-  updateTaskStatus,
-} from '../state/index.ts';
+import { addMessage, getAgent } from '../state/index.ts';
 
 interface InterruptWorkerParams {
   worker_name: string;
@@ -40,22 +35,15 @@ export async function handleInterruptWorker(
     return err(`Worker "${worker_name}" is not in room "${room}"`);
   }
 
-  // Find active task
-  const activeTasks = getTasksForAgent(worker_name, ['active']);
-  if (activeTasks.length === 0) {
-    return err(`Worker "${worker_name}" has no active task to interrupt`);
+  if (!worker.tmux_target) {
+    return err(`Worker "${worker_name}" has no tmux target`);
   }
-
-  const task = activeTasks[0]!;
 
   // Send Escape (priority — jumps to front of queue)
   await getQueue(worker.tmux_target).enqueue({ type: 'escape' });
 
-  // Mark task as interrupted
-  updateTaskStatus(task.id, 'interrupted');
-
   // Record and send system notification to worker
-  const notifyBody = `Your current task was interrupted by ${name}`;
+  const notifyBody = `Your current assignment was interrupted by ${name}`;
   const notifyText = `[system@${room}]: ${notifyBody}`;
   addMessage(
     worker_name,
@@ -71,5 +59,5 @@ export async function handleInterruptWorker(
     text: notifyText,
   });
 
-  return ok({ interrupted: true, task_id: task.id, previous_status: 'active' });
+  return ok({ interrupted: true });
 }

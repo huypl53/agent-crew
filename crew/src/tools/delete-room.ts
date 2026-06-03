@@ -22,17 +22,14 @@ export function handleDeleteRoom(params: DeleteRoomParams): ToolResult {
   const { count: msgCount } = db
     .query('SELECT COUNT(*) as count FROM messages WHERE room_id = ?')
     .get(roomData.id) as { count: number };
-  const { count: taskCount } = db
-    .query('SELECT COUNT(*) as count FROM tasks WHERE room_id = ?')
-    .get(roomData.id) as { count: number };
 
   if (!confirm) {
     return err(
-      `Use --confirm to delete room "${room}" (${members.length} members, ${msgCount} messages, ${taskCount} tasks will be removed)`,
+      `Use --confirm to delete room "${room}" (${members.length} members, ${msgCount} messages will be removed)`,
     );
   }
 
-  // CASCADE on rooms table handles agents, messages, tasks, cursors
+  // CASCADE on rooms table handles agents, messages, and cursors.
   db.run('DELETE FROM rooms WHERE id = ?', [roomData.id]);
 
   return ok({
@@ -40,6 +37,5 @@ export function handleDeleteRoom(params: DeleteRoomParams): ToolResult {
     room,
     removed_members: members.map((a) => a.name),
     messages_deleted: msgCount,
-    tasks_deleted: taskCount,
   });
 }

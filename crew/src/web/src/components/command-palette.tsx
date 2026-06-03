@@ -54,10 +54,7 @@ export default function CommandPalette({ onSelect }: Props) {
     if (!open) return;
     const fetchItems = async () => {
       try {
-        const [rooms, tasks] = await Promise.all([
-          get<{ name: string }[]>('/rooms'),
-          get<{ id: number; summary: string; room: string; assigned_to: string }[]>('/tasks'),
-        ]);
+        const rooms = await get<{ name: string }[]>('/rooms');
         const result: SearchItem[] = [
           ...rooms.map((r) => ({
             id: `room:${r.name}`,
@@ -66,16 +63,7 @@ export default function CommandPalette({ onSelect }: Props) {
             view: 'dashboard' as View,
             room: r.name,
           })),
-          ...tasks.slice(0, 30).map((t) => ({
-            id: `task:${t.id}`,
-            label: `#${t.id} ${t.summary}`,
-            group: 'Tasks',
-            view: 'tasks' as View,
-          })),
           { id: 'nav:dashboard', label: 'Dashboard', group: 'Views', view: 'dashboard' as View },
-          { id: 'nav:tasks', label: 'Tasks', group: 'Views', view: 'tasks' as View },
-          { id: 'nav:timeline', label: 'Timeline', group: 'Views', view: 'timeline' as View },
-          { id: 'nav:trace', label: 'Trace', group: 'Views', view: 'trace' as View },
           { id: 'nav:templates', label: 'Templates', group: 'Views', view: 'templates' as View },
         ];
         setItems(result);
@@ -144,7 +132,7 @@ export default function CommandPalette({ onSelect }: Props) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Search rooms, tasks, views…"
+          placeholder="Search rooms and views…"
           className="w-full px-4 py-3 bg-transparent text-slate-200 text-sm border-b border-slate-700 focus:outline-none"
           aria-label="Search"
         />

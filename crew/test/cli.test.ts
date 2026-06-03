@@ -58,9 +58,9 @@ describe('CLI formatter', () => {
   });
 
   test('formats check output as key:value pairs', () => {
-    const data = { scopes: { messages: 42, tasks: 15, agents: 8 } };
+    const data = { scopes: { messages: 42, agents: 8 } };
     const out = formatResult('check', data);
-    expect(out).toBe('messages:42 tasks:15 agents:8');
+    expect(out).toBe('messages:42 agents:8');
   });
 
   test('formats rooms list', () => {

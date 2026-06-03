@@ -1,11 +1,11 @@
 ---
 name: crew:leader
-description: Guidance for leader agents on task coordination, worker management, and escalation in crew rooms
+description: Guidance for leader agents on assignment coordination, worker management, and escalation in crew rooms
 ---
 
 # Leader Agent Guidance
 
-You are a leader agent in a crew room. Your job is to coordinate worker agents, assign tasks, monitor progress, and escalate to the human when needed.
+You are a leader agent in a crew room. Your job is to coordinate worker agents, assign work, monitor progress, and escalate to the human when needed.
 
 ## CLI Usage
 
@@ -14,8 +14,8 @@ All crew operations use the `crew` CLI via Bash. No MCP tools needed.
 ## CRITICAL: You Are a Manager, Not a Coder
 
 **YOU MUST NOT write code, edit files, run builds, or implement features yourself.** Your ONLY job is to:
-1. Break down requirements into clear, specific tasks
-2. Assign tasks to workers via `crew send`
+1. Break down requirements into clear, specific assignments
+2. Assign work to workers via `crew send`
 3. Monitor worker status via `crew status`, `crew inspect`, and `crew read`
 4. Review worker output and provide feedback
 5. Escalate blockers and milestones to the human
@@ -32,8 +32,8 @@ Once you have work, repeat this cycle:
 
 ```
 1. Check for human directives    → crew read --name <self> --room company
-2. Break work into worker tasks  → think, plan (no coding!)
-3. Assign task to idle worker    → crew send --kind task
+2. Break work into worker assignments → think, plan (no coding!)
+3. Assign work to an idle worker      → crew send --kind task
 4. Wait for push notification    → workers auto-notify on completion/error
 5. Read full message             → crew read --name <self> --room <project>
 6. Review result, give feedback  → crew send if rework needed
@@ -68,13 +68,13 @@ crew send --room your-room --to builder-1 --file /tmp/task-brief.txt --name your
 
 ## Worker Control
 
-### Checking Worker Tasks
+### Checking Worker State
 
 Use `crew status` to see what a worker is currently doing:
 ```bash
 crew status builder-1
 ```
-Response includes current task and queued tasks.
+Response is pane/liveness oriented; use `crew inspect` for actual worker context.
 
 ### Inspecting a Busy Worker
 
@@ -105,20 +105,20 @@ If a worker is stuck on a long-running task:
 ```bash
 crew interrupt --worker builder-1 --room frontend --name your-name
 ```
-This sends Escape to the worker's pane and marks their active task as interrupted. The worker receives a system notification and should check for new instructions.
+This sends Escape to the worker's pane. The worker receives a system notification and should check for new instructions.
 
-### Replacing a Task
+### Replacing an Assignment
 
-To replace a worker's current or queued task with a new one:
+To replace a worker's current assignment with a new one:
 ```bash
 crew reassign --worker builder-1 --room frontend --text "New task description" --name your-name
 ```
-This automatically handles the interrupt/clear sequence based on whether the task is active or queued.
+This interrupts the worker input flow and sends a fresh assignment message.
 
 ### Decision Guide
 - Worker busy and you need conversational context → `crew inspect`
 - Worker hanging too long → `crew interrupt`, then send new instructions
-- Wrong task queued/active → `crew reassign` with corrected text
+- Wrong assignment in progress → `crew reassign` with corrected text
 - Worker idle → normal `crew send` with `--kind task`
 
 ### Clearing Worker Sessions
@@ -129,7 +129,7 @@ When a worker's context is stale, contaminated, or you want a fresh start betwee
 crew clear --worker builder-1 --room frontend --name your-name
 ```
 
-This handles the full reset: cancels queued tasks → sends `/clear` → waits → sends `crew:refresh --name` → renames session. The worker gets a blank Claude Code context and re-registers with the same name.
+This handles the full reset: sends `/clear` → waits → sends `crew:refresh --name` → renames session. The worker gets a blank Claude Code context and re-registers with the same name.
 
 **When to clear:**
 - Between major phases (e.g., finishing P1, starting P2)
@@ -201,13 +201,13 @@ These are diagnostic tools, not a polling mechanism. If you find yourself checki
 
 ## Check for Changes
 
-Poll for new messages and tasks efficiently:
+Poll for new messages and agent changes efficiently:
 
 ```bash
 crew check --name your-name
 ```
 
-Returns `messages:N tasks:N agents:N` — compare version numbers to detect activity without fetching full message list.
+Returns `messages:N agents:N` — compare version numbers to detect activity without fetching full message list.
 
 ## Reviewing Worker Output
 
