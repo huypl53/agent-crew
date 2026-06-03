@@ -65,6 +65,7 @@ export const COMMANDS: Record<
     buildParams: (f) => ({
       room: f.room,
       text: f.text,
+      file: f.file,
       name: f.name,
       to: f.to,
       mode: f.mode ?? 'push',

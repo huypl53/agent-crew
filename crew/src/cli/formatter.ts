@@ -17,7 +17,7 @@ Commands:
   leave      --room <room> --name <name>                  Leave a room
   rooms                                                    List all rooms
   members    --room <room>                                List room members
-  send       --room <room> --text <text> --name <name>    Send a message
+  send       --room <room> (--text <text> | --file <path>) --name <name>    Send a message
              [--to <agent>] [--kind <kind>] [--mode <mode>]
   read       --name <name> [--room <room>] [--limit N]    Read messages
              [--kinds task,completion]

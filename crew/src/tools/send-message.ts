@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { config } from '../config.ts';
 import { deliverMessage } from '../delivery/index.ts';
 import type { ToolResult } from '../shared/types.ts';
@@ -6,7 +8,8 @@ import { getAgent, getRoom } from '../state/index.ts';
 
 interface SendMessageParams {
   room: string;
-  text: string;
+  text?: string;
+  file?: string;
   to?: string;
   mode?: 'push' | 'pull';
   name: string; // sender identity
@@ -14,14 +17,71 @@ interface SendMessageParams {
   reply_to?: number;
 }
 
+const MAX_MESSAGE_FILE_BYTES = 256 * 1024;
+
+async function resolveMessageText(
+  params: SendMessageParams,
+): Promise<{ text?: string; error?: string }> {
+  const hasText = typeof params.text === 'string';
+  const hasFile = typeof params.file === 'string';
+
+  if (hasText === hasFile) {
+    return { error: 'Provide exactly one of --text or --file' };
+  }
+
+  if (hasText) {
+    return params.text
+      ? { text: params.text }
+      : { error: 'Missing required params: room, text, name' };
+  }
+
+  const filePath = params.file?.trim();
+  if (!filePath) {
+    return { error: 'Message file path must not be empty' };
+  }
+
+  const resolvedPath = resolve(filePath);
+  let bytes: Uint8Array;
+  try {
+    bytes = await readFile(resolvedPath);
+  } catch (error) {
+    return {
+      error: `Unable to read message file "${filePath}": ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
+  if (bytes.byteLength === 0) {
+    return { error: `Message file "${filePath}" is empty` };
+  }
+
+  if (bytes.byteLength > MAX_MESSAGE_FILE_BYTES) {
+    return {
+      error: `Message file "${filePath}" exceeds ${MAX_MESSAGE_FILE_BYTES} bytes`,
+    };
+  }
+
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return { text };
+  } catch {
+    return { error: `Message file is not valid UTF-8: "${filePath}"` };
+  }
+}
+
 export async function handleSendMessage(
   params: SendMessageParams,
 ): Promise<ToolResult> {
-  const { room, text, to, mode = 'push', name, kind, reply_to } = params;
+  const { room, to, mode = 'push', name, kind, reply_to } = params;
 
-  if (!room || !text || !name) {
-    return err('Missing required params: room, text, name');
+  if (!room || !name) {
+    return err('Missing required params: room, name');
   }
+
+  const resolved = await resolveMessageText(params);
+  if (resolved.error) {
+    return err(resolved.error);
+  }
+  const text = resolved.text!;
 
   const sender = getAgent(name);
   if (!sender) {

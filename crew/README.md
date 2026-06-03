@@ -206,11 +206,20 @@ crew <command>
 | Flag | Description |
 |------|-------------|
 | `--room` | Room to send in (required) |
-| `--text` | Message text (required) |
+| `--text` | Inline message text (mutually exclusive with `--file`) |
+| `--file` | Read exact UTF-8 message body from file (mutually exclusive with `--text`) |
 | `--name` | Your agent name / sender (required) |
 | `--to` | Target agent (omit for broadcast) |
 | `--kind` | `task`, `completion`, `question`, `error`, `status`, `chat` (default: `chat`) |
 | `--mode` | `push` (tmux delivery) or `pull` (queue only, default: `push`) |
+
+For long task briefs, prefer `--file` over shell substitution:
+
+```bash
+crew send --room crew --to wk-01 --file /tmp/task.txt --name lead-01 --kind task
+```
+
+`--file` reads the file as UTF-8 text, preserves newlines exactly, and rejects invalid UTF-8, empty files, or oversized payloads.
 
 ### read flags
 

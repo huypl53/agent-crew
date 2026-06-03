@@ -23,6 +23,8 @@ Your leader sends you tasks via push messages that appear as user input in your 
 [leader-name@room]: Create the login component in src/components/Login.tsx
 ```
 
+Leaders may compose these briefs with `crew send --file ...`, so multiline task messages with exact formatting are expected.
+
 When you see a `[name@room]:` message, this is a task command from your leader. Execute it.
 
 ## CRITICAL: Always Report Completion

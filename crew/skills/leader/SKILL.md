@@ -51,6 +51,14 @@ Send tasks to workers via push messages. The message is delivered directly to th
 crew send --room your-room --to builder-1 --text "Create the login component in src/components/Login.tsx with email/password fields and form validation" --name your-name --mode push --kind task
 ```
 
+For long or structured task briefs, write the task to a file and use `--file` instead of shell `cat` substitution:
+
+```bash
+crew send --room your-room --to builder-1 --file /tmp/task-brief.txt --name your-name --mode push --kind task
+```
+
+`--file` reads UTF-8 text exactly as written and preserves newlines.
+
 **Rules:**
 - One task at a time per worker
 - Wait until worker is idle before sending the next task
@@ -141,6 +149,7 @@ Since you cannot look at the code yourself, your task descriptions must be self-
 **Good:** "Create POST /api/auth/login endpoint in src/routes/auth.ts. Accept { email, password } body. Validate against users table. Return JWT token on success, 401 on failure. Use existing db connection from src/lib/db.ts."
 
 Include: what file, what to do, what the expected behavior is, and any constraints.
+If the brief is long enough that quoting becomes awkward, prefer `crew send --file ...`.
 
 ## Push Notifications (Primary)
 
