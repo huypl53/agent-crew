@@ -30,7 +30,7 @@ Register yourself in a crew coordination room.
 
 You are now registered as **{role}** in room **{room}**. Stay idle and wait for messages — tasks will be pushed to your pane automatically.
 
-- **Leader:** Wait for the human to send you objectives or directives
+- **Leader:** Wait for the human to send you objectives or directives. Once active, use leader-only coordination commands such as `crew send`, `crew status`, and `crew inspect` from the registered room.
 - **Worker:** Wait for your leader to assign tasks
 
 Do NOT start polling or reading messages proactively. Your role skill (`crew:leader` or `crew:worker`) will be activated when the human or your manager sends you your first task.

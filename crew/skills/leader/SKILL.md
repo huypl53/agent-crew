@@ -16,13 +16,13 @@ All crew operations use the `crew` CLI via Bash. No MCP tools needed.
 **YOU MUST NOT write code, edit files, run builds, or implement features yourself.** Your ONLY job is to:
 1. Break down requirements into clear, specific tasks
 2. Assign tasks to workers via `crew send`
-3. Monitor worker status via `crew status` and `crew read`
+3. Monitor worker status via `crew status`, `crew inspect`, and `crew read`
 4. Review worker output and provide feedback
 5. Escalate blockers and milestones to the human
 
 If you catch yourself about to open a file, write code, or run a build command — STOP. That is a worker's job. Delegate it instead.
 
-**Your tools are crew CLI commands ONLY:** `crew send`, `crew read`, `crew status`, `crew members`, `crew rooms`, `crew topic`. You should NOT be using Read, Write, Edit, Bash (for code), or any code tools.
+**Your tools are crew CLI commands ONLY:** `crew send`, `crew read`, `crew status`, `crew inspect`, `crew members`, `crew rooms`, `crew topic`. You should NOT be using Read, Write, Edit, Bash (for code), or any code tools.
 
 ## Your Work Loop
 
@@ -68,6 +68,29 @@ crew status builder-1
 ```
 Response includes current task and queued tasks.
 
+### Inspecting a Busy Worker
+
+When a worker is active but `crew status` is too coarse, inspect the recent worker conversation tail:
+```bash
+crew inspect --worker builder-1 --room frontend --name your-name --turns 6
+```
+
+This is a read-only leader tool. It shows recent normalized `user`/`assistant` turns for Claude Code workers, plus:
+- worker status
+- session ID when resolved
+- source (`transcript`, `hook-events`, or `tmux-fallback`)
+- a block hint such as `waiting_for_permission`, `waiting_for_user_input`, or `running`
+
+**Use `crew inspect` when:**
+- a worker stays busy and you need to know whether they are progressing or blocked
+- you suspect the worker is waiting on permissions or a confirmation prompt
+- the worker has not completed, but you need current context before deciding whether to interrupt
+
+**Rules:**
+- Leaders can inspect only workers in rooms they have joined
+- V1 supports Claude Code workers only
+- Prefer `crew inspect` before interrupting a worker who may simply be waiting for approval
+
 ### Interrupting a Hanging Worker
 
 If a worker is stuck on a long-running task:
@@ -85,6 +108,7 @@ crew reassign --worker builder-1 --room frontend --text "New task description" -
 This automatically handles the interrupt/clear sequence based on whether the task is active or queued.
 
 ### Decision Guide
+- Worker busy and you need conversational context → `crew inspect`
 - Worker hanging too long → `crew interrupt`, then send new instructions
 - Wrong task queued/active → `crew reassign` with corrected text
 - Worker idle → normal `crew send` with `--kind task`
@@ -128,6 +152,8 @@ Workers automatically push notifications to your pane when they send `completion
 
 **This is your primary signal.** When you see a push notification, read the full message via `crew read`.
 
+If the worker remains busy after the notification context stops being useful, switch to `crew inspect` instead of guessing from status alone.
+
 ## Muting Idle Notifications
 
 When all work is done and workers can safely be idle, mute idle notifications to avoid unnecessary noise:
@@ -157,7 +183,12 @@ Push notifications are reliable — **do not poll regularly**. Only check status
 crew status worker-name
 ```
 
-This is a diagnostic tool, not a polling mechanism. If you find yourself checking status regularly, something is wrong with the notification flow.
+For richer context while the worker is still busy:
+```bash
+crew inspect --worker worker-name --room your-room --name your-name
+```
+
+These are diagnostic tools, not a polling mechanism. If you find yourself checking them regularly, something is wrong with the notification flow.
 
 ## Check for Changes
 
