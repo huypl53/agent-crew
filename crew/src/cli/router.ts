@@ -3,7 +3,6 @@ import { handleClearWorkerSession } from '../tools/clear-worker-session.ts';
 import { handleCreateRoom } from '../tools/create-room.ts';
 import { handleDeleteRoom } from '../tools/delete-room.ts';
 import { handleGetStatus } from '../tools/get-status.ts';
-import { handleGetTaskDetails } from '../tools/get-task-details.ts';
 import {
   handleHintLookup,
   handleHintSet,
@@ -27,10 +26,8 @@ import {
 import { handleReadMessages } from '../tools/read-messages.ts';
 import { handleReassignTask } from '../tools/reassign-task.ts';
 import { handleRefresh } from '../tools/refresh.ts';
-import { handleSearchTasks } from '../tools/search-tasks.ts';
 import { handleSendMessage } from '../tools/send-message.ts';
 import { handleSetRoomTopic } from '../tools/set-room-topic.ts';
-import { handleUpdateTask } from '../tools/update-task.ts';
 
 type Handler = (params: unknown) => Promise<unknown>;
 type ParamBuilder = (
@@ -95,16 +92,6 @@ export const COMMANDS: Record<
     handler: handleSetRoomTopic,
     buildParams: (f) => ({ room: f.room, text: f.text, name: f.name }),
   },
-  'update-task': {
-    handler: handleUpdateTask,
-    buildParams: (f) => ({
-      task_id: parseInt(f.task, 10),
-      status: f.status,
-      name: f.name,
-      note: f.note,
-      context: f.context,
-    }),
-  },
   interrupt: {
     handler: handleInterruptWorker,
     buildParams: (f) => ({ worker_name: f.worker, room: f.room, name: f.name }),
@@ -129,20 +116,6 @@ export const COMMANDS: Record<
       room: f.room,
       text: f.text,
       name: f.name,
-    }),
-  },
-  'task-details': {
-    handler: handleGetTaskDetails,
-    buildParams: (f, p) => ({ task_id: parseInt(p[0] ?? f.task, 10) }),
-  },
-  'search-tasks': {
-    handler: handleSearchTasks,
-    buildParams: (f) => ({
-      room: f.room,
-      assigned_to: f.agent,
-      keyword: f.keyword,
-      status: f.status,
-      limit: f.limit ? parseInt(f.limit, 10) : undefined,
     }),
   },
   check: {

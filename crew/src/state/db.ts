@@ -54,29 +54,6 @@ const SCHEMA = `
     last_seq INTEGER NOT NULL DEFAULT 0
   );
 
-  CREATE TABLE IF NOT EXISTS tasks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-    assigned_to TEXT NOT NULL,
-    created_by TEXT NOT NULL,
-    message_id INTEGER,
-    summary TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'sent',
-    note TEXT,
-    context TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS task_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    from_status TEXT,
-    to_status TEXT NOT NULL,
-    triggered_by TEXT,
-    timestamp TEXT NOT NULL
-  );
-
   CREATE TABLE IF NOT EXISTS token_usage (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_id INTEGER NOT NULL UNIQUE REFERENCES agents(id) ON DELETE CASCADE,
@@ -136,8 +113,6 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_agents_room ON agents(room_id);
   CREATE INDEX IF NOT EXISTS idx_messages_room ON messages(room_id, id);
   CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient, id);
-  CREATE INDEX IF NOT EXISTS idx_tasks_room ON tasks(room_id, status);
-  CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_to, status);
   CREATE TABLE IF NOT EXISTS hook_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_name TEXT NOT NULL,
@@ -166,12 +141,6 @@ const SCHEMA = `
 
   CREATE TRIGGER IF NOT EXISTS trg_agents_update AFTER UPDATE ON agents
   BEGIN UPDATE change_log SET version = version + 1, updated_at = datetime('now') WHERE scope = 'agents'; END;
-
-  CREATE TRIGGER IF NOT EXISTS trg_tasks_change AFTER UPDATE ON tasks
-  BEGIN UPDATE change_log SET version = version + 1, updated_at = datetime('now') WHERE scope = 'tasks'; END;
-
-  CREATE TRIGGER IF NOT EXISTS trg_tasks_insert AFTER INSERT ON tasks
-  BEGIN UPDATE change_log SET version = version + 1, updated_at = datetime('now') WHERE scope = 'tasks'; END;
 
   CREATE TRIGGER IF NOT EXISTS trg_templates_ins AFTER INSERT ON agent_templates
   BEGIN UPDATE change_log SET version=version+1, updated_at=datetime('now') WHERE scope='templates'; END;
@@ -233,8 +202,6 @@ export function initDb(path?: string): void {
         PRAGMA foreign_keys=OFF;
         DROP TABLE IF EXISTS members;
         DROP TABLE IF EXISTS cursors;
-        DROP TABLE IF EXISTS task_events;
-        DROP TABLE IF EXISTS tasks;
         DROP TABLE IF EXISTS messages;
         DROP TABLE IF EXISTS token_usage;
         DROP TABLE IF EXISTS room_templates;
@@ -250,20 +217,13 @@ export function initDb(path?: string): void {
   }
 
   _db.exec(SCHEMA);
-
-  // Additive column migrations (safe to run on existing DBs)
-  const taskCols = _db.query('PRAGMA table_info(tasks)').all() as Array<{
-    name: string;
-  }>;
-  if (!taskCols.some((c) => c.name === 'context')) {
-    _db.exec('ALTER TABLE tasks ADD COLUMN context TEXT');
-  }
-  if (!taskCols.some((c) => c.name === 'last_notified_at')) {
-    _db.exec('ALTER TABLE tasks ADD COLUMN last_notified_at TEXT');
-    _db.exec(
-      'CREATE INDEX IF NOT EXISTS idx_tasks_notified ON tasks(last_notified_at)',
-    );
-  }
+  _db.exec(`
+    DROP TRIGGER IF EXISTS trg_tasks_change;
+    DROP TRIGGER IF EXISTS trg_tasks_insert;
+    DROP TABLE IF EXISTS task_events;
+    DROP TABLE IF EXISTS tasks;
+    DELETE FROM change_log WHERE scope = 'tasks';
+  `);
 
   const tplCols = _db
     .query('PRAGMA table_info(agent_templates)')
@@ -397,7 +357,7 @@ export function initDb(path?: string): void {
     _db.exec('ALTER TABLE agent_hints ADD COLUMN cadence INTEGER NOT NULL DEFAULT 3');
   }
 
-  const scopes = ['agents', 'messages', 'tasks', 'templates', 'room-templates', 'hook-events', 'party', 'hints'];
+  const scopes = ['agents', 'messages', 'templates', 'room-templates', 'hook-events', 'party', 'hints'];
   for (const scope of scopes) {
     _db.run(
       'INSERT OR IGNORE INTO change_log (scope, version, updated_at) VALUES (?, 0, datetime("now"))',

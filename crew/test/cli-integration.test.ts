@@ -33,7 +33,7 @@ describe('CLI integration', () => {
     });
     const out = await new Response(proc.stdout).text();
     await proc.exited;
-    expect(out).toMatch(/messages:\d+ tasks:\d+ agents:\d+/);
+    expect(out).toMatch(/messages:\d+ agents:\d+/);
   });
 
   test('crew rooms --json flag returns JSON', async () => {

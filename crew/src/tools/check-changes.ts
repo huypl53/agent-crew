@@ -2,7 +2,7 @@ import type { ToolResult } from '../shared/types.ts';
 import { ok } from '../shared/types.ts';
 import { getChangeVersions } from '../state/index.ts';
 
-const VALID_SCOPES = ['messages', 'tasks', 'agents'];
+const VALID_SCOPES = ['messages', 'agents'];
 
 interface CheckChangesParams {
   scopes?: string[];

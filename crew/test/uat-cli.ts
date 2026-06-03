@@ -122,21 +122,13 @@ await run(
   (o) => o.includes('uat-bot') && o.includes('uat-test'),
 );
 
-// 8. Check — formatter: "messages:N tasks:N"
+// 8. Check — formatter: "messages:N agents:N"
 await run(
   'crew check',
   ['check', '--name', 'uat-bot'],
-  (o) => o.includes('messages:') || o.includes('tasks:'),
+  (o) => o.includes('messages:') && o.includes('agents:'),
 );
-
-// 9. Search tasks (no tasks yet)
-await run(
-  'crew search-tasks',
-  ['search-tasks', '--room', 'uat-test'],
-  (o) => o.includes('(no tasks found)') || o.includes('#'),
-);
-
-// 10. Rooms --json (uat-test should appear as valid JSON)
+// 9. Rooms --json (uat-test should appear as valid JSON)
 await run('crew rooms --json', ['rooms', '--json'], (o) => {
   try {
     const d = JSON.parse(o);
@@ -148,14 +140,14 @@ await run('crew rooms --json', ['rooms', '--json'], (o) => {
   }
 });
 
-// 11. Leave — formatter: "Left room"
+// 10. Leave — formatter: "Left room"
 await run(
   'crew leave',
   ['leave', '--room', 'uat-test', '--name', 'uat-bot'],
   (o) => o.includes('Left room'),
 );
 
-// 12. Unknown command — stderr: "Unknown command: blahblah..."
+// 11. Unknown command — stderr: "Unknown command: blahblah..."
 await run('crew unknown (error)', ['blahblah'], (o) =>
   o.toLowerCase().includes('unknown'),
 );

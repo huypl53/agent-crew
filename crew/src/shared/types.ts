@@ -75,39 +75,6 @@ export interface Message {
   reply_to?: number | null;
 }
 
-export type TaskStatus =
-  | 'sent'
-  | 'queued'
-  | 'active'
-  | 'completed'
-  | 'error'
-  | 'interrupted'
-  | 'cancelled';
-
-export interface Task {
-  id: number;
-  room_id: number;
-  assigned_to: string;
-  created_by: string;
-  message_id: number | null;
-  text?: string;
-  summary: string;
-  status: TaskStatus;
-  note?: string;
-  context?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TaskEvent {
-  id: number;
-  task_id: number;
-  from_status: string | null;
-  to_status: string;
-  triggered_by: string | null;
-  timestamp: string;
-}
-
 export interface ToolResult {
   content: Array<{ type: 'text'; text: string }>;
   isError?: boolean;

@@ -82,9 +82,6 @@ export async function handleSendMessage(
       message_id: results[0]!.message_id,
       delivered: results[0]!.delivered,
       queued: results[0]!.queued,
-      ...(results[0]!.task_id !== undefined && {
-        task_id: results[0]!.task_id,
-      }),
     });
   }
 

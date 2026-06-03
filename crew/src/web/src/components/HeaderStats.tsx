@@ -56,7 +56,7 @@ export default function HeaderStats() {
 
   if (!stats) return <SkeletonStat />;
 
-  const { agents, tasks, cost } = stats;
+  const { agents, cost } = stats;
   const totalTokens = cost.total_input_tokens + cost.total_output_tokens;
 
   return (
@@ -73,22 +73,6 @@ export default function HeaderStats() {
       <Pill label="total" value={agents.total} color="text-slate-600 dark:text-slate-300" />
       <span className="sr-only" aria-live="polite" aria-atomic="true">
         {agents.busy} busy, {agents.idle} idle, {agents.total} total agents
-      </span>
-
-      <Sep />
-
-      {/* Tasks */}
-      <span className="text-slate-400 dark:text-slate-500 uppercase tracking-widest text-[10px]">
-        Tasks
-      </span>
-      <Pill label="active" value={tasks.active} color="text-blue-400" />
-      <Pill label="queued" value={tasks.queued} color="text-slate-400" />
-      <Pill label="done" value={tasks.done} color="text-green-400" />
-      {tasks.error > 0 && (
-        <Pill label="err" value={tasks.error} color="text-red-400" />
-      )}
-      <span className="sr-only" aria-live="polite" aria-atomic="true">
-        {tasks.active} active, {tasks.queued} queued, {tasks.done} done tasks
       </span>
 
       <Sep />

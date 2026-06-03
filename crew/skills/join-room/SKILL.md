@@ -26,11 +26,11 @@ Register yourself in a crew coordination room.
 
 **On error:** Show error message and stop.
 
-## 4. Wait for Tasks
+## 4. Wait for Messages
 
-You are now registered as **{role}** in room **{room}**. Stay idle and wait for messages — tasks will be pushed to your pane automatically.
+You are now registered as **{role}** in room **{room}**. Stay idle and wait for messages — assignments will be pushed to your pane automatically.
 
 - **Leader:** Wait for the human to send you objectives or directives. Once active, use leader-only coordination commands such as `crew send`, `crew status`, and `crew inspect` from the registered room.
-- **Worker:** Wait for your leader to assign tasks
+- **Worker:** Wait for your leader to assign work
 
-Do NOT start polling or reading messages proactively. Your role skill (`crew:leader` or `crew:worker`) will be activated when the human or your manager sends you your first task.
+Do NOT start polling or reading messages proactively. Your role skill (`crew:leader` or `crew:worker`) will be activated when the human or your manager sends you your first assignment.

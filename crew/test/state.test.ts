@@ -5,14 +5,10 @@ import {
   addHookEvent,
   addMessage,
   advanceCursor,
-  cancelQueuedTasksForAgent,
-  cleanupDeadAgentTasks,
   canonicalizeHintIdentity,
   clearState,
-  createTask,
   getAgent,
   getAllRooms,
-  getAllTaskEvents,
   getChangeVersions,
   getCursor,
   getHint,
@@ -21,24 +17,17 @@ import {
   getRoom,
   getRoomMembers,
   getRoomMessages,
-  getTask,
-  getTaskDetails,
-  getTaskEvents,
-  getTasksForAgent,
   getTokenUsageForAgent,
   getTotalCost,
   isNameTakenInRoom,
   readMessages,
   readRoomMessages,
-  recordTaskEvent,
   recordTokenUsage,
   removeAgent,
   removeAgentFully,
-  searchTasks,
   setHint,
   tickHintCadence,
   unsetHint,
-  updateTaskStatus,
   upsertPricing,
   validateLiveness,
 } from '../src/state/index.ts';
@@ -272,152 +261,7 @@ describe('state module', () => {
     });
   });
 
-  describe('Task CRUD', () => {
-    beforeEach(() => {
-      clearState();
-      addAgent('lead-1', 'leader', mkRoom('frontend').id, '%1');
-      addAgent('worker-1', 'worker', mkRoom('frontend').id, '%2');
-    });
-
-    test('createTask creates a task with status sent', () => {
-      const task = createTask(
-        'frontend',
-        'worker-1',
-        'lead-1',
-        1,
-        'Build login form',
-      );
-      expect(task.id).toBeGreaterThan(0);
-      expect(task.status).toBe('sent');
-      expect(task.assigned_to).toBe('worker-1');
-      expect(task.created_by).toBe('lead-1');
-      expect(task.summary).toBe('Build login form');
-      expect(task.room_id).toBe(getRoom('frontend')!.id);
-      expect(task.message_id).toBe(1);
-    });
-
-    test('getTask retrieves task by id', () => {
-      const created = createTask(
-        'frontend',
-        'worker-1',
-        'lead-1',
-        null,
-        'Test task',
-      );
-      const fetched = getTask(created.id);
-      expect(fetched).toBeDefined();
-      expect(fetched!.id).toBe(created.id);
-      expect(fetched!.summary).toBe('Test task');
-    });
-
-    test('getTask returns undefined for non-existent id', () => {
-      expect(getTask(999)).toBeUndefined();
-    });
-
-    test('getTasksForAgent returns tasks by status', () => {
-      createTask('frontend', 'worker-1', 'lead-1', null, 'Task A');
-      createTask('frontend', 'worker-1', 'lead-1', null, 'Task B');
-      const tasks = getTasksForAgent('worker-1');
-      expect(tasks.length).toBe(2);
-    });
-
-    test('getTasksForAgent filters by status', () => {
-      const t1 = createTask('frontend', 'worker-1', 'lead-1', null, 'Task A');
-      createTask('frontend', 'worker-1', 'lead-1', null, 'Task B');
-      updateTaskStatus(t1.id, 'active');
-      const active = getTasksForAgent('worker-1', ['active']);
-      expect(active.length).toBe(1);
-      expect(active[0]!.status).toBe('active');
-    });
-
-    test('updateTaskStatus transitions valid states', () => {
-      const task = createTask('frontend', 'worker-1', 'lead-1', null, 'Task');
-      // sent → active
-      const updated = updateTaskStatus(task.id, 'active');
-      expect(updated).toBeDefined();
-      expect(updated!.status).toBe('active');
-      // active → completed
-      const done = updateTaskStatus(task.id, 'completed');
-      expect(done!.status).toBe('completed');
-    });
-
-    test('updateTaskStatus stores note', () => {
-      const task = createTask('frontend', 'worker-1', 'lead-1', null, 'Task');
-      updateTaskStatus(task.id, 'error', 'Something broke');
-      const fetched = getTask(task.id);
-      expect(fetched!.note).toBe('Something broke');
-    });
-
-    test('updateTaskStatus rejects invalid transitions', () => {
-      const task = createTask('frontend', 'worker-1', 'lead-1', null, 'Task');
-      updateTaskStatus(task.id, 'active');
-      updateTaskStatus(task.id, 'completed');
-      // completed → active is not valid
-      expect(() => updateTaskStatus(task.id, 'active')).toThrow(
-        'Invalid transition',
-      );
-    });
-
-    test('updateTaskStatus returns undefined for non-existent task', () => {
-      expect(updateTaskStatus(999, 'active')).toBeUndefined();
-    });
-
-    test('cleanupDeadAgentTasks transitions non-terminal tasks to error', () => {
-      const t1 = createTask(
-        'frontend',
-        'worker-1',
-        'lead-1',
-        null,
-        'Active task',
-      );
-      updateTaskStatus(t1.id, 'active');
-      const t2 = createTask(
-        'frontend',
-        'worker-1',
-        'lead-1',
-        null,
-        'Queued task',
-      );
-      updateTaskStatus(t2.id, 'queued');
-      const t3 = createTask(
-        'frontend',
-        'worker-1',
-        'lead-1',
-        null,
-        'Completed task',
-      );
-      updateTaskStatus(t3.id, 'active');
-      updateTaskStatus(t3.id, 'completed');
-
-      cleanupDeadAgentTasks('worker-1');
-
-      // Active and queued should be error
-      expect(getTask(t1.id)!.status).toBe('error');
-      expect(getTask(t1.id)!.note).toBe('agent pane died');
-      expect(getTask(t2.id)!.status).toBe('error');
-      // Completed should be unchanged
-      expect(getTask(t3.id)!.status).toBe('completed');
-    });
-
-    test('validateLiveness cleans up tasks for dead agents', async () => {
-      // This test uses a fake pane that doesn't exist — isPaneDead returns true
-      addAgent('dead-worker', 'worker', mkRoom('frontend').id, '%99999');
-      const task = createTask(
-        'frontend',
-        'dead-worker',
-        'lead-1',
-        null,
-        'Doomed task',
-      );
-      updateTaskStatus(task.id, 'active');
-
-      await validateLiveness();
-
-      const updated = getTask(task.id);
-      expect(updated!.status).toBe('error');
-      expect(updated!.note).toBe('agent pane died');
-    });
-
+  describe('liveness', () => {
     test('validateLiveness removes agents with dead tmux panes', async () => {
       // Register an agent with a fake (dead) tmux pane
       // Args: name, role, room, tmuxTarget
@@ -565,251 +409,6 @@ describe('state module', () => {
     });
   });
 
-  describe('task context sharing', () => {
-    test('updateTaskStatus with context stores it', () => {
-      addAgent('lead-01', 'leader', mkRoom('test-room').id, '%79');
-      addAgent('wk-01', 'worker', mkRoom('test-room').id, '%80');
-      const task = createTask(
-        'test-room',
-        'wk-01',
-        'lead-01',
-        null,
-        'test task summary',
-      );
-      updateTaskStatus(task.id, 'active');
-      updateTaskStatus(
-        task.id,
-        'completed',
-        'done',
-        'Explored src/auth.ts. Found JWT validation in middleware.',
-      );
-      const details = getTaskDetails(task.id);
-      expect(details).toBeTruthy();
-      expect(details!.context).toContain('JWT validation');
-    });
-
-    test('searchTasks by keyword finds matching tasks', () => {
-      addAgent('lead-01', 'leader', mkRoom('test-room').id, '%81');
-      addAgent('wk-01', 'worker', mkRoom('test-room').id, '%82');
-      const t1 = createTask(
-        'test-room',
-        'wk-01',
-        'lead-01',
-        null,
-        'fix auth middleware',
-      );
-      updateTaskStatus(t1.id, 'active');
-      updateTaskStatus(
-        t1.id,
-        'completed',
-        undefined,
-        'JWT tokens expire too early',
-      );
-
-      const results = searchTasks({ keyword: 'JWT' });
-      expect(results.length).toBeGreaterThan(0);
-    });
-
-    test('searchTasks by room filters correctly', () => {
-      addAgent('lead-01', 'leader', mkRoom('room-ctx-a').id, '%83');
-      addAgent('wk-01', 'worker', mkRoom('room-ctx-a').id, '%84');
-      createTask('room-ctx-a', 'wk-01', 'lead-01', null, 'task in room a');
-      const results = searchTasks({ room: 'room-ctx-a' });
-      expect(results.every((r) => r.room === 'room-ctx-a')).toBe(true);
-    });
-
-    test('searchTasks returns context_preview truncated', () => {
-      addAgent('lead-01', 'leader', mkRoom('test-room').id, '%85');
-      addAgent('wk-01', 'worker', mkRoom('test-room').id, '%86');
-      const longCtx = 'x'.repeat(500);
-      const t = createTask(
-        'test-room',
-        'wk-01',
-        'lead-01',
-        null,
-        'long ctx task',
-      );
-      updateTaskStatus(t.id, 'active');
-      updateTaskStatus(t.id, 'completed', undefined, longCtx);
-      const results = searchTasks({ keyword: 'long ctx' });
-      if (results.length > 0) {
-        expect(results[0].context_preview!.length).toBeLessThanOrEqual(203);
-      }
-    });
-  });
-
-  describe('cancelQueuedTasksForAgent', () => {
-    beforeEach(() => {
-      clearState();
-      addAgent('lead-01', 'leader', mkRoom('room').id, '%1');
-      addAgent('wk-01', 'worker', mkRoom('room').id, '%2');
-    });
-
-    test('cancels queued/sent tasks and returns count', () => {
-      const t1 = createTask('room', 'wk-01', 'lead-01', null, 'task a'); // sent
-      const t2 = createTask('room', 'wk-01', 'lead-01', null, 'task b');
-      updateTaskStatus(t2.id, 'queued');
-      const t3 = createTask('room', 'wk-01', 'lead-01', null, 'task c');
-      updateTaskStatus(t3.id, 'active'); // should NOT be cancelled
-
-      const n = cancelQueuedTasksForAgent('wk-01', 'lead-01');
-      expect(n).toBe(2);
-
-      expect(getTask(t1.id)!.status).toBe('cancelled');
-      expect(getTask(t2.id)!.status).toBe('cancelled');
-      expect(getTask(t3.id)!.status).toBe('active');
-    });
-
-    test('leaves other agents untouched', () => {
-      addAgent('wk-02', 'worker', mkRoom('room').id, '%3');
-      const mine = createTask('room', 'wk-01', 'lead-01', null, 'mine');
-      const theirs = createTask('room', 'wk-02', 'lead-01', null, 'theirs');
-
-      cancelQueuedTasksForAgent('wk-01', 'lead-01');
-      expect(getTask(mine.id)!.status).toBe('cancelled');
-      expect(getTask(theirs.id)!.status).toBe('sent');
-    });
-
-    test('returns 0 when nothing to cancel', () => {
-      expect(cancelQueuedTasksForAgent('wk-01', 'lead-01')).toBe(0);
-    });
-
-    test('records task_events for cancellations', () => {
-      const t = createTask('room', 'wk-01', 'lead-01', null, 'task');
-      cancelQueuedTasksForAgent('wk-01', 'lead-01');
-      const events = getTaskEvents(t.id);
-      const cancelEvent = events.find((e) => e.to_status === 'cancelled');
-      expect(cancelEvent).toBeDefined();
-      expect(cancelEvent!.triggered_by).toBe('lead-01');
-    });
-  });
-
-  describe('migrations', () => {
-    test('adds context column to pre-existing tasks table (regression)', async () => {
-      // Simulate a DB created before `context` was added: build a tasks table
-      // without the column, then re-init and ensure searchTasks works.
-      const tmpPath = `/tmp/crew-migration-test-${Date.now()}.db`;
-      const { Database } = await import('bun:sqlite');
-
-      closeDb();
-      const raw = new Database(tmpPath, { create: true });
-      raw.exec(`
-        CREATE TABLE rooms (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          path TEXT NOT NULL UNIQUE,
-          name TEXT NOT NULL,
-          topic TEXT,
-          created_at TEXT NOT NULL
-        );
-        CREATE TABLE tasks (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          room_id INTEGER NOT NULL,
-          assigned_to TEXT NOT NULL,
-          created_by TEXT NOT NULL,
-          message_id INTEGER,
-          summary TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'sent',
-          note TEXT,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        );
-      `);
-      raw.close();
-
-      initDb(tmpPath);
-      // Should not throw — schema init on existing DB should complete
-      const results = searchTasks({ keyword: 'queued' });
-      expect(Array.isArray(results)).toBe(true);
-
-      closeDb();
-      const { unlinkSync } = await import('fs');
-      try {
-        unlinkSync(tmpPath);
-      } catch {}
-      try {
-        unlinkSync(tmpPath + '-wal');
-      } catch {}
-      try {
-        unlinkSync(tmpPath + '-shm');
-      } catch {}
-    });
-  });
-
-  describe('task events', () => {
-    beforeEach(() => {
-      clearState();
-      addAgent('lead-01', 'leader', mkRoom('test-room').id, '%1');
-      addAgent('wk-01', 'worker', mkRoom('test-room').id, '%2');
-    });
-
-    test('recordTaskEvent stores a transition', () => {
-      const task = createTask(
-        'test-room',
-        'wk-01',
-        'lead-01',
-        null,
-        'event test',
-      );
-      recordTaskEvent(task.id, null, 'sent', 'system');
-      const events = getTaskEvents(task.id);
-      expect(events.length).toBe(2);
-      expect(events[1]!.to_status).toBe('sent');
-      expect(events[1]!.triggered_by).toBe('system');
-    });
-
-    test('getTaskEvents returns events in order', () => {
-      const task = createTask(
-        'test-room',
-        'wk-01',
-        'lead-01',
-        null,
-        'multi event',
-      );
-      recordTaskEvent(task.id, null, 'sent', 'system');
-      recordTaskEvent(task.id, 'sent', 'active', 'wk-01');
-      recordTaskEvent(task.id, 'active', 'completed', 'wk-01');
-      const events = getTaskEvents(task.id);
-      expect(events.length).toBe(4);
-      expect(events[3]!.to_status).toBe('completed');
-    });
-
-    test('getAllTaskEvents returns array', () => {
-      expect(Array.isArray(getAllTaskEvents())).toBe(true);
-    });
-
-    test('updateTaskStatus auto-records event', () => {
-      const task = createTask(
-        'test-room',
-        'wk-01',
-        'lead-01',
-        null,
-        'auto event',
-      );
-      // Task starts with status 'sent'
-      updateTaskStatus(task.id, 'active', undefined, undefined, 'wk-01');
-      const events = getTaskEvents(task.id);
-      expect(events.length).toBe(2);
-      expect(events[1]!.from_status).toBe('sent');
-      expect(events[1]!.to_status).toBe('active');
-      expect(events[1]!.triggered_by).toBe('wk-01');
-    });
-
-    test('createTask produces initial task_event', () => {
-      const task = createTask(
-        'test-room',
-        'wk-01',
-        'lead-01',
-        null,
-        'initial event task',
-      );
-      const events = getTaskEvents(task.id);
-      expect(events.length).toBe(1);
-      expect(events[0]!.from_status).toBeNull();
-      expect(events[0]!.to_status).toBe('sent');
-      expect(events[0]!.triggered_by).toBe('lead-01');
-    });
-  });
-
   describe('change detection', () => {
     beforeEach(() => {
       clearState();
@@ -823,7 +422,7 @@ describe('state module', () => {
         scope: string;
         version: number;
       }[];
-      expect(rows.length).toBe(8);
+      expect(rows.length).toBe(7);
       const scopes = rows.map((r) => r.scope).sort();
       expect(scopes).toEqual([
         'agents',
@@ -832,7 +431,6 @@ describe('state module', () => {
         'messages',
         'party',
         'room-templates',
-        'tasks',
         'templates',
       ]);
     });
@@ -846,31 +444,6 @@ describe('state module', () => {
       expect(v2).toBeGreaterThan(v1);
     });
 
-    test('Inserting a task bumps tasks version', () => {
-      const before = getChangeVersions(['tasks']);
-      const v1 = before['tasks']?.version ?? 0;
-      createTask('test-room', 'wk-01', 'lead-01', null, 'test task');
-      const after = getChangeVersions(['tasks']);
-      const v2 = after['tasks']?.version ?? 0;
-      expect(v2).toBeGreaterThan(v1);
-    });
-
-    test('Updating a task bumps tasks version', () => {
-      const task = createTask(
-        'test-room',
-        'wk-01',
-        'lead-01',
-        null,
-        'test task',
-      );
-      const before = getChangeVersions(['tasks']);
-      const v1 = before['tasks']?.version ?? 0;
-      updateTaskStatus(task.id, 'active');
-      const after = getChangeVersions(['tasks']);
-      const v2 = after['tasks']?.version ?? 0;
-      expect(v2).toBeGreaterThan(v1);
-    });
-
     test('Inserting an agent bumps agents version', () => {
       const before = getChangeVersions(['agents']);
       const v1 = before['agents']?.version ?? 0;
@@ -881,9 +454,8 @@ describe('state module', () => {
     });
 
     test('getChangeVersions returns correct versions', () => {
-      const versions = getChangeVersions(['messages', 'tasks', 'agents']);
+      const versions = getChangeVersions(['messages', 'agents']);
       expect(versions['messages']).toBeDefined();
-      expect(versions['tasks']).toBeDefined();
       expect(versions['agents']).toBeDefined();
       expect(typeof versions['messages']?.version).toBe('number');
       expect(typeof versions['messages']?.updated_at).toBe('string');
@@ -892,7 +464,6 @@ describe('state module', () => {
     test('getChangeVersions filters by requested scopes', () => {
       const versions = getChangeVersions(['messages']);
       expect(versions['messages']).toBeDefined();
-      expect(versions['tasks']).toBeUndefined();
       expect(versions['agents']).toBeUndefined();
     });
   });

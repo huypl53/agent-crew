@@ -11,10 +11,7 @@ import type { View } from './components/NavBar.tsx';
 import NavBar from './components/NavBar.tsx';
 import RoomModal from './components/RoomModal.tsx';
 import RoomsSidebar from './components/RoomsSidebar.tsx';
-import TaskBoard from './components/TaskBoard.tsx';
 import TemplatesPanel from './components/TemplatesPanel.tsx';
-import TimelineView from './components/TimelineView.tsx';
-import TraceView from './components/TraceView.tsx';
 import ThemeToggle from './components/theme-toggle.tsx';
 import { get, post } from './hooks/useApi.ts';
 import { useMessages } from './hooks/useMessages.ts';
@@ -169,24 +166,6 @@ export default function App() {
             templates={templates}
             onEditAgent={setAgentEditTarget}
           />
-        </div>
-      )}
-
-      {currentView === 'tasks' && (
-        <div className="flex-1 flex overflow-hidden">
-          <TaskBoard />
-        </div>
-      )}
-
-      {currentView === 'timeline' && (
-        <div className="flex-1 flex overflow-hidden">
-          <TimelineView />
-        </div>
-      )}
-
-      {currentView === 'trace' && (
-        <div className="flex-1 flex overflow-hidden">
-          <TraceView />
         </div>
       )}
 

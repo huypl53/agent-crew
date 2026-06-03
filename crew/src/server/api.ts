@@ -20,12 +20,10 @@ import {
   getAgentByRoomAndName,
   getAgentDbStatus,
   getAgentMessageCounts,
-  getAgentTaskStats,
   getAgentTemplateById,
   getAllAgents,
   getAllRooms,
   getAllRoomTemplates,
-  getAllTaskEvents,
   getAllTemplates,
   getChangeVersions,
   getLatestTokenUsage,
@@ -34,20 +32,11 @@ import {
   getRoomMessages,
   getRoomTemplateDefinition,
   getRoomTemplateNames,
-  getTaskEvents,
-  searchTasks,
 } from '../state/index.ts';
 import { handleSendMessage } from '../tools/send-message.ts';
 import { getSweepRuntimeStats, getWorkerSweepStates } from './sweep.ts';
 import { getPaneStatus } from '../shared/pane-status.ts';
 import { capturePane } from '../tmux/index.ts';
-import type {
-  CanonicalTraceSpan,
-  TraceEventLink,
-  TraceTimelineFilters,
-  TraceTimelinePayload,
-  TraceTurnGroup,
-} from '../web/src/types.ts';
 
 const MIRROR_MAX_CHARS = 6000;
 
@@ -108,151 +97,6 @@ function parseIntParam(v: string | null): number | undefined {
   if (!v) return undefined;
   const n = parseInt(v, 10);
   return Number.isNaN(n) ? undefined : n;
-}
-
-function shellQuote(input: string): string {
-  return `'${String(input).replace(/'/g, `'"'"'`)}'`;
-}
-
-function toIso(input: unknown): string | null {
-  if (typeof input !== 'string' || !input) return null;
-  const ms = Date.parse(input);
-  if (Number.isNaN(ms)) return null;
-  return new Date(ms).toISOString();
-}
-
-function toMs(input: string | null): number {
-  if (!input) return 0;
-  const ms = Date.parse(input);
-  return Number.isNaN(ms) ? 0 : ms;
-}
-
-function buildTraceTimelinePayload(filters: TraceTimelineFilters): TraceTimelinePayload {
-  const db = getDb();
-  const where: string[] = [];
-  const params: unknown[] = [];
-  if (filters.room) {
-    where.push('r.name = ?');
-    params.push(filters.room);
-  }
-  if (filters.agent) {
-    where.push('m.sender = ?');
-    params.push(filters.agent);
-  }
-  if (filters.status) {
-    where.push('COALESCE(te.to_status, t.status, m.kind, "event") = ?');
-    params.push(filters.status);
-  }
-  if (filters.from) {
-    where.push('m.timestamp >= ?');
-    params.push(filters.from);
-  }
-  if (filters.to) {
-    where.push('m.timestamp <= ?');
-    params.push(filters.to);
-  }
-  const sql = `
-    SELECT m.id AS message_id, m.reply_to, m.sender, m.recipient, m.kind, m.mode, m.timestamp,
-           m.text, r.name AS room_name, t.id AS task_id, t.status AS task_status,
-           te.to_status AS event_status, te.id AS task_event_id
-    FROM messages m
-    JOIN rooms r ON r.id = m.room_id
-    LEFT JOIN tasks t ON t.message_id = m.id
-    LEFT JOIN task_events te ON te.task_id = t.id
-    ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
-    ORDER BY m.id ASC, te.id ASC`;
-  const rows = db.query(sql).all(...params) as Array<Record<string, unknown>>;
-
-  const spans: CanonicalTraceSpan[] = [];
-  const links: TraceEventLink[] = [];
-  const turnMap = new Map<string, TraceTurnGroup>();
-  const spanIdsByTurn = new Map<string, string[]>();
-  const spanById = new Map<string, CanonicalTraceSpan>();
-
-  for (const row of rows) {
-    const messageId = Number(row.message_id);
-    const room = String(row.room_name ?? 'unknown');
-    const sender = String(row.sender ?? 'unknown');
-    const timestamp = toIso(row.timestamp) ?? new Date(0).toISOString();
-    const taskId = typeof row.task_id === 'number' ? row.task_id : null;
-    const status = String(row.event_status ?? row.task_status ?? row.kind ?? 'event');
-    const turnId = `${room}:${sender}:${taskId ?? messageId}`;
-    const spanId = `msg:${messageId}:evt:${Number(row.task_event_id ?? 0)}`;
-    const parentSpanId = row.reply_to ? `msg:${Number(row.reply_to)}:evt:0` : null;
-
-    const span: CanonicalTraceSpan = {
-      trace_id: room,
-      span_id: spanId,
-      parent_span_id: parentSpanId,
-      room,
-      agent: sender,
-      status,
-      kind: 'message_turn',
-      started_at: timestamp,
-      ended_at: timestamp,
-      attributes: {
-        task_id: taskId,
-        message_id: messageId,
-        mode: row.mode ?? 'push',
-      },
-    };
-    spans.push(span);
-    spanById.set(span.span_id, span);
-
-    const ids = spanIdsByTurn.get(turnId) ?? [];
-    ids.push(span.span_id);
-    spanIdsByTurn.set(turnId, ids);
-
-    const existing = turnMap.get(turnId);
-    if (!existing) {
-      turnMap.set(turnId, {
-        turn_id: turnId,
-        room,
-        agent: sender,
-        started_at: timestamp,
-        ended_at: timestamp,
-        status,
-        span_ids: [],
-        before_span_ids: [],
-        after_span_ids: [],
-        parallel_turn_ids: [],
-      });
-    } else {
-      if (toMs(timestamp) < toMs(existing.started_at)) existing.started_at = timestamp;
-      if (!existing.ended_at || toMs(timestamp) > toMs(existing.ended_at)) existing.ended_at = timestamp;
-    }
-
-    if (parentSpanId) links.push({ source_span_id: parentSpanId, target_span_id: span.span_id, relation: 'reply_to' });
-  }
-
-  const turns = Array.from(turnMap.values()).sort((a, b) => {
-    const cmpStart = toMs(a.started_at) - toMs(b.started_at);
-    if (cmpStart !== 0) return cmpStart;
-    const cmpEnd = toMs(a.ended_at) - toMs(b.ended_at);
-    if (cmpEnd !== 0) return cmpEnd;
-    return a.turn_id.localeCompare(b.turn_id);
-  });
-
-  for (const turn of turns) {
-    const ids = spanIdsByTurn.get(turn.turn_id) ?? [];
-    turn.span_ids = ids;
-  }
-
-  for (let i = 0; i < turns.length; i++) {
-    const current = turns[i]!;
-    const prev = turns[i - 1];
-    const next = turns[i + 1];
-    if (prev) current.before_span_ids = prev.span_ids;
-    if (next) current.after_span_ids = next.span_ids;
-    for (let j = 0; j < turns.length; j++) {
-      if (i === j) continue;
-      const other = turns[j]!;
-      const overlap = toMs(current.started_at) <= toMs(other.ended_at) && toMs(other.started_at) <= toMs(current.ended_at);
-      if (overlap) current.parallel_turn_ids.push(other.turn_id);
-    }
-  }
-
-  return { spans, turns, links };
 }
 
 export async function handleApi(req: Request): Promise<Response> {
@@ -425,14 +269,12 @@ export async function handleApi(req: Request): Promise<Response> {
       /* table may not exist */
     }
     const message_stats = getAgentMessageCounts(name);
-    const task_stats = getAgentTaskStats(name);
     const sweepStates = getWorkerSweepStates();
     return json({
       ...agent,
       status: getAgentDbStatus(name) ?? 'unknown',
       token_usage,
       message_stats,
-      task_stats,
       sweep: sweepStates[name] ?? null,
     });
   }
@@ -448,7 +290,6 @@ export async function handleApi(req: Request): Promise<Response> {
       ...a,
       status: getAgentDbStatus(a.name) ?? 'unknown',
     }));
-    const tasks = searchTasks({});
     let total_cost: number | null = null;
     let total_input_tokens = 0;
     let total_output_tokens = 0;
@@ -470,13 +311,6 @@ export async function handleApi(req: Request): Promise<Response> {
         idle: agents.filter((a) => a.status === 'idle').length,
         dead: agents.filter((a) => a.status === 'dead').length,
         total: agents.length,
-      },
-      tasks: {
-        done: tasks.filter((t) => t.status === 'done').length,
-        active: tasks.filter((t) => t.status === 'active').length,
-        queued: tasks.filter((t) => t.status === 'queued').length,
-        error: tasks.filter((t) => t.status === 'error').length,
-        total: tasks.length,
       },
       cost: { total_usd: total_cost, total_input_tokens, total_output_tokens },
     });
@@ -520,62 +354,6 @@ export async function handleApi(req: Request): Promise<Response> {
     return json({ ok: true, removed_from_rooms: result.removed_from_rooms });
   }
 
-  // GET /api/tasks?room=&status=&limit=
-  if (method === 'GET' && path === '/tasks') {
-    try {
-      const db = getDb();
-      let sql =
-        'SELECT id, room, assigned_to, created_by, summary, status, created_at, updated_at FROM tasks WHERE 1=1';
-      const params: unknown[] = [];
-      const room = url.searchParams.get('room');
-      const status = url.searchParams.get('status');
-      const limit = parseIntParam(url.searchParams.get('limit')) ?? 200;
-      if (room) {
-        sql += ' AND room = ?';
-        params.push(room);
-      }
-      if (status) {
-        sql += ' AND status = ?';
-        params.push(status);
-      }
-      sql += ' ORDER BY id DESC LIMIT ?';
-      params.push(limit);
-      const rows = db.query(sql).all(...params);
-      return json(rows);
-    } catch {
-      return json([]);
-    }
-  }
-
-  // GET /api/tasks/events — all task events for timeline (readonly-safe)
-  if (method === 'GET' && path === '/tasks/events') {
-    try {
-      return json(getAllTaskEvents());
-    } catch {
-      return json([]);
-    }
-  }
-
-  // GET /api/tasks/:id
-  const taskMatch = path.match(/^\/tasks\/(\d+)$/);
-  if (method === 'GET' && taskMatch) {
-    try {
-      const db = getDb();
-      const [, taskIdRaw] = taskMatch;
-      if (!taskIdRaw) return err('Task not found', 404);
-      const id = parseInt(taskIdRaw, 10);
-      const task = db.query('SELECT * FROM tasks WHERE id = ?').get(id);
-      if (!task) return err('Task not found', 404);
-      let events: unknown[] = [];
-      try {
-        events = getTaskEvents(id);
-      } catch {}
-      return json({ ...(task as object), events });
-    } catch {
-      return err('Task not found', 404);
-    }
-  }
-
   // POST /api/messages
   if (method === 'POST' && path === '/messages') {
     const body = await req.json().catch(() => null);
@@ -599,64 +377,9 @@ export async function handleApi(req: Request): Promise<Response> {
     const versions = getChangeVersions([
       'messages',
       'agents',
-      'tasks',
       'rooms',
     ]);
     return json(versions);
-  }
-
-  // GET /api/trace/timeline?room=&agent=&status=&from=&to=
-  if (method === 'GET' && path === '/trace/timeline') {
-    try {
-      const payload = buildTraceTimelinePayload({
-        room: url.searchParams.get('room') ?? undefined,
-        agent: url.searchParams.get('agent') ?? undefined,
-        status: url.searchParams.get('status') ?? undefined,
-        from: url.searchParams.get('from') ?? undefined,
-        to: url.searchParams.get('to') ?? undefined,
-      });
-      return json(payload);
-    } catch (e) {
-      return err(String(e));
-    }
-  }
-
-  // GET /api/trace — aggregate payload for trace view (rooms + agents + tasks + recent messages)
-  if (method === 'GET' && path === '/trace') {
-    try {
-      const db = getDb();
-      const rooms = getAllRooms();
-      const agents = getAllAgents().map((a) => ({
-        ...a,
-        status: getAgentDbStatus(a.name) ?? 'unknown',
-      }));
-      const tasks = db
-        .query('SELECT * FROM tasks ORDER BY id DESC LIMIT 500')
-        .all();
-      let messages: unknown[] = [];
-      try {
-        const rows = db
-          .query('SELECT * FROM messages ORDER BY id DESC LIMIT 500')
-          .all() as Record<string, unknown>[];
-        messages = rows.map((r) => ({
-          message_id: String(r.id),
-          from: String(r.sender ?? ''),
-          to: (r.recipient as string | null) ?? null,
-          room: String(r.room ?? ''),
-          text: String(r.text ?? ''),
-          kind: String(r.kind ?? 'chat'),
-          mode: (r.mode as 'push' | 'pull') ?? 'push',
-          timestamp: String(r.timestamp ?? ''),
-          sequence: Number(r.id),
-          reply_to: (r.reply_to as number | null) ?? null,
-        }));
-      } catch {
-        /* messages table may not exist */
-      }
-      return json({ rooms, agents, tasks, messages });
-    } catch (e) {
-      return err(String(e));
-    }
   }
 
   // GET /api/templates
