@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const HOME = process.env.HOME ?? '';
 const CLAUDE_SESSIONS_DIR = join(HOME, '.claude', 'sessions');
@@ -13,12 +13,25 @@ interface ClaudeSession {
   name?: string;
 }
 
+function getTmuxSocketArgs(): string[] {
+  const socket = process.env.CREW_TMUX_SOCKET;
+  return socket ? ['-L', socket] : [];
+}
+
 export async function getClaudePidFromPane(
   paneTarget: string,
 ): Promise<number | null> {
   try {
     const shellProc = Bun.spawn(
-      ['tmux', 'display-message', '-p', '-t', paneTarget, '#{pane_pid}'],
+      [
+        'tmux',
+        ...getTmuxSocketArgs(),
+        'display-message',
+        '-p',
+        '-t',
+        paneTarget,
+        '#{pane_pid}',
+      ],
       {
         stdout: 'pipe',
         stderr: 'pipe',
@@ -26,8 +39,8 @@ export async function getClaudePidFromPane(
     );
     const shellPidStr = (await new Response(shellProc.stdout).text()).trim();
     await shellProc.exited;
-    const shellPid = parseInt(shellPidStr);
-    if (isNaN(shellPid)) return null;
+    const shellPid = Number.parseInt(shellPidStr, 10);
+    if (Number.isNaN(shellPid)) return null;
 
     const pgrepProc = Bun.spawn(['pgrep', '-P', String(shellPid)], {
       stdout: 'pipe',
@@ -39,8 +52,8 @@ export async function getClaudePidFromPane(
 
     const childPids = childPidsStr
       .split('\n')
-      .map((s) => parseInt(s.trim()))
-      .filter((n) => !isNaN(n));
+      .map((s) => Number.parseInt(s.trim(), 10))
+      .filter((n) => !Number.isNaN(n));
     for (const pid of childPids) {
       const sessionFile = join(CLAUDE_SESSIONS_DIR, `${pid}.json`);
       if (existsSync(sessionFile)) return pid;

@@ -21,6 +21,11 @@ interface JoinRoomParams {
   tmux_target?: string;
 }
 
+function getTmuxSocketArgs(): string[] {
+  const socket = process.env.CREW_TMUX_SOCKET;
+  return socket ? ['-L', socket] : [];
+}
+
 /** Detect agent type by checking child process name via PID */
 export async function detectAgentType(
   paneTarget: string,
@@ -28,7 +33,15 @@ export async function detectAgentType(
   try {
     // Get shell PID from tmux pane
     const shellProc = Bun.spawn(
-      ['tmux', 'display-message', '-p', '-t', paneTarget, '#{pane_pid}'],
+      [
+        'tmux',
+        ...getTmuxSocketArgs(),
+        'display-message',
+        '-p',
+        '-t',
+        paneTarget,
+        '#{pane_pid}',
+      ],
       {
         stdout: 'pipe',
         stderr: 'pipe',
@@ -36,8 +49,8 @@ export async function detectAgentType(
     );
     const shellPidStr = (await new Response(shellProc.stdout).text()).trim();
     await shellProc.exited;
-    const shellPid = parseInt(shellPidStr);
-    if (isNaN(shellPid)) return 'unknown';
+    const shellPid = Number.parseInt(shellPidStr, 10);
+    if (Number.isNaN(shellPid)) return 'unknown';
 
     // Get child process names
     const psProc = Bun.spawn(
@@ -108,7 +121,7 @@ export async function handleJoinRoom(
   let target: string | null = tmux_target ?? null;
   if (!target) {
     const pane = process.env.TMUX_PANE;
-    target = pane && pane.trim() ? pane.trim() : null;
+    target = pane?.trim() ? pane.trim() : null;
   }
 
   let cwd: string;
@@ -147,7 +160,7 @@ export async function handleJoinRoom(
 
   // Resolve name collisions
   const existing = getAgentByRoomAndName(roomObj.id, name);
-  if (existing && existing.tmux_target && target) {
+  if (existing?.tmux_target && target) {
     if (existing.tmux_target === target) {
       // Same pane — rejoin: update in-place (addAgent handles this)
     } else {

@@ -1,18 +1,23 @@
 import { handleCheckChanges } from '../tools/check-changes.ts';
-import { handleHintLookup, handleHintSet, handleHintUnset } from '../tools/hint.ts';
-import { handleHookEvent } from '../tools/hook-event.ts';
-import { handleParty } from '../tools/party.ts';
 import { handleClearWorkerSession } from '../tools/clear-worker-session.ts';
 import { handleCreateRoom } from '../tools/create-room.ts';
 import { handleDeleteRoom } from '../tools/delete-room.ts';
 import { handleGetStatus } from '../tools/get-status.ts';
 import { handleGetTaskDetails } from '../tools/get-task-details.ts';
+import {
+  handleHintLookup,
+  handleHintSet,
+  handleHintUnset,
+} from '../tools/hint.ts';
+import { handleHookEvent } from '../tools/hook-event.ts';
+import { handleInspectWorker } from '../tools/inspect-worker.ts';
 import { handleInterruptWorker } from '../tools/interrupt-worker.ts';
 import { handleJoinRoom } from '../tools/join-room.ts';
 import { handleLeaveRoom } from '../tools/leave-room.ts';
 import { handleListMembers } from '../tools/list-members.ts';
 import { handleListRooms } from '../tools/list-rooms.ts';
 import { handleMuteIdle } from '../tools/mute-idle.ts';
+import { handleParty } from '../tools/party.ts';
 import {
   handlePausePolling,
   handlePollingStatus,
@@ -27,8 +32,11 @@ import { handleSendMessage } from '../tools/send-message.ts';
 import { handleSetRoomTopic } from '../tools/set-room-topic.ts';
 import { handleUpdateTask } from '../tools/update-task.ts';
 
-type Handler = (params: any) => Promise<any>;
-type ParamBuilder = (flags: Record<string, any>, positional: string[]) => any;
+type Handler = (params: unknown) => Promise<unknown>;
+type ParamBuilder = (
+  flags: Record<string, unknown>,
+  positional: string[],
+) => unknown;
 
 export const COMMANDS: Record<
   string,
@@ -100,6 +108,15 @@ export const COMMANDS: Record<
   interrupt: {
     handler: handleInterruptWorker,
     buildParams: (f) => ({ worker_name: f.worker, room: f.room, name: f.name }),
+  },
+  inspect: {
+    handler: handleInspectWorker,
+    buildParams: (f) => ({
+      worker_name: f.worker,
+      room: f.room,
+      name: f.name,
+      turns: f.turns ? parseInt(String(f.turns), 10) : undefined,
+    }),
   },
   clear: {
     handler: handleClearWorkerSession,
@@ -187,7 +204,14 @@ export const COMMANDS: Record<
       if (subcommand === 'set') return handleHintSet(p);
       if (subcommand === 'unset') return handleHintUnset(p);
       if (subcommand === 'lookup') return handleHintLookup(p);
-      return { content: [{ type: 'text', text: JSON.stringify({ error: 'Unknown hint subcommand' }) }] };
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ error: 'Unknown hint subcommand' }),
+          },
+        ],
+      };
     },
     buildParams: (f, p) => ({
       subcommand: p[0],

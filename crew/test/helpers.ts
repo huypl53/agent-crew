@@ -1,4 +1,17 @@
 const TEST_SESSION_PREFIX = `cc-test-${process.pid}-`;
+const TEST_TMUX_SOCKET = `crew-test-${process.pid}`;
+
+function getSocketName(): string {
+  return TEST_TMUX_SOCKET;
+}
+
+function getSocketArgs(): string[] {
+  return ['-L', getSocketName()];
+}
+
+function ensureTestTmuxSocketEnv(): void {
+  process.env.CREW_TMUX_SOCKET = getSocketName();
+}
 
 export function getCallerTestTag(): string {
   const stack = new Error().stack ?? '';
@@ -21,6 +34,7 @@ function sessionName(name: string): string {
 export async function createTestSession(
   name: string,
 ): Promise<{ session: string; pane: string }> {
+  ensureTestTmuxSocketEnv();
   const session = sessionName(name);
 
   // Kill existing session if any
@@ -30,6 +44,7 @@ export async function createTestSession(
   const proc = Bun.spawn(
     [
       'tmux',
+      ...getSocketArgs(),
       'new-session',
       '-d',
       '-s',
@@ -51,7 +66,15 @@ export async function createTestSession(
 
   // Get the pane ID
   const paneProc = Bun.spawn(
-    ['tmux', 'list-panes', '-t', session, '-F', '#{pane_id}'],
+    [
+      'tmux',
+      ...getSocketArgs(),
+      'list-panes',
+      '-t',
+      session,
+      '-F',
+      '#{pane_id}',
+    ],
     {
       stdout: 'pipe',
       stderr: 'pipe',
@@ -64,26 +87,33 @@ export async function createTestSession(
 }
 
 export async function destroyTestSession(name: string): Promise<void> {
+  ensureTestTmuxSocketEnv();
   const session = sessionName(name);
   await runTmux('kill-session', '-t', session).catch(() => {});
 }
 
 export async function sendToPane(target: string, text: string): Promise<void> {
+  ensureTestTmuxSocketEnv();
   await runTmux('send-keys', '-t', target, '-l', text);
   await runTmux('send-keys', '-t', target, 'Enter');
 }
 
 export async function captureFromPane(target: string): Promise<string> {
-  const proc = Bun.spawn(['tmux', 'capture-pane', '-t', target, '-p'], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
+  ensureTestTmuxSocketEnv();
+  const proc = Bun.spawn(
+    ['tmux', ...getSocketArgs(), 'capture-pane', '-t', target, '-p'],
+    {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
   await proc.exited;
   return (await new Response(proc.stdout).text()).trimEnd();
 }
 
 async function runTmux(...args: string[]): Promise<string> {
-  const proc = Bun.spawn(['tmux', ...args], {
+  ensureTestTmuxSocketEnv();
+  const proc = Bun.spawn(['tmux', ...getSocketArgs(), ...args], {
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -97,14 +127,19 @@ async function runTmux(...args: string[]): Promise<string> {
 }
 
 export async function cleanupAllTestSessions(tag?: string): Promise<void> {
+  ensureTestTmuxSocketEnv();
   try {
-    const proc = Bun.spawn(['tmux', 'list-sessions', '-F', '#{session_name}'], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
+    const proc = Bun.spawn(
+      ['tmux', ...getSocketArgs(), 'list-sessions', '-F', '#{session_name}'],
+      {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    );
     await proc.exited;
     const output = await new Response(proc.stdout).text();
-    const prefix = tag ? `${TEST_SESSION_PREFIX}${tag}-` : TEST_SESSION_PREFIX;
+    const resolvedTag = tag ?? getCallerTestTag();
+    const prefix = `${TEST_SESSION_PREFIX}${resolvedTag}-`;
     const sessions = output
       .trim()
       .split('\n')

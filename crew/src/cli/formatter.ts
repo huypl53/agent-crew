@@ -27,6 +27,8 @@ Commands:
   topic      --room <room> --text <text> --name <name>    Set room topic
   update-task --task <id> --status <s> --name <name>      Update task status
   interrupt  --worker <name> --room <room> --name <name>  Interrupt worker
+  inspect    --worker <name> --name <leader>              Inspect recent worker turns
+             [--room <room>] [--turns N]
   clear      --worker <name> --room <room> --name <name>  Clear worker session
   reassign   --worker <name> --room <room> --text <t>     Reassign task
              --name <name>
@@ -115,6 +117,29 @@ const FORMATTERS: Record<string, (data: any) => string> = {
   topic: (d) => `Topic set: ${d.topic}`,
   'update-task': (d) => `task:#${d.task_id} → ${d.status}`,
   interrupt: (d) => `Interrupted task:#${d.task_id} (was ${d.previous_status})`,
+  inspect: (d) => {
+    const lines = [
+      `worker: ${d.agent_name}`,
+      `room: ${d.room_name}`,
+      `provider: ${d.provider}`,
+      `session_id: ${d.session_id ?? 'null'}`,
+      `status: ${d.status}`,
+      `updated_at: ${d.updated_at ?? 'null'}`,
+      `block_hint: ${d.block_hint}`,
+      `source: ${d.source}`,
+    ];
+    if (d.degraded) {
+      lines.push(`degraded: true`);
+      lines.push(`degradation_reason: ${d.degradation_reason}`);
+    }
+    if (Array.isArray(d.turns) && d.turns.length > 0) {
+      lines.push('');
+      for (const turn of d.turns) {
+        lines.push(`[${turn.role}] ${turn.text}`);
+      }
+    }
+    return lines.join('\n');
+  },
   clear: (d) => `Cleared ${d.worker_name} session`,
   reassign: (d) =>
     `Reassigned: old:#${d.old_task_id ?? 'none'} → new:#${d.new_task_id}`,

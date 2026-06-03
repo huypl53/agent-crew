@@ -1,5 +1,15 @@
-import { describe, expect, test } from 'bun:test';
-import { parsePaneInputSection } from '../src/shared/pane-status.ts';
+import { afterAll, describe, expect, test } from 'bun:test';
+import {
+  getPaneStatus,
+  parsePaneInputSection,
+} from '../src/shared/pane-status.ts';
+import { closeDb, initDb } from '../src/state/db.ts';
+import { addAgent, getOrCreateRoom } from '../src/state/index.ts';
+import {
+  cleanupAllTestSessions,
+  createTestSession,
+  destroyTestSession,
+} from './helpers.ts';
 
 describe('parsePaneInputSection', () => {
   test('detects typing when chars between separators exceed threshold', () => {
@@ -52,5 +62,39 @@ describe('parsePaneInputSection', () => {
     const parsed = parsePaneInputSection(pane, 13);
     expect(parsed.typingActive).toBe(true);
     expect(parsed.sanitized).toBe('top');
+  });
+});
+
+describe('getPaneStatus', () => {
+  afterAll(async () => {
+    await cleanupAllTestSessions();
+    closeDb();
+  });
+
+  test('returns unknown instead of throwing when pane cache is warm but DB is closed', async () => {
+    initDb(':memory:');
+    const session = await createTestSession('pane-status-db-closed');
+
+    try {
+      const room = getOrCreateRoom('/test/pane-status', 'pane-status');
+      addAgent(
+        'pane-status-worker',
+        'worker',
+        room.id,
+        session.pane,
+        'claude-code',
+      );
+
+      const initial = await getPaneStatus(session.pane);
+      expect(initial.status).toBe('unknown');
+
+      closeDb();
+
+      const result = await getPaneStatus(session.pane);
+      expect(result.status).toBe('unknown');
+      expect(result.contentChanged).toBe(false);
+    } finally {
+      await destroyTestSession('pane-status-db-closed');
+    }
   });
 });

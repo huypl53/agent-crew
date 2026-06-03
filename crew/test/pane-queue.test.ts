@@ -81,12 +81,12 @@ describe('PaneQueue', () => {
   test('leader queue applies configured pace between paste deliveries', async () => {
     const q = getQueue(testPane, { role: 'leader', leaderPaceMs: 1200 });
 
-    const t0 = Date.now();
+    const t0 = performance.now();
     const p1 = q.enqueue({ type: 'paste', text: 'pace-1' });
     const p2 = q.enqueue({ type: 'paste', text: 'pace-2' });
 
     await Promise.all([p1, p2]);
-    const elapsed = Date.now() - t0;
+    const elapsed = performance.now() - t0;
 
     expect(elapsed).toBeGreaterThanOrEqual(1100);
   });
@@ -94,9 +94,9 @@ describe('PaneQueue', () => {
   test('leader command bypass is not delayed by pace', async () => {
     const q = getQueue(testPane, { role: 'leader', leaderPaceMs: 3000 });
 
-    const t0 = Date.now();
+    const t0 = performance.now();
     await q.enqueue({ type: 'command', text: 'echo bypass-command' });
-    const elapsed = Date.now() - t0;
+    const elapsed = performance.now() - t0;
 
     expect(elapsed).toBeLessThan(5000);
   });

@@ -69,7 +69,7 @@ describe('CLI formatter', () => {
         {
           name: 'crew',
           member_count: 5,
-          roles: { leader: 1, leader: 1, worker: 3 },
+          roles: { leader: 1, worker: 3 },
         },
       ],
     };
@@ -122,5 +122,59 @@ describe('CLI formatter', () => {
     expect(out).toContain('wk-01');
     expect(out).toContain('worker');
     expect(out).toContain('idle');
+  });
+
+  test('formats inspect output with turns and degradation metadata', () => {
+    const data = {
+      agent_name: 'worker-1',
+      room_name: 'frontend',
+      provider: 'claude-code',
+      session_id: 'sess-1',
+      status: 'busy',
+      updated_at: '2026-06-03T10:00:02.000Z',
+      block_hint: 'running',
+      source: 'transcript',
+      degraded: false,
+      degradation_reason: 'none',
+      turns: [
+        {
+          role: 'user',
+          text: 'Run tests',
+          timestamp: '2026-06-03T10:00:00.000Z',
+        },
+      ],
+    };
+    const out = formatResult('inspect', data);
+    expect(out).toContain('worker: worker-1');
+    expect(out).toContain('room: frontend');
+    expect(out).toContain('[user] Run tests');
+    expect(out).toContain('source: transcript');
+    expect(out).not.toContain('degraded: true');
+  });
+
+  test('formats degraded inspect output explicitly', () => {
+    const data = {
+      agent_name: 'worker-1',
+      room_name: 'frontend',
+      provider: 'claude-code',
+      session_id: null,
+      status: 'busy',
+      updated_at: '2026-06-03T10:00:02.000Z',
+      block_hint: 'unknown',
+      source: 'hook-events',
+      degraded: true,
+      degradation_reason: 'session_unresolved',
+      turns: [
+        {
+          role: 'assistant',
+          text: 'Waiting for permission.',
+          timestamp: '2026-06-03T10:00:02.000Z',
+        },
+      ],
+    };
+    const out = formatResult('inspect', data);
+    expect(out).toContain('degraded: true');
+    expect(out).toContain('degradation_reason: session_unresolved');
+    expect(out).toContain('[assistant] Waiting for permission.');
   });
 });

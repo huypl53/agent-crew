@@ -1359,6 +1359,7 @@ function truncateForNotification(text: string, maxLen: number): string {
 export function getLatestHookEvent(
   agentName: string,
   eventType?: string,
+  sessionId?: string,
 ): HookEvent | null {
   const db = getDb();
   let sql = 'SELECT * FROM hook_events WHERE agent_name = ?';
@@ -1366,6 +1367,10 @@ export function getLatestHookEvent(
   if (eventType) {
     sql += ' AND event_type = ?';
     params.push(eventType);
+  }
+  if (sessionId) {
+    sql += ' AND session_id = ?';
+    params.push(sessionId);
   }
   sql += ' ORDER BY id DESC LIMIT 1';
   const row = db.query(sql).get(...params) as Record<string, unknown> | null;

@@ -393,8 +393,10 @@ export async function paneExists(target: string): Promise<boolean> {
 }
 
 export async function getPaneCwd(paneId: string): Promise<string | null> {
+  const socketArgs = getSocketArgs();
   const result = Bun.spawnSync([
     'tmux',
+    ...socketArgs,
     'display-message',
     '-p',
     '-t',
@@ -446,7 +448,9 @@ export async function createSession(
   const panes = await run('list-panes', '-t', name, '-F', '#{pane_id}');
   if (!panes.success || !panes.stdout.trim())
     throw new Error('failed to get pane ID for new session');
-  return panes.stdout.trim().split('\n')[0]!;
+  const paneId = panes.stdout.trim().split('\n')[0];
+  if (!paneId) throw new Error('failed to get pane ID for new session');
+  return paneId;
 }
 
 export async function splitPane(target: string, cwd: string): Promise<string> {

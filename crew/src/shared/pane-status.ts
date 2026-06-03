@@ -1,5 +1,9 @@
+import {
+  getAgentByPane,
+  getLatestHookEvent,
+  type HookEvent,
+} from '../state/index.ts';
 import { capturePane } from '../tmux/index.ts';
-import { getAgentByPane, getLatestHookEvent } from '../state/index.ts';
 
 export type PaneStatus = 'idle' | 'busy' | 'unknown';
 
@@ -37,13 +41,19 @@ export function parsePaneInputSection(
     return { typingActive: false, inputChars: 0, sanitized: text };
   }
 
-  const top = sepIndexes[sepIndexes.length - 2]!;
-  const bottom = sepIndexes[sepIndexes.length - 1]!;
+  const top = sepIndexes[sepIndexes.length - 2];
+  const bottom = sepIndexes[sepIndexes.length - 1];
+  if (top === undefined || bottom === undefined) {
+    return { typingActive: false, inputChars: 0, sanitized: text };
+  }
   if (bottom <= top) {
     return { typingActive: false, inputChars: 0, sanitized: text };
   }
 
-  const between = lines.slice(top + 1, bottom).join('\n').replace(/ /g, ' ');
+  const between = lines
+    .slice(top + 1, bottom)
+    .join('\n')
+    .replace(/ /g, ' ');
   const inputChars = between.replace(/\s+/g, '').length;
   const typingActive = inputChars >= MIN_CHARS_NUM;
   const sanitized = lines.slice(0, top).join('\n');
@@ -61,6 +71,11 @@ const lastSeenEventId = new Map<string, number>();
 /** Cache pane width with 30s TTL — width rarely changes */
 const paneWidthCache = new Map<string, { width: number; ts: number }>();
 const PANE_WIDTH_CACHE_TTL_MS = 30_000;
+
+function getTmuxSocketArgs(): string[] {
+  const socket = process.env.CREW_TMUX_SOCKET;
+  return socket ? ['-L', socket] : [];
+}
 
 function getAgentNameByPane(target: string): string | null {
   const cached = paneCache.get(target);
@@ -112,7 +127,15 @@ export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
   } else {
     try {
       const paneMeta = await Bun.spawn(
-        ['tmux', 'display-message', '-p', '-t', target, '#{pane_width}'],
+        [
+          'tmux',
+          ...getTmuxSocketArgs(),
+          'display-message',
+          '-p',
+          '-t',
+          target,
+          '#{pane_width}',
+        ],
         { stdout: 'pipe', stderr: 'pipe' },
       ).stdout.text();
       const w = Number.parseInt(paneMeta.trim(), 10);
@@ -138,7 +161,19 @@ export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
   }
 
   // Derive status from latest hook event
-  const latestEvent = getLatestHookEvent(agentName);
+  let latestEvent: HookEvent | null;
+  try {
+    latestEvent = getLatestHookEvent(agentName);
+  } catch {
+    paneCache.delete(target);
+    lastSeenEventId.delete(target);
+    return {
+      status: 'unknown',
+      contentChanged: false,
+      typingActive: parsed.typingActive,
+      inputChars: parsed.inputChars,
+    };
+  }
   if (!latestEvent) {
     return {
       status: 'unknown',
@@ -148,7 +183,8 @@ export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
     };
   }
 
-  const status: PaneStatus = latestEvent.event_type === 'Stop' ? 'idle' : 'busy';
+  const status: PaneStatus =
+    latestEvent.event_type === 'Stop' ? 'idle' : 'busy';
   const prevEventId = lastSeenEventId.get(target) ?? 0;
   const contentChanged = latestEvent.id !== prevEventId;
   lastSeenEventId.set(target, latestEvent.id);
@@ -161,5 +197,8 @@ export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
   };
 }
 
-/** No-op — kept for API compatibility until Phase 8 cleanup. */
-export function clearPaneSnapshot(_target: string): void {}
+export function clearPaneSnapshot(target: string): void {
+  paneCache.delete(target);
+  lastSeenEventId.delete(target);
+  paneWidthCache.delete(target);
+}
