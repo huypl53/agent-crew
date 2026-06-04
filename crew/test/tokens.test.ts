@@ -250,6 +250,36 @@ describe('codex token collection', () => {
 });
 
 describe('agent type detection', () => {
+  test('inferAgentTypeFromProcesses prefers descendant Claude over wrapper commands', async () => {
+    const { inferAgentTypeFromProcesses } = await import('../src/tools/join-room.ts');
+    const result = inferAgentTypeFromProcesses([
+      {
+        comm: 'node',
+        args: '/home/vtit/.nvm/versions/node/v24.15.0/bin/ccs codex',
+      },
+      {
+        comm: 'claude',
+        args: '/home/vtit/.local/bin/claude --settings /home/vtit/.ccs/glm.settings.json',
+      },
+    ]);
+    expect(result).toBe('claude-code');
+  });
+
+  test('inferAgentTypeFromProcesses detects codex when no Claude process exists', async () => {
+    const { inferAgentTypeFromProcesses } = await import('../src/tools/join-room.ts');
+    const result = inferAgentTypeFromProcesses([
+      {
+        comm: 'node',
+        args: '/home/vtit/.nvm/versions/node/v24.15.0/bin/codex',
+      },
+      {
+        comm: 'codex',
+        args: '/home/vtit/.nvm/versions/node/v24.15.0/lib/node_modules/@openai/codex/bin/codex',
+      },
+    ]);
+    expect(result).toBe('codex');
+  });
+
   test('detectAgentType uses an isolated pane instead of TMUX_PANE', async () => {
     const { detectAgentType } = await import('../src/tools/join-room.ts');
     const session = await createTestSession('detect-agent-type-shell');

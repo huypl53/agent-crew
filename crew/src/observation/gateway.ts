@@ -124,7 +124,7 @@ export async function inspectWorkerTurns(
     params.callerName,
   );
 
-  if (worker.agent_type !== 'claude-code') {
+  if (worker.agent_type === 'codex') {
     throw new Error('inspect currently supports only claude-code workers');
   }
 
@@ -171,7 +171,7 @@ export async function inspectWorkerTurns(
         return {
           agent_name: worker.name,
           room_name: worker.room_name,
-          provider: worker.agent_type,
+          provider: 'claude-code',
           session_id: resolvedSession.sessionId,
           status,
           updated_at: updatedAt,

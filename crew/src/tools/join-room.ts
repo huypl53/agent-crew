@@ -26,6 +26,40 @@ function getTmuxSocketArgs(): string[] {
   return socket ? ['-L', socket] : [];
 }
 
+interface ProcessInfo {
+  comm: string;
+  args?: string;
+}
+
+export function inferAgentTypeFromProcesses(
+  processes: ProcessInfo[],
+): 'claude-code' | 'codex' | 'unknown' {
+  const normalized = processes.map((process) => ({
+    comm: process.comm.trim().toLowerCase(),
+    args: process.args?.trim().toLowerCase() ?? '',
+  }));
+
+  if (
+    normalized.some(
+      (process) =>
+        process.comm.includes('claude') || process.args.includes('claude'),
+    )
+  ) {
+    return 'claude-code';
+  }
+
+  if (
+    normalized.some(
+      (process) =>
+        process.comm.includes('codex') || process.args.includes('codex'),
+    )
+  ) {
+    return 'codex';
+  }
+
+  return 'unknown';
+}
+
 /** Detect agent type by checking child process name via PID */
 export async function detectAgentType(
   paneTarget: string,
@@ -52,49 +86,51 @@ export async function detectAgentType(
     const shellPid = Number.parseInt(shellPidStr, 10);
     if (Number.isNaN(shellPid)) return 'unknown';
 
-    // Get child process names
-    const psProc = Bun.spawn(
-      ['ps', '-o', 'comm=', '--ppid', String(shellPid)],
-      {
-        stdout: 'pipe',
-        stderr: 'pipe',
-      },
-    );
-    const psOutput = (await new Response(psProc.stdout).text())
-      .trim()
-      .toLowerCase();
-    await psProc.exited;
+    const discovered: ProcessInfo[] = [];
+    const pending = [shellPid];
+    const seen = new Set<number>();
 
-    // Fallback: try pgrep + ps approach for macOS
-    if (!psOutput) {
-      const pgrepProc = Bun.spawn(['pgrep', '-P', String(shellPid)], {
+    while (pending.length > 0) {
+      const parentPid = pending.shift();
+      if (parentPid == null || seen.has(parentPid)) continue;
+      seen.add(parentPid);
+
+      const pgrepProc = Bun.spawn(['pgrep', '-P', String(parentPid)], {
         stdout: 'pipe',
         stderr: 'pipe',
       });
-      const childPids = (await new Response(pgrepProc.stdout).text())
+      const childPidOutput = (await new Response(pgrepProc.stdout).text())
         .trim()
         .split('\n');
       await pgrepProc.exited;
 
-      for (const cpid of childPids) {
+      for (const cpid of childPidOutput) {
         if (!cpid.trim()) continue;
-        const ps2 = Bun.spawn(['ps', '-p', cpid.trim(), '-o', 'comm='], {
+        const childPid = Number.parseInt(cpid.trim(), 10);
+        if (Number.isNaN(childPid) || seen.has(childPid)) continue;
+        pending.push(childPid);
+
+        const commProc = Bun.spawn(['ps', '-p', cpid.trim(), '-o', 'comm='], {
           stdout: 'pipe',
           stderr: 'pipe',
         });
-        const comm = (await new Response(ps2.stdout).text())
-          .trim()
-          .toLowerCase();
-        await ps2.exited;
-        if (comm.includes('claude')) return 'claude-code';
-        if (comm.includes('codex')) return 'codex';
+        const argsProc = Bun.spawn(['ps', '-p', cpid.trim(), '-o', 'args='], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
+        const comm = (await new Response(commProc.stdout).text()).trim();
+        const args = (await new Response(argsProc.stdout).text()).trim();
+        await commProc.exited;
+        await argsProc.exited;
+
+        discovered.push({
+          comm,
+          args,
+        });
       }
-      return 'unknown';
     }
 
-    if (psOutput.includes('claude')) return 'claude-code';
-    if (psOutput.includes('codex')) return 'codex';
-    return 'unknown';
+    return inferAgentTypeFromProcesses(discovered);
   } catch (e) {
     logServer(
       'ERROR',
