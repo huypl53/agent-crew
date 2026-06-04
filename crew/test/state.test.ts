@@ -869,4 +869,68 @@ describe('state module', () => {
       expect(result.hint?.message).toBe('Custom reminder text here');
     });
   });
+
+  describe('worker notification dedup', () => {
+    test('Stop hook skips when worker already sent completion this turn', () => {
+      const room = mkRoom('dedup-test');
+      addAgent('lead-1', 'leader', room.id, '%900');
+      addAgent('w1', 'worker', room.id, '%901');
+
+      // Simulate turn start (UserPromptSubmit)
+      addHookEvent('w1', 'UserPromptSubmit', 's1', 'do the task');
+
+      // Simulate Path 1: worker actively sent completion via crew send
+      addMessage('lead-1', 'w1', 'dedup-test', 'Task done!', 'push', 'lead-1', 'completion');
+
+      // Simulate Path 2: Stop hook fires — should detect existing completion
+      const payload = JSON.stringify({ last_assistant_message: 'Task done!' });
+      addHookEvent('w1', 'Stop', 's1', payload);
+
+      // Should be exactly 1 completion (from Path 1), not 2
+      const msgs = getRoomMessages('dedup-test');
+      const completions = msgs.filter((m: any) => m.kind === 'completion');
+      expect(completions.length).toBe(1);
+    });
+
+    test('Stop event records completion when worker did NOT actively send', () => {
+      const room = mkRoom('no-dedup-test');
+      addAgent('lead-2', 'leader', room.id, '%910');
+      addAgent('w2', 'worker', room.id, '%911');
+
+      // Turn start but no prior completion — worker didn't actively send
+      addHookEvent('w2', 'UserPromptSubmit', 's2', 'do the work');
+
+      const payload = JSON.stringify({ last_assistant_message: 'Finished work!' });
+      addHookEvent('w2', 'Stop', 's2', payload);
+
+      const msgs = getRoomMessages('no-dedup-test');
+      const completions = msgs.filter((m: any) => m.kind === 'completion');
+      expect(completions.length).toBe(1);
+      expect(completions[0].text).toContain('Finished work!');
+    });
+
+    test('Stop hook sends completion when previous turn completion exists but new turn started', async () => {
+      const room = mkRoom('multi-turn-test');
+      addAgent('lead-3', 'leader', room.id, '%920');
+      addAgent('w3', 'worker', room.id, '%921');
+
+      // Turn 1: worker sends completion
+      addHookEvent('w3', 'UserPromptSubmit', 's1', 'task 1');
+      addMessage('lead-3', 'w3', 'multi-turn-test', 'Done 1', 'push', 'lead-3', 'completion');
+      addHookEvent('w3', 'Stop', 's1', '{"last_assistant_message":"Done 1"}');
+
+      // Wait 1s so Turn 2's UserPromptSubmit has a later timestamp
+      await Bun.sleep(1100);
+
+      // Turn 2: new prompt → old completion should NOT block new notification
+      addHookEvent('w3', 'UserPromptSubmit', 's2', 'task 2');
+
+      const payload = JSON.stringify({ last_assistant_message: 'Done 2' });
+      addHookEvent('w3', 'Stop', 's2', payload);
+
+      const msgs = getRoomMessages('multi-turn-test');
+      const completions = msgs.filter((m: any) => m.kind === 'completion');
+      expect(completions.length).toBe(2); // one from each turn
+    });
+  });
 });

@@ -1046,8 +1046,9 @@ function notifyLeadersOnWorkerStop(agentName: string, payload: string): void {
 
   if (!response.trim()) return;
 
-  // Dedupe: skip if completion from this agent in last 5s
-  if (hasRecentCompletionFromAgent(agent.room_id, agentName, 5)) return;
+  // Turn-scoped dedup: if worker already sent a notifiable message since
+  // their last UserPromptSubmit, crew send handled it — Stop hook should skip.
+  if (alreadyNotifiedThisTurn(agent.room_id, agentName)) return;
 
   // Find leaders in room
   const leaders = getRoomMembers(agent.room_id).filter(
@@ -1108,20 +1109,50 @@ async function deliverWithRetry(leader: Agent, message: string): Promise<void> {
   }
 }
 
-function hasRecentCompletionFromAgent(
-  roomId: number,
-  agentName: string,
-  withinSeconds: number,
-): boolean {
+/**
+ * Turn-scoped dedup: check if worker already sent a notifiable message
+ * (completion/error/question) during the current turn.
+ *
+ * A "turn" is defined as the period after the most recent UserPromptSubmit.
+ * If a completion was recorded after the last UserPromptSubmit, the worker
+ * already actively notified (via crew send) — Stop hook should skip.
+ *
+ * Cross-process safe: reads from shared SQLite DB.
+ */
+const NOTIFY_KINDS_SQL = "'completion','error','question'";
+
+/**
+ * Turn-scoped dedup: check if worker already sent a notifiable message
+ * during the current turn. A turn starts at UserPromptSubmit and ends at Stop.
+ *
+ * Uses julianday() for sub-second precision comparison, avoiding format
+ * mismatches between messages.timestamp (ISO 8601 with ms) and
+ * hook_events.created_at (SQLite datetime, second precision).
+ */
+function alreadyNotifiedThisTurn(roomId: number, agentName: string): boolean {
   const db = getDb();
-  const cutoff = new Date(Date.now() - withinSeconds * 1000).toISOString();
+  // Find the most recent UserPromptSubmit for this agent
+  const lastPrompt = db
+    .query(
+      `SELECT created_at FROM hook_events
+       WHERE agent_name = ? AND event_type = 'UserPromptSubmit'
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .get(agentName) as { created_at: string } | null;
+
+  if (!lastPrompt) return false;
+
+  // Check for any notifiable message from this agent after the last prompt.
+  // messages.timestamp has ms precision, hook_events.created_at has second precision.
+  // julianday() normalizes both for reliable comparison.
   const row = db
     .query(
       `SELECT 1 FROM messages
-       WHERE room_id = ? AND sender = ? AND kind = 'completion' AND timestamp > ?
+       WHERE room_id = ? AND sender = ? AND kind IN (${NOTIFY_KINDS_SQL})
+       AND julianday(timestamp) > julianday(?)
        LIMIT 1`,
     )
-    .get(roomId, agentName, cutoff);
+    .get(roomId, agentName, lastPrompt.created_at);
   return row !== null;
 }
 
