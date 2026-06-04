@@ -9,6 +9,7 @@ import {
   handleHintUnset,
 } from '../tools/hint.ts';
 import { handleHookEvent } from '../tools/hook-event.ts';
+import { handleInputBlock } from '../tools/input-block.ts';
 import { handleInspectWorker } from '../tools/inspect-worker.ts';
 import { handleInterruptWorker } from '../tools/interrupt-worker.ts';
 import { handleJoinRoom } from '../tools/join-room.ts';
@@ -161,6 +162,14 @@ export const COMMANDS: Record<
   'hook-event': {
     handler: handleHookEvent,
     buildParams: () => ({}),
+  },
+  'input-block': {
+    handler: handleInputBlock,
+    buildParams: (f, p) => ({
+      subcommand: p[0],
+      name: f.name,
+      persist: !!f.persist,
+    }),
   },
   party: {
     handler: handleParty,

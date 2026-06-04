@@ -163,7 +163,8 @@ async function deliverCollapsed(
   } catch (e) {
     const deadPane = e instanceof PaneDeliveryError && e.code === 'PANE_DEAD';
     const typingDeferred =
-      e instanceof PaneDeliveryError && e.code === 'PANE_NOT_READY_TYPING';
+      e instanceof PaneDeliveryError &&
+      (e.code === 'PANE_NOT_READY_TYPING' || e.code === 'PANE_BLOCKED_INPUT');
     logServer(
       'WARN',
       `Failed to notify leader at ${target}: ${e instanceof Error ? e.message : String(e)}`,

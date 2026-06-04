@@ -1,6 +1,6 @@
 import { getPaneStatus } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
-import type { AgentStatus, ToolResult } from '../shared/types.ts';
+import type { Agent, AgentStatus, ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
 import { getAgent, touchAgentActivity } from '../state/index.ts';
 import { isPaneDead } from '../tmux/index.ts';
@@ -8,6 +8,33 @@ import { isPaneDead } from '../tmux/index.ts';
 interface GetStatusParams {
   agent_name?: string;
   name?: string; // calling agent's own identity
+}
+
+export async function resolveAgentLiveStatus(
+  agent: Agent,
+): Promise<AgentStatus> {
+  const dead = await isPaneDead(agent.tmux_target);
+  if (dead) {
+    return 'dead';
+  }
+
+  try {
+    let result = await getPaneStatus(agent.tmux_target);
+    if (result.status === 'unknown') {
+      await Bun.sleep(3500);
+      result = await getPaneStatus(agent.tmux_target);
+    }
+    if (result.contentChanged) {
+      touchAgentActivity(agent.name);
+    }
+    return result.status;
+  } catch (e) {
+    logServer(
+      'ERROR',
+      `getPaneStatus failed for ${agent.name} (pane ${agent.tmux_target}): ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return 'unknown';
+  }
 }
 
 export async function handleGetStatus(
@@ -24,42 +51,7 @@ export async function handleGetStatus(
     return err(`Agent "${targetName}" is not registered`);
   }
 
-  // Check liveness first
-  const dead = await isPaneDead(agent.tmux_target);
-  if (dead) {
-    return ok({
-      agent_id: agent.agent_id,
-      name: agent.name,
-      role: agent.role,
-      room: agent.room_name,
-      room_path: agent.room_path,
-      status: 'dead' as AgentStatus,
-      tmux_target: agent.tmux_target,
-      last_activity_ts: null,
-    });
-  }
-
-  // Hash + PID based status — no DB fallback (DB status is unreliable, agents don't self-report)
-  let status: AgentStatus;
-  try {
-    let result = await getPaneStatus(agent.tmux_target);
-    // First call in a fresh process has no baseline → returns 'unknown'.
-    // Wait for the stable threshold to pass, then re-check to get a definitive answer.
-    if (result.status === 'unknown') {
-      await Bun.sleep(3500);
-      result = await getPaneStatus(agent.tmux_target);
-    }
-    status = result.status;
-    if (result.contentChanged) {
-      touchAgentActivity(targetName);
-    }
-  } catch (e) {
-    logServer(
-      'ERROR',
-      `getPaneStatus failed for ${targetName} (pane ${agent.tmux_target}): ${e instanceof Error ? e.message : String(e)}`,
-    );
-    status = 'unknown';
-  }
+  const status = await resolveAgentLiveStatus(agent);
 
   return ok({
     agent_id: agent.agent_id,

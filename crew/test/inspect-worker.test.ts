@@ -81,6 +81,67 @@ describe('worker inspection gateway', () => {
     ]);
   });
 
+  test('allows transcript-backed inspection for workers classified as unknown', async () => {
+    addAgent('lead-unknown', 'leader', mkRoom('unknown-room').id, '%9', 'claude-code');
+    addAgent('worker-unknown', 'worker', mkRoom('unknown-room').id, '%10', 'unknown');
+    addHookEvent(
+      'worker-unknown',
+      'UserPromptSubmit',
+      'sess-unknown',
+      JSON.stringify({
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'sess-unknown',
+      }),
+    );
+
+    const snapshot = await inspectWorkerTurns(
+      {
+        workerName: 'worker-unknown',
+        roomName: 'unknown-room',
+        callerName: 'lead-unknown',
+        turns: 4,
+      },
+      {
+        transcriptLoader: async () =>
+          [
+            JSON.stringify({
+              type: 'user',
+              timestamp: '2026-06-03T10:10:00.000Z',
+              message: { role: 'user', content: 'Please summarize progress' },
+            }),
+            JSON.stringify({
+              type: 'assistant',
+              timestamp: '2026-06-03T10:10:03.000Z',
+              message: {
+                role: 'assistant',
+                content: [{ type: 'text', text: 'Benchmark is still running.' }],
+              },
+            }),
+          ].join('\n'),
+        sessionResolver: async () => ({
+          sessionId: 'sess-unknown',
+          sessionPath: '/tmp/worker-unknown.jsonl',
+        }),
+      },
+    );
+
+    expect(snapshot.source).toBe('transcript');
+    expect(snapshot.degraded).toBe(false);
+    expect(snapshot.provider).toBe('claude-code');
+    expect(snapshot.turns).toEqual([
+      {
+        role: 'user',
+        text: 'Please summarize progress',
+        timestamp: '2026-06-03T10:10:00.000Z',
+      },
+      {
+        role: 'assistant',
+        text: 'Benchmark is still running.',
+        timestamp: '2026-06-03T10:10:03.000Z',
+      },
+    ]);
+  });
+
   test('falls back to hook-only degraded inspection when transcript is unavailable', async () => {
     addHookEvent(
       'worker-1',
@@ -208,7 +269,7 @@ describe('worker inspection gateway', () => {
     expect(snapshot.turns[0]?.text).toBe('Frontend room stop message.');
   });
 
-  test('rejects non-claude workers in v1', async () => {
+  test('rejects codex workers in v1', async () => {
     addAgent('codex-lead', 'leader', mkRoom('codex-room').id, '%5', 'codex');
     addAgent('codex-worker', 'worker', mkRoom('codex-room').id, '%6', 'codex');
 

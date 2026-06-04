@@ -142,7 +142,6 @@ bun run --cwd ~/.crew/crew dashboard
 bun test --cwd ~/.crew/crew
 
 # End-to-end test with live tmux panes
-bun ~/.crew/crew/test/uat-sqlite.ts
 ```
 
 ## CLI

@@ -19,6 +19,9 @@ import {
 } from '../src/state/index.ts';
 import { handleClearWorkerSession } from '../src/tools/clear-worker-session.ts';
 import { handleGetStatus } from '../src/tools/get-status.ts';
+import { processHookEventInput } from '../src/tools/hook-event.ts';
+import { handleInputBlock } from '../src/tools/input-block.ts';
+import { handleInspectWorker } from '../src/tools/inspect-worker.ts';
 import { handleInterruptWorker } from '../src/tools/interrupt-worker.ts';
 import { handleJoinRoom } from '../src/tools/join-room.ts';
 import { handleLeaveRoom } from '../src/tools/leave-room.ts';
@@ -251,11 +254,98 @@ describe('MCP tools', () => {
       const data = JSON.parse(result.content[0]?.text);
       expect(data.members.length).toBe(1);
       expect(data.members[0].name).toBe('leader-1');
+      expect(data.members[0].input_block_mode).toBe('off');
     });
 
     test('errors for non-existent room', async () => {
       const result = await handleListMembers({ room: 'nope' });
       expect(result.isError).toBe(true);
+    });
+
+    test('reports current status and input block mode', async () => {
+      await handleJoinRoom({
+        room: 'company',
+        role: 'worker',
+        name: 'worker-1',
+        tmux_target: testPaneA,
+      });
+
+      process.env.TMUX_PANE = testPaneA;
+      await handleInputBlock({ subcommand: 'on', persist: true });
+
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'UserPromptSubmit',
+          session_id: 'sess-members',
+        }),
+        testPaneA,
+      );
+
+      const result = await handleListMembers({ room: 'company' });
+      const data = JSON.parse(result.content[0]?.text);
+      expect(data.members[0].status).toBe('busy');
+      expect(data.members[0].input_block_mode).toBe('persist');
+    });
+  });
+
+  describe('input_block', () => {
+    test('auto-detects current pane and clears armed mode on next submit', async () => {
+      await handleJoinRoom({
+        room: 'company',
+        role: 'worker',
+        name: 'worker-1',
+        tmux_target: testPaneA,
+      });
+
+      process.env.TMUX_PANE = testPaneA;
+      const onResult = await handleInputBlock({ subcommand: 'on' });
+      const onData = JSON.parse(onResult.content[0]!.text);
+      expect(onData.input_block_mode).toBe('armed');
+
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'UserPromptSubmit',
+          session_id: 'sess-armed',
+        }),
+        testPaneA,
+      );
+
+      const statusResult = await handleInputBlock({ subcommand: 'status' });
+      const statusData = JSON.parse(statusResult.content[0]!.text);
+      expect(statusData.input_block_mode).toBe('off');
+    });
+
+    test('persistent mode survives submit until manual off', async () => {
+      await handleJoinRoom({
+        room: 'company',
+        role: 'worker',
+        name: 'worker-1',
+        tmux_target: testPaneA,
+      });
+
+      process.env.TMUX_PANE = testPaneA;
+      const onResult = await handleInputBlock({
+        subcommand: 'on',
+        persist: true,
+      });
+      const onData = JSON.parse(onResult.content[0]!.text);
+      expect(onData.input_block_mode).toBe('persist');
+
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'UserPromptSubmit',
+          session_id: 'sess-persist',
+        }),
+        testPaneA,
+      );
+
+      const statusResult = await handleInputBlock({ subcommand: 'status' });
+      const statusData = JSON.parse(statusResult.content[0]!.text);
+      expect(statusData.input_block_mode).toBe('persist');
+
+      const offResult = await handleInputBlock({ subcommand: 'off' });
+      const offData = JSON.parse(offResult.content[0]!.text);
+      expect(offData.input_block_mode).toBe('off');
     });
   });
 
@@ -688,6 +778,56 @@ describe('MCP tools', () => {
         name: 'outsider',
       });
       expect(result.isError).toBe(true);
+    });
+  });
+
+  describe('duplicate room names across paths', () => {
+    test('list_members prefers the latest matching room row', async () => {
+      const firstRoom = getOrCreateRoom(
+        '/test/worktree-a/better-logging',
+        'better-logging',
+      );
+      const secondRoom = getOrCreateRoom(
+        '/test/worktree-b/better-logging',
+        'better-logging',
+      );
+
+      addAgent('old-worker', 'worker', firstRoom.id, '%9001');
+      addAgent('new-leader', 'leader', secondRoom.id, '%9002');
+      addAgent('new-worker', 'worker', secondRoom.id, '%9003');
+
+      const result = await handleListMembers({ room: 'better-logging' });
+      const data = JSON.parse(result.content[0]!.text);
+
+      expect(data.members.map((member: any) => member.name).sort()).toEqual([
+        'new-leader',
+        'new-worker',
+      ]);
+    });
+
+    test('inspect requires --room when worker is visible in multiple room ids with the same name', async () => {
+      const firstRoom = getOrCreateRoom(
+        '/test/worktree-a/better-logging',
+        'better-logging',
+      );
+      const secondRoom = getOrCreateRoom(
+        '/test/worktree-b/better-logging',
+        'better-logging',
+      );
+
+      addAgent('lead-1', 'leader', firstRoom.id, '%9010');
+      addAgent('shared-worker', 'worker', firstRoom.id, '%9011');
+      addAgent('lead-1', 'leader', secondRoom.id, '%9012');
+      addAgent('shared-worker', 'worker', secondRoom.id, '%9013');
+
+      const result = await handleInspectWorker({
+        worker_name: 'shared-worker',
+        name: 'lead-1',
+      });
+      const data = JSON.parse(result.content[0]!.text);
+
+      expect(result.isError).toBe(true);
+      expect(data.error).toContain('Use --room');
     });
   });
 

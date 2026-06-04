@@ -109,6 +109,24 @@ async function waitForIdle(pane: string, timeoutMs = 120_000): Promise<boolean> 
   return false;
 }
 
+
+async function waitForClaude(pane: string, timeoutMs = 90_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  await Bun.sleep(2000);
+  while (Date.now() < deadline) {
+    try {
+      const proc = Bun.spawn(["tmux", "display-message", "-p", "-t", pane, "#{pane_current_command}"], { stdout: "pipe", stderr: "pipe" });
+      const cmd = (await new Response(proc.stdout).text()).trim();
+      await proc.exited;
+      if (cmd.toLowerCase().includes("claude")) {
+        const text = await capturePane(pane);
+        if (isIdle(text)) return true;
+      }
+    } catch {}
+    await Bun.sleep(2000);
+  }
+  return false;
+}
 async function waitForDbEvent(
   eventType: string,
   afterId: number,
@@ -351,13 +369,17 @@ async function main() {
     await Bun.sleep(500);
 
     await exec(['tmux', 'send-keys', '-t', workerPane, 'claude --dangerously-skip-permissions', 'Enter']);
-    await Bun.sleep(13000);
+    await Bun.sleep(20000);
 
     // Wait for Claude Code to reach idle prompt (generous timeout for cold start)
-    const ccReady = await waitForIdle(workerPane, 60_000);
+    const ccReady = await waitForClaude(workerPane, 90_000);
     assert(ccReady, 'Claude Code reached idle prompt');
 
     if (ccReady) {
+      // Claude can briefly expose the shell prompt before the full UI is actually
+      // ready to accept the first pasted turn.
+      await Bun.sleep(8000);
+
       // Record baseline event ID AFTER all synthetic phases completed
       const prePromptId = getMaxEventId();
 

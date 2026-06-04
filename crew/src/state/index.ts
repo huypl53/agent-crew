@@ -2,6 +2,7 @@ import { config } from '../config.ts';
 import type {
   Agent,
   AgentRole,
+  InputBlockMode,
   AgentTemplate,
   HookEvent,
   Message,
@@ -63,6 +64,7 @@ function dbRowToAgent(row: Record<string, unknown>): Agent {
       | 'codex'
       | 'unknown',
     status: (row.status as string | null) ?? null,
+    input_block_mode: ((row.input_block_mode as string) ?? 'off') as InputBlockMode,
     persona: (row.persona as string | null) ?? null,
     capabilities: (row.capabilities as string | null) ?? null,
     reminder_policy: parseReminderPolicy(row.reminder_policy),
@@ -138,6 +140,40 @@ export function setAgentStatus(name: string, status: 'busy' | 'idle'): void {
       agent.id,
     ]);
   }
+}
+
+export function getAgentInputBlockMode(name: string): InputBlockMode {
+  const row = getDb()
+    .query(
+      'SELECT input_block_mode FROM agents WHERE name = ? ORDER BY id DESC LIMIT 1',
+    )
+    .get(name) as { input_block_mode: string | null } | null;
+  const mode = row?.input_block_mode;
+  return mode === 'armed' || mode === 'persist' ? mode : 'off';
+}
+
+export function setAgentInputBlockMode(
+  name: string,
+  mode: InputBlockMode,
+): InputBlockMode {
+  const agent = getDb()
+    .query('SELECT id FROM agents WHERE name = ? ORDER BY id DESC LIMIT 1')
+    .get(name) as { id: number } | null;
+  if (agent) {
+    getDb().run('UPDATE agents SET input_block_mode = ? WHERE id = ?', [
+      mode,
+      agent.id,
+    ]);
+  }
+  return mode;
+}
+
+export function clearArmedInputBlock(name: string): boolean {
+  const result = getDb().run(
+    "UPDATE agents SET input_block_mode = 'off' WHERE name = ? AND id = (SELECT id FROM agents WHERE name = ? ORDER BY id DESC LIMIT 1) AND input_block_mode = 'armed'",
+    [name, name],
+  );
+  return result.changes > 0;
 }
 
 export function getSweepControlState(): SweepControlState {
@@ -418,7 +454,7 @@ export function getRoom(identifier: string | number): Room | undefined {
       .get(identifier) as Record<string, unknown> | null;
   } else {
     row = db
-      .query('SELECT * FROM rooms WHERE name = ? ORDER BY id LIMIT 1')
+      .query('SELECT * FROM rooms WHERE name = ? ORDER BY id DESC LIMIT 1')
       .get(identifier) as Record<string, unknown> | null;
   }
 
@@ -466,7 +502,7 @@ export function getAllRooms(): Room[] {
 
 export function getRoomReminderDispatchCount(roomName: string): number {
   const row = getDb()
-    .query('SELECT reminder_dispatch_count FROM rooms WHERE name = ? ORDER BY id LIMIT 1')
+    .query('SELECT reminder_dispatch_count FROM rooms WHERE name = ? ORDER BY id DESC LIMIT 1')
     .get(roomName) as { reminder_dispatch_count: number } | null;
   return row?.reminder_dispatch_count ?? 0;
 }
@@ -904,6 +940,20 @@ export function getPricingForModel(modelName: string): PricingEntry | null {
 
 // --- Hook events ---
 
+// Dedup guard: Claude Code fires the same hook event multiple times per turn.
+const DEDUP_WINDOW_MS = 2000;
+const dedupCache = new Map<string, number>();
+
+function isDuplicateEvent(agentName: string, eventType: string, sessionId: string | null, payload: string): boolean {
+  if (eventType !== 'UserPromptSubmit') return false;
+  const fp = payload.length > 200 ? payload.slice(0, 200) + payload.length : payload;
+  const key = `${agentName}:${eventType}:${sessionId}:${fp}`;
+  const now = Date.now();
+  const last = dedupCache.get(key);
+  dedupCache.set(key, now);
+  return last !== undefined && now - last < DEDUP_WINDOW_MS;
+}
+
 export function addHookEvent(
   agentName: string,
   eventType: string,
@@ -911,6 +961,10 @@ export function addHookEvent(
   payload: string,
 ): number {
   const db = getDb();
+  if (isDuplicateEvent(agentName, eventType, sessionId, payload)) {
+    const row = db.query('SELECT id FROM hook_events WHERE agent_name = ? AND event_type = ? ORDER BY id DESC LIMIT 1').get(agentName, eventType) as { id: number } | null;
+    return row?.id ?? 0;
+  }
   const stmt = db.run(
     'INSERT INTO hook_events (agent_name, event_type, session_id, payload) VALUES (?, ?, ?, ?)',
     [agentName, eventType, sessionId, payload],

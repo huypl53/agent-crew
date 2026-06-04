@@ -192,7 +192,7 @@ export function dbRemoveAgentFromRoom(
 ): { error?: string } {
   const { error } = withDb((db) => {
     const roomRow = db
-      .query('SELECT id FROM rooms WHERE name = ? ORDER BY id LIMIT 1')
+      .query('SELECT id FROM rooms WHERE name = ? ORDER BY id DESC LIMIT 1')
       .get(room) as { id: number } | null;
     if (!roomRow) return;
     db.run('DELETE FROM agents WHERE name = ? AND room_id = ?', [
@@ -269,7 +269,7 @@ export function dbSetRoomTemplates(
 ): { error?: string } {
   const { error } = withDb((db) => {
     const roomRow = db
-      .query('SELECT id FROM rooms WHERE name = ? ORDER BY id LIMIT 1')
+      .query('SELECT id FROM rooms WHERE name = ? ORDER BY id DESC LIMIT 1')
       .get(room) as { id: number } | null;
     if (!roomRow) throw new Error('Room not found');
     db.run('DELETE FROM room_templates WHERE room_id = ?', [roomRow.id]);

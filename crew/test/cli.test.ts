@@ -116,12 +116,29 @@ describe('CLI formatter', () => {
     const data = {
       room: 'crew',
       topic: 'building stuff',
-      members: [{ name: 'wk-01', role: 'worker', status: 'idle' }],
+      members: [
+        {
+          name: 'wk-01',
+          role: 'worker',
+          status: 'idle',
+          input_block_mode: 'persist',
+        },
+      ],
     };
     const out = formatResult('members', data);
     expect(out).toContain('wk-01');
     expect(out).toContain('worker');
     expect(out).toContain('idle');
+    expect(out).toContain('input-block:persist');
+  });
+
+  test('formats input-block output', () => {
+    const out = formatResult('input-block', {
+      name: 'wk-01',
+      input_block_mode: 'armed',
+    });
+    expect(out).toContain('wk-01');
+    expect(out).toContain('armed');
   });
 
   test('formats inspect output with turns and degradation metadata', () => {

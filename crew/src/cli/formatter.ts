@@ -28,6 +28,7 @@ Commands:
   interrupt  --worker <name> --room <room> --name <name>  Interrupt worker
   inspect    --worker <name> --name <leader>              Inspect recent worker turns
              [--room <room>] [--turns N]
+  input-block on|off|status [--name <agent>] [--persist] Manage input-block mode
   clear      --worker <name> --room <room> --name <name>  Clear worker session
   reassign   --worker <name> --room <room> --text <t>     Replace current assignment
              --name <name>
@@ -78,7 +79,12 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     const header = d.topic ? `[${d.room}] ${d.topic}\n` : `[${d.room}]\n`;
     return (
       header +
-      d.members.map((m: any) => `  ${m.name} ${m.role} ${m.status}`).join('\n')
+      d.members
+        .map(
+          (m: any) =>
+            `  ${m.name} ${m.role} ${m.status} input-block:${m.input_block_mode ?? 'off'}`,
+        )
+        .join('\n')
     );
   },
 
@@ -101,6 +107,8 @@ const FORMATTERS: Record<string, (data: any) => string> = {
 
   join: (d) =>
     `Joined ${d.room} as ${d.name} (${d.role}) pane:${d.tmux_target}`,
+  'input-block': (d) =>
+    `${d.name} input-block:${d.input_block_mode}`,
   leave: () => 'Left room',
   refresh: (d) =>
     `Refreshed ${d.name} room:${d.room ?? d.room_name ?? ''} pane:${d.tmux_target}`,
