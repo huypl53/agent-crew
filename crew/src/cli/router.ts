@@ -1,3 +1,4 @@
+import { err } from '../shared/types.ts';
 import { handleCheckChanges } from '../tools/check-changes.ts';
 import { handleClearWorkerSession } from '../tools/clear-worker-session.ts';
 import { handleCreateRoom } from '../tools/create-room.ts';
@@ -187,14 +188,9 @@ export const COMMANDS: Record<
       if (subcommand === 'set') return handleHintSet(p);
       if (subcommand === 'unset') return handleHintUnset(p);
       if (subcommand === 'lookup') return handleHintLookup(p);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({ error: 'Unknown hint subcommand' }),
-          },
-        ],
-      };
+      return err(
+        `Unknown hint subcommand: '${subcommand ?? ''}'. Use: set, unset, lookup`,
+      );
     },
     buildParams: (f, p) => ({
       subcommand: p[0],

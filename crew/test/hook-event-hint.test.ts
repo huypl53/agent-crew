@@ -11,6 +11,7 @@
  * formatter contract, hint CLI room scoping, and read-only lookup.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { COMMANDS } from '../src/cli/router.ts';
 import { formatResult } from '../src/cli/formatter.ts';
 import { closeDb, initDb } from '../src/state/db.ts';
 import { addAgent, clearState, getHint, getOrCreateRoom, setHint } from '../src/state/index.ts';
@@ -221,5 +222,27 @@ describe('hint lookup (read-only)', () => {
 
     expect(result.isError).toBe(true);
     expect(data.error).toContain('Pane is required');
+  });
+});
+
+describe('hint subcommand routing', () => {
+  test('returns isError=true for missing subcommand', async () => {
+    const params = COMMANDS.hint.buildParams({}, []);
+    const result = await COMMANDS.hint.handler(params);
+    const data = JSON.parse(result.content[0]!.text);
+
+    expect(result.isError).toBe(true);
+    expect(data.error).toContain('Unknown hint subcommand');
+    expect(data.error).toContain('set, unset, lookup');
+  });
+
+  test('returns isError=true for invalid subcommand', async () => {
+    const params = COMMANDS.hint.buildParams({}, ['bogus']);
+    const result = await COMMANDS.hint.handler(params);
+    const data = JSON.parse(result.content[0]!.text);
+
+    expect(result.isError).toBe(true);
+    expect(data.error).toContain("'bogus'");
+    expect(data.error).toContain('set, unset, lookup');
   });
 });
