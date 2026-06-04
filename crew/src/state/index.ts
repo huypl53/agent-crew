@@ -1110,20 +1110,12 @@ async function deliverWithRetry(leader: Agent, message: string): Promise<void> {
 }
 
 /**
- * Turn-scoped dedup: check if worker already sent a notifiable message
- * (completion/error/question) during the current turn.
- *
- * A "turn" is defined as the period after the most recent UserPromptSubmit.
- * If a completion was recorded after the last UserPromptSubmit, the worker
- * already actively notified (via crew send) — Stop hook should skip.
- *
- * Cross-process safe: reads from shared SQLite DB.
- */
-const NOTIFY_KINDS_SQL = "'completion','error','question'";
-
-/**
- * Turn-scoped dedup: check if worker already sent a notifiable message
+ * Turn-scoped dedup: check if worker already sent ANY message (including chat)
  * during the current turn. A turn starts at UserPromptSubmit and ends at Stop.
+ *
+ * If the worker actively sent a message via `crew send`, it already reached
+ * the leader through push delivery — the Stop hook should not send a
+ * duplicate notification.
  *
  * Uses julianday() for sub-second precision comparison, avoiding format
  * mismatches between messages.timestamp (ISO 8601 with ms) and
@@ -1142,13 +1134,13 @@ function alreadyNotifiedThisTurn(roomId: number, agentName: string): boolean {
 
   if (!lastPrompt) return false;
 
-  // Check for any notifiable message from this agent after the last prompt.
-  // messages.timestamp has ms precision, hook_events.created_at has second precision.
-  // julianday() normalizes both for reliable comparison.
+  // Check for ANY message from this agent after the last prompt.
+  // Any message sent via `crew send` means the worker actively communicated —
+  // the Stop hook should skip to avoid duplicate leader notifications.
   const row = db
     .query(
       `SELECT 1 FROM messages
-       WHERE room_id = ? AND sender = ? AND kind IN (${NOTIFY_KINDS_SQL})
+       WHERE room_id = ? AND sender = ?
        AND julianday(timestamp) > julianday(?)
        LIMIT 1`,
     )
