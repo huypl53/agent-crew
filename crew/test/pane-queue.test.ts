@@ -8,7 +8,12 @@ import {
 } from 'bun:test';
 import { getQueue, removeQueue } from '../src/delivery/pane-queue.ts';
 import { closeDb, initDb } from '../src/state/db.ts';
-import { addAgent, getOrCreateRoom } from '../src/state/index.ts';
+import {
+  addAgent,
+  addHookEvent,
+  getOrCreateRoom,
+  setAgentInputBlockMode,
+} from '../src/state/index.ts';
 import {
   captureFromPane,
   cleanupAllTestSessions,
@@ -101,6 +106,31 @@ describe('PaneQueue', () => {
     const output = await captureFromPane(testPane);
     expect(output).toContain('first-assignment');
     expect(elapsed).toBeLessThan(2000);
+  });
+
+  test('paste delivery is blocked when input block is armed', async () => {
+    const room = getOrCreateRoom('/test/pane-queue', 'pane-queue');
+    addAgent('blocked-worker', 'worker', room.id, testPane, 'claude-code');
+    setAgentInputBlockMode('blocked-worker', 'armed');
+    addHookEvent('blocked-worker', 'Stop', 'sess-blocked', '{}');
+
+    const q = getQueue(testPane, { role: 'worker' });
+    await expect(
+      q.enqueue({ type: 'paste', text: 'should-not-arrive' }),
+    ).rejects.toThrow('input block is active');
+  });
+
+  test('command delivery bypasses input block', async () => {
+    const room = getOrCreateRoom('/test/pane-queue', 'pane-queue');
+    addAgent('blocked-worker', 'worker', room.id, testPane, 'claude-code');
+    setAgentInputBlockMode('blocked-worker', 'persist');
+    addHookEvent('blocked-worker', 'Stop', 'sess-blocked', '{}');
+
+    const q = getQueue(testPane, { role: 'worker' });
+    await q.enqueue({ type: 'command', text: 'echo bypassed-input-block' });
+    await Bun.sleep(200);
+    const output = await captureFromPane(testPane);
+    expect(output).toContain('bypassed-input-block');
   });
 
   test('leader queue applies configured pace between paste deliveries', async () => {

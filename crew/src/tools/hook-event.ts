@@ -1,32 +1,42 @@
 import type { ToolResult } from '../shared/types.ts';
-import { initDb } from '../state/db.ts';
+import { getDb, initDb } from '../state/db.ts';
 import {
   addHookEvent,
   canonicalizeHintIdentity,
+  clearArmedInputBlock,
   getAgentByPane,
   tickHintCadence,
 } from '../state/index.ts';
 
-export async function handleHookEvent(_params?: unknown): Promise<ToolResult> {
-  const input = await Bun.stdin.text();
+function okResult(payload: Record<string, unknown> = { ok: true }): ToolResult {
+  return { content: [{ type: 'text', text: JSON.stringify(payload) }] };
+}
+
+export async function processHookEventInput(
+  input: string,
+  pane: string | undefined,
+): Promise<ToolResult> {
   let payload: Record<string, unknown>;
   try {
     payload = JSON.parse(input);
   } catch {
     // Malformed JSON — silently exit
-    return { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] };
+    return okResult();
   }
 
-  const pane = process.env.TMUX_PANE;
   if (!pane) {
-    return { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] };
+    return okResult();
   }
 
-  initDb();
+  try {
+    getDb();
+  } catch {
+    initDb();
+  }
 
   const agent = getAgentByPane(pane);
   if (!agent) {
-    return { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] };
+    return okResult();
   }
 
   const eventType = String(payload.hook_event_name ?? 'Unknown');
@@ -49,6 +59,7 @@ export async function handleHookEvent(_params?: unknown): Promise<ToolResult> {
   // emit the user-defined message to stdout. Claude Code injects hook
   // stdout into the conversation, providing custom context reminders.
   if (eventType === 'UserPromptSubmit') {
+    clearArmedInputBlock(agent.name);
     try {
       const { shouldShow, hint } = tickHintCadence(pane, sessionId, agent.room_id);
       if (shouldShow && hint) {
@@ -70,5 +81,10 @@ export async function handleHookEvent(_params?: unknown): Promise<ToolResult> {
     }
   }
 
-  return { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] };
+  return okResult();
+}
+
+export async function handleHookEvent(_params?: unknown): Promise<ToolResult> {
+  const input = await Bun.stdin.text();
+  return processHookEventInput(input, process.env.TMUX_PANE);
 }

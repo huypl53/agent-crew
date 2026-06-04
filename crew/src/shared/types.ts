@@ -1,5 +1,6 @@
 export type AgentRole = 'leader' | 'worker';
 export type AgentStatus = 'idle' | 'busy' | 'dead' | 'unknown';
+export type InputBlockMode = 'off' | 'armed' | 'persist';
 
 export type ReminderCadenceMode = 'always' | 'every_n';
 
@@ -21,6 +22,7 @@ export interface Agent {
   tmux_target: string | null;
   agent_type: 'claude-code' | 'codex' | 'unknown';
   status: string | null;
+  input_block_mode: InputBlockMode;
   persona: string | null;
   capabilities: string | null;
   reminder_policy: ReminderPolicy | null;

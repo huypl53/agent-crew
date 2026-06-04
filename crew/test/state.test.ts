@@ -113,6 +113,15 @@ describe('state module', () => {
       expect(members.map((m) => m.name)).toEqual(['leader', 'lead-1']);
     });
 
+    test('getRoom by name prefers the latest matching room row', () => {
+      const first = getOrCreateRoom('/test/worktree-a/better-logging', 'better-logging');
+      const second = getOrCreateRoom('/test/worktree-b/better-logging', 'better-logging');
+
+      expect(first.id).not.toBe(second.id);
+      expect(getRoom('better-logging')?.id).toBe(second.id);
+      expect(getRoom('better-logging')?.path).toBe('/test/worktree-b/better-logging');
+    });
+
     test('isNameTakenInRoom detects duplicates', () => {
       addAgent('leader', 'leader', mkRoom('company').id, '%100');
       expect(isNameTakenInRoom('leader', 'company')).toBe(true);

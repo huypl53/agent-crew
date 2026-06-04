@@ -3,7 +3,11 @@ import { config } from '../config.ts';
 export class PaneDeliveryError extends Error {
   constructor(
     message: string,
-    public readonly code: 'PANE_DEAD' | 'DELIVERY_FAILED' | 'PANE_NOT_READY_TYPING',
+    public readonly code:
+      | 'PANE_DEAD'
+      | 'DELIVERY_FAILED'
+      | 'PANE_NOT_READY_TYPING'
+      | 'PANE_BLOCKED_INPUT',
   ) {
     super(message);
     this.name = 'PaneDeliveryError';
@@ -150,6 +154,12 @@ export class PaneQueue {
     try {
       const agent = getAgentByPane(this.target);
       if (agent) {
+        if (agent.input_block_mode !== 'off') {
+          throw new PaneDeliveryError(
+            `input block is active for ${agent.name}`,
+            'PANE_BLOCKED_INPUT',
+          );
+        }
         const event = getLatestHookEvent(agent.name);
         if (event) {
           const ageMs = Date.now() - new Date(event.created_at + 'Z').getTime();
@@ -157,7 +167,10 @@ export class PaneQueue {
           if (ageMs < 60_000) return;
         }
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof PaneDeliveryError) {
+        throw error;
+      }
       // DB not available — allow delivery instead of guessing from pane text
     }
     return;

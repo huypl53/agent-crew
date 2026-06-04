@@ -29,6 +29,7 @@ const SCHEMA = `
     registered_at TEXT NOT NULL,
     last_activity TEXT,
     status TEXT,
+    input_block_mode TEXT NOT NULL DEFAULT 'off',
     persona TEXT,
     capabilities TEXT,
     reminder_policy TEXT,
@@ -245,6 +246,11 @@ export function initDb(path?: string): void {
   if (!agentCols.some((c) => c.name === 'idle_muted')) {
     _db.exec(
       'ALTER TABLE agents ADD COLUMN idle_muted INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+  if (!agentCols.some((c) => c.name === 'input_block_mode')) {
+    _db.exec(
+      "ALTER TABLE agents ADD COLUMN input_block_mode TEXT NOT NULL DEFAULT 'off'",
     );
   }
 

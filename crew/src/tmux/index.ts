@@ -118,9 +118,6 @@ export async function sendKeys(
     // Let the terminal app finish processing the bracketed paste
     await Bun.sleep(PASTE_SETTLE_MS);
 
-    // Capture pane content before Enter so we can detect whether it landed
-    const contentBefore = await capturePaneLines(target, 20);
-
     // Submit
     const enterResult = await run('send-keys', '-t', target, 'Enter');
     if (!enterResult.success) {
@@ -128,20 +125,6 @@ export async function sendKeys(
         delivered: false,
         error: enterResult.stderr || 'send-keys Enter failed',
       };
-    }
-
-    // Verify Enter landed — retry up to 3 times with backoff
-    for (let attempt = 0; attempt < 3; attempt++) {
-      await Bun.sleep(300);
-      const contentAfter = await capturePaneLines(target, 20);
-      if (contentAfter !== contentBefore) {
-        break; // Enter was processed, content changed
-      }
-      if (attempt < 2) {
-        // Backoff: 500ms on attempt 0, 1000ms on attempt 1
-        await Bun.sleep(500 * (attempt + 1));
-        await run('send-keys', '-t', target, 'Enter'); // Retry Enter
-      }
     }
 
     return { delivered: true };
@@ -236,22 +219,6 @@ export async function sendClear(
     );
     return { delivered: false, error: 'Ctrl-L delivery failed' };
   }
-}
-
-/** Internal helper: captures the last N lines of a pane for content-diff checks. */
-async function capturePaneLines(
-  target: string,
-  lines: number,
-): Promise<string> {
-  const result = await run(
-    'capture-pane',
-    '-t',
-    target,
-    '-p',
-    '-S',
-    `-${lines}`,
-  );
-  return result.stdout || '';
 }
 
 /** Capture last `lines` non-empty lines from pane scrollback. Returns null on failure. */

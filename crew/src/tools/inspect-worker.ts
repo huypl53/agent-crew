@@ -16,7 +16,7 @@ function resolveRoomForWorker(
   explicitRoom?: string,
 ): string | null {
   if (explicitRoom) {
-    return getRoom(explicitRoom)?.name ?? null;
+    return getRoom(explicitRoom) ? explicitRoom : null;
   }
 
   const visibleMatches = getAllAgents().filter(
@@ -31,10 +31,10 @@ function resolveRoomForWorker(
       ),
   );
 
-  const uniqueRooms = [
-    ...new Set(visibleMatches.map((agent) => agent.room_name)),
-  ];
-  if (uniqueRooms.length === 1) return uniqueRooms[0] ?? null;
+  const uniqueRoomIds = [...new Set(visibleMatches.map((agent) => agent.room_id))];
+  if (uniqueRoomIds.length === 1) {
+    return visibleMatches[0]?.room_path ?? null;
+  }
   return null;
 }
 

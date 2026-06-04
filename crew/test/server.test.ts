@@ -104,6 +104,21 @@ describe('GET /api/rooms/:name/members', () => {
     expect(body.some((a: any) => a.name === 'alice')).toBe(true);
   });
 
+  test('prefers the latest room row when names collide across paths', async () => {
+    const first = getOrCreateRoom('/tmp/dup-room-old', 'dup-room');
+    const second = getOrCreateRoom('/tmp/dup-room-new', 'dup-room');
+    addAgent('old-worker', 'worker', first.id, '%30', 'claude-code');
+    addAgent('fresh-leader', 'leader', second.id, '%31', 'claude-code');
+    addAgent('fresh-worker', 'worker', second.id, '%32', 'claude-code');
+
+    const { status, body } = await get('/api/rooms/dup-room/members');
+    expect(status).toBe(200);
+    expect(body.map((agent: any) => agent.name).sort()).toEqual([
+      'fresh-leader',
+      'fresh-worker',
+    ]);
+  });
+
   test('returns 404 for unknown room', async () => {
     const { status } = await get('/api/rooms/no-such-room/members');
     expect(status).toBe(404);
