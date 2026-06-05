@@ -186,6 +186,90 @@ cmd_antigravity() {
   echo ""
 }
 
+cmd_antigravity_project() {
+  check_prereqs
+  local target_project_dir="${2:-$(pwd)}"
+  local agents_dir="$target_project_dir/.agents"
+
+  ensure_repo
+
+  info "Installing crew plugin for Antigravity in project scope at $target_project_dir..."
+  mkdir -p "$agents_dir/skills"
+
+  # Expose skills
+  for skill in join-room leader party refresh worker; do
+    rm -rf "$agents_dir/skills/$skill"
+    ln -s "$INSTALL_DIR/crew/skills/$skill" "$agents_dir/skills/$skill"
+  done
+
+  # Configure/merge hooks.json
+  local hooks_file="$agents_dir/hooks.json"
+  if [ -f "$hooks_file" ]; then
+    info "Merging crew hooks into existing hooks.json..."
+    python3 -c "
+import json
+try:
+    with open('$hooks_file', 'r') as f:
+        data = json.load(f)
+except Exception:
+    data = {}
+
+data['crew-hooks'] = {
+    'UserPromptSubmit': [{
+        'matcher': '',
+        'hooks': [{'type': 'command', 'command': 'crew hook-event --json || true'}]
+    }],
+    'Stop': [{
+        'matcher': '',
+        'hooks': [{'type': 'command', 'command': 'crew hook-event --json || true'}]
+    }]
+}
+
+with open('$hooks_file', 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+" 2>/dev/null && ok "Merged hooks successfully" || warn "Could not merge hooks.json — please add manually"
+  else
+    info "Creating new hooks.json..."
+    cat > "$hooks_file" <<'EOF'
+{
+  "crew-hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "crew hook-event --json || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "crew hook-event --json || true"
+          }
+        ]
+      }
+    ]
+  }
+}
+EOF
+    ok "Created hooks.json"
+  fi
+
+  echo ""
+  ok "crew installed for Antigravity in project scope!"
+  echo ""
+  echo "  Skills: /crew:join-room  /crew:leader  /crew:worker  /crew:refresh"
+  echo "  Hooks: Stop, UserPromptSubmit (calls: crew hook-event --json)"
+  echo ""
+}
+
 # --- Uninstall ---
 
 cmd_uninstall_claude() {
@@ -260,27 +344,67 @@ cmd_uninstall_antigravity() {
   echo ""
 }
 
+cmd_uninstall_antigravity_project() {
+  local target_project_dir="${2:-$(pwd)}"
+  local agents_dir="$target_project_dir/.agents"
+
+  info "Removing crew from Antigravity in project scope at $target_project_dir..."
+
+  # Remove skills symlinks
+  for skill in join-room leader party refresh worker; do
+    if [ -L "$agents_dir/skills/$skill" ] || [ -d "$agents_dir/skills/$skill" ]; then
+      rm -rf "$agents_dir/skills/$skill"
+    fi
+  done
+
+  # Clean up hooks.json
+  local hooks_file="$agents_dir/hooks.json"
+  if [ -f "$hooks_file" ]; then
+    python3 -c "
+import json
+try:
+    with open('$hooks_file', 'r') as f:
+        data = json.load(f)
+    if 'crew-hooks' in data:
+        del data['crew-hooks']
+    with open('$hooks_file', 'w') as f:
+        json.dump(data, f, indent=2)
+        f.write('\n')
+except Exception:
+    pass
+" 2>/dev/null && ok "Removed crew hooks from hooks.json" || warn "Could not clean hooks.json"
+  fi
+
+  echo ""
+  ok "crew removed from Antigravity project scope."
+  echo ""
+}
+
 # --- Main ---
 
 case "${1:-}" in
   --codex)             cmd_codex ;;
   --antigravity|--agy) cmd_antigravity ;;
+  --antigravity-project|--agy-project) cmd_antigravity_project "$@" ;;
   --all)               cmd_claude; cmd_codex; cmd_antigravity ;;
   --uninstall)         cmd_uninstall_claude ;;
   --uninstall-codex)   cmd_uninstall_codex ;;
   --uninstall-antigravity|--uninstall-agy) cmd_uninstall_antigravity ;;
+  --uninstall-antigravity-project|--uninstall-agy-project) cmd_uninstall_antigravity_project "$@" ;;
   --uninstall-all)     cmd_uninstall_claude; cmd_uninstall_codex; cmd_uninstall_antigravity ;;
   --help|-h)
     echo "crew installer"
     echo ""
     echo "Usage:"
-    echo "  install.sh              Install for Claude Code"
-    echo "  install.sh --codex      Install for Codex CLI"
-    echo "  install.sh --agy        Install for Antigravity"
-    echo "  install.sh --all        Install for all platforms"
-    echo "  install.sh --uninstall  Remove from Claude Code"
+    echo "  install.sh                    Install for Claude Code"
+    echo "  install.sh --codex            Install for Codex CLI"
+    echo "  install.sh --agy              Install for Antigravity (global)"
+    echo "  install.sh --agy-project [dir] Install for Antigravity (project scope)"
+    echo "  install.sh --all              Install for all platforms"
+    echo "  install.sh --uninstall        Remove from Claude Code"
     echo "  install.sh --uninstall-codex  Remove from Codex CLI"
-    echo "  install.sh --uninstall-agy    Remove from Antigravity"
+    echo "  install.sh --uninstall-agy    Remove from Antigravity (global)"
+    echo "  install.sh --uninstall-agy-project [dir] Remove from Antigravity (project scope)"
     echo "  install.sh --uninstall-all    Remove from all platforms"
     ;;
   "")                  cmd_claude ;;

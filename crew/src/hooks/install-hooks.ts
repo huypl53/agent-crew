@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const CREW_HOOK_COMMAND = 'crew hook-event || true';
-const HOOK_EVENTS = ['Stop', 'UserPromptSubmit'] as const;
+const HOOK_EVENTS = ['Stop', 'UserPromptSubmit', 'StopFailure'] as const;
 
 function makeHookEntry(): { matcher: string; hooks: Array<{ type: string; command: string }> } {
   return { matcher: '', hooks: [{ type: 'command', command: CREW_HOOK_COMMAND }] };

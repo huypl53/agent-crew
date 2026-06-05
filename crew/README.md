@@ -122,10 +122,11 @@ Without this configuration, agents will show as "dead" and messages will remain 
 
 ### Manual Install — Antigravity CLI
 
-You can install the plugin natively for the **Antigravity CLI** (`agy`):
+You can install the plugin natively for the **Antigravity CLI** (`agy`) in either **global** or **project** scope:
 
+#### Global Scope
 ```bash
-# Run the installer with the Antigravity flag:
+# Install globally for all projects:
 ./install.sh --agy
 ```
 
@@ -133,6 +134,16 @@ This automates:
 1. Cloning the repository to `~/.crew` and linking the `crew` command.
 2. Creating the plugin directory `~/.gemini/config/plugins/huypl53.crew`.
 3. Symlinking `plugin.json`, `hooks.json`, and the `skills/` directory.
+
+#### Project Scope
+```bash
+# Install locally for the current project:
+./install.sh --agy-project [optional_path_to_project_root]
+```
+
+This automates:
+1. Linking skills into `.agents/skills/` in the project root.
+2. Appending/merging event hooks into `.agents/hooks.json` in the project root.
 
 To check if the skills are correctly registered in Antigravity:
 ```bash
@@ -150,8 +161,11 @@ rm -f ~/.codex/plugins/crew
 # Then remove "crew" from ~/.agents/plugins/marketplace.json
 # And remove [plugins."crew@local-crew-plugins"] from ~/.codex/config.toml
 
-# Optional Antigravity cleanup
+# Optional Antigravity cleanup (global)
 ./install.sh --uninstall-agy
+
+# Optional Antigravity cleanup (project scope)
+./install.sh --uninstall-agy-project [optional_path_to_project_root]
 ```
 
 

@@ -1,0 +1,5 @@
+{
+  "name": "crew",
+  "description": "Room-based coordination for AI coding agents via tmux. Agents self-register into rooms, send messages, track tasks, and monitor status.",
+  "disabled": false
+}

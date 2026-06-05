@@ -60,3 +60,7 @@ tmux_cli_controller.py
 src/web/
 crew/src/web/package-lock.json
 crew/AGENTS.md
+
+# local agent config
+.agents/
+.antigravitycli/
