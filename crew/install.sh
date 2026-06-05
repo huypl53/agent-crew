@@ -14,6 +14,7 @@ REPO_URL="https://github.com/huypl53/agent-crew.git"
 CODEX_CONFIG="$HOME/.codex/config.toml"
 CODEX_PLUGINS_DIR="$HOME/.codex/.tmp/plugins/plugins"
 CODEX_MARKETPLACE="$HOME/.codex/.tmp/plugins/.agents/plugins/marketplace.json"
+ANTIGRAVITY_PLUGINS_DIR="$HOME/.gemini/config/plugins"
 
 CREW_TOOLS=(get_status join_room leave_room list_members list_rooms read_messages refresh send_message set_room_topic)
 
@@ -152,6 +153,39 @@ with open('$CODEX_MARKETPLACE', 'w') as f:
   echo ""
 }
 
+# --- Antigravity ---
+
+cmd_antigravity() {
+  check_prereqs
+  command -v agy >/dev/null 2>&1 || warn "agy CLI not found in PATH — installing plugin anyway"
+
+  ensure_repo
+
+  local target_dir="$ANTIGRAVITY_PLUGINS_DIR/huypl53.crew"
+  info "Installing crew plugin for Antigravity at $target_dir..."
+  mkdir -p "$target_dir"
+
+  # Expose manifest and hooks
+  rm -f "$target_dir/plugin.json"
+  ln -s "$INSTALL_DIR/crew/.antigravity-plugin/plugin.json" "$target_dir/plugin.json"
+
+  rm -f "$target_dir/hooks.json"
+  ln -s "$INSTALL_DIR/crew/.antigravity-plugin/hooks.json" "$target_dir/hooks.json"
+
+  # Expose skills
+  rm -f "$target_dir/skills"
+  ln -s "$INSTALL_DIR/crew/skills" "$target_dir/skills"
+
+  ok "Antigravity plugin files linked successfully"
+
+  echo ""
+  ok "crew installed for Antigravity!"
+  echo ""
+  echo "  Skills: /crew:join-room  /crew:leader  /crew:worker  /crew:refresh"
+  echo "  Hooks: Stop, UserPromptSubmit (calls: crew hook-event --json)"
+  echo ""
+}
+
 # --- Uninstall ---
 
 cmd_uninstall_claude() {
@@ -212,24 +246,42 @@ with open('$CODEX_MARKETPLACE', 'w') as f:
   echo ""
 }
 
+cmd_uninstall_antigravity() {
+  info "Removing crew from Antigravity..."
+
+  local target_dir="$ANTIGRAVITY_PLUGINS_DIR/huypl53.crew"
+  if [ -d "$target_dir" ] || [ -L "$target_dir" ]; then
+    rm -rf "$target_dir"
+    ok "Removed $target_dir"
+  fi
+
+  echo ""
+  ok "crew removed from Antigravity."
+  echo ""
+}
+
 # --- Main ---
 
 case "${1:-}" in
   --codex)             cmd_codex ;;
-  --all)               cmd_claude; cmd_codex ;;
+  --antigravity|--agy) cmd_antigravity ;;
+  --all)               cmd_claude; cmd_codex; cmd_antigravity ;;
   --uninstall)         cmd_uninstall_claude ;;
   --uninstall-codex)   cmd_uninstall_codex ;;
-  --uninstall-all)     cmd_uninstall_claude; cmd_uninstall_codex ;;
+  --uninstall-antigravity|--uninstall-agy) cmd_uninstall_antigravity ;;
+  --uninstall-all)     cmd_uninstall_claude; cmd_uninstall_codex; cmd_uninstall_antigravity ;;
   --help|-h)
     echo "crew installer"
     echo ""
     echo "Usage:"
     echo "  install.sh              Install for Claude Code"
     echo "  install.sh --codex      Install for Codex CLI"
-    echo "  install.sh --all        Install for both platforms"
+    echo "  install.sh --agy        Install for Antigravity"
+    echo "  install.sh --all        Install for all platforms"
     echo "  install.sh --uninstall  Remove from Claude Code"
     echo "  install.sh --uninstall-codex  Remove from Codex CLI"
-    echo "  install.sh --uninstall-all    Remove from both platforms"
+    echo "  install.sh --uninstall-agy    Remove from Antigravity"
+    echo "  install.sh --uninstall-all    Remove from all platforms"
     ;;
   "")                  cmd_claude ;;
   *)                   fail "Unknown option: $1. Use --help for usage." ;;

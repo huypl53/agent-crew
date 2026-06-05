@@ -381,6 +381,48 @@ describe('MCP tools', () => {
       expect(readData.messages[0].from).toBe('lead-1');
     });
 
+    test('read_messages returns no messages when input block is active', async () => {
+      await handleJoinRoom({
+        room: 'frontend',
+        role: 'leader',
+        name: 'lead-1',
+        tmux_target: testPaneA,
+      });
+      await handleJoinRoom({
+        room: 'frontend',
+        role: 'worker',
+        name: 'builder-1',
+        tmux_target: testPaneB,
+      });
+
+      // 1. Send a message to builder-1 (normally delivered/queued)
+      await handleSendMessage({
+        room: 'frontend',
+        text: 'Hello builder',
+        to: 'builder-1',
+        name: 'lead-1',
+        mode: 'pull', // use pull so we don't block on tmux pane delivery
+      });
+
+      // 2. Enable input block (persist)
+      const { setAgentInputBlockMode } = await import('../src/state/index.ts');
+      setAgentInputBlockMode('builder-1', 'persist');
+
+      // 3. Try reading messages — should return empty list
+      const readResult1 = await handleReadMessages({ name: 'builder-1', room: 'frontend' });
+      const readData1 = JSON.parse(readResult1.content[0]!.text);
+      expect(readData1.messages.length).toBe(0);
+
+      // 4. Disable input block
+      setAgentInputBlockMode('builder-1', 'off');
+
+      // 5. Try reading messages — should return the message now
+      const readResult2 = await handleReadMessages({ name: 'builder-1', room: 'frontend' });
+      const readData2 = JSON.parse(readResult2.content[0]!.text);
+      expect(readData2.messages.length).toBe(1);
+      expect(readData2.messages[0].text).toBe('Hello builder');
+    });
+
     test('pull message is queued but not delivered', async () => {
       await handleJoinRoom({
         room: 'frontend',

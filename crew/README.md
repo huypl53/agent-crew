@@ -120,6 +120,25 @@ approval_policy = "never"
 
 Without this configuration, agents will show as "dead" and messages will remain queued instead of delivered.
 
+### Manual Install — Antigravity CLI
+
+You can install the plugin natively for the **Antigravity CLI** (`agy`):
+
+```bash
+# Run the installer with the Antigravity flag:
+./install.sh --agy
+```
+
+This automates:
+1. Cloning the repository to `~/.crew` and linking the `crew` command.
+2. Creating the plugin directory `~/.gemini/config/plugins/huypl53.crew`.
+3. Symlinking `plugin.json`, `hooks.json`, and the `skills/` directory.
+
+To check if the skills are correctly registered in Antigravity:
+```bash
+agy --print "list skills" | grep crew
+```
+
 ### Uninstall
 
 ```bash
@@ -130,7 +149,11 @@ claude plugins uninstall crew@crew-plugins
 rm -f ~/.codex/plugins/crew
 # Then remove "crew" from ~/.agents/plugins/marketplace.json
 # And remove [plugins."crew@local-crew-plugins"] from ~/.codex/config.toml
+
+# Optional Antigravity cleanup
+./install.sh --uninstall-agy
 ```
+
 
 ## Usage
 

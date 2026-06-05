@@ -17,30 +17,26 @@ function resolveTarget(
   params: InputBlockParams,
 ): { name: string; room: string } | { error: string } {
   const explicitName = params.name?.trim();
+
+  if (explicitName) {
+    const agent = getAgent(explicitName);
+    if (!agent) {
+      return { error: `Agent "${explicitName}" is not registered` };
+    }
+    return { name: agent.name, room: agent.room_name };
+  }
+
   const pane = process.env.TMUX_PANE ?? null;
   const paneAgent = pane ? getAgentByPane(pane) : undefined;
 
   if (paneAgent) {
-    if (explicitName && explicitName !== paneAgent.name) {
-      return {
-        error: `Current pane is registered as ${paneAgent.name} in room ${paneAgent.room_name}. Omit --name or target that agent explicitly.`,
-      };
-    }
     return { name: paneAgent.name, room: paneAgent.room_name };
   }
 
-  if (!explicitName) {
-    return {
-      error:
-        'No registered agent found for current pane. Run from a registered agent pane or pass --name explicitly.',
-    };
-  }
-
-  const agent = getAgent(explicitName);
-  if (!agent) {
-    return { error: `Agent "${explicitName}" is not registered` };
-  }
-  return { name: agent.name, room: agent.room_name };
+  return {
+    error:
+      'No registered agent found for current pane. Run from a registered agent pane or pass --name explicitly.',
+  };
 }
 
 export async function handleInputBlock(

@@ -550,6 +550,8 @@ export function getAgentByPane(pane: string): Agent | undefined {
     FROM agents a
     JOIN rooms r ON r.id = a.room_id
     WHERE a.pane = ?
+    ORDER BY a.id DESC
+    LIMIT 1
   `)
     .get(pane) as Record<string, unknown> | null;
 
@@ -709,6 +711,13 @@ export function readRoomMessages(
   if (!roomObj) return { messages: [], next_sequence: 0 };
 
   const cursor = getCursor(agentName, room);
+
+  // If input block mode is active, do not return any new messages
+  const blockMode = getAgentInputBlockMode(agentName);
+  if (blockMode !== 'off') {
+    return { messages: [], next_sequence: cursor };
+  }
+
   // Only return messages addressed to this agent within this room.
   let sql = 'SELECT * FROM messages WHERE room_id = ? AND id > ? AND recipient = ?';
   const params: unknown[] = [roomObj.id, cursor, agentName];
@@ -732,6 +741,13 @@ export function readMessages(
   sinceSequence?: number,
 ): { messages: Message[]; next_sequence: number } {
   const db = getDb();
+
+  // If input block mode is active, do not return any messages
+  const blockMode = getAgentInputBlockMode(agentName);
+  if (blockMode !== 'off') {
+    return { messages: [], next_sequence: sinceSequence ?? 0 };
+  }
+
   let sql = 'SELECT * FROM messages WHERE recipient = ?';
   const params: unknown[] = [agentName];
   if (room) {

@@ -8,9 +8,13 @@ import {
   tickHintCadence,
 } from '../state/index.ts';
 
-function okResult(payload: Record<string, unknown> = { ok: true }): ToolResult {
+function okResult(payload: Record<string, unknown> = { ok: true, decision: 'allow' }): ToolResult {
+  if (payload.decision === undefined) {
+    payload.decision = 'allow';
+  }
   return { content: [{ type: 'text', text: JSON.stringify(payload) }] };
 }
+
 
 export async function processHookEventInput(
   input: string,
@@ -39,9 +43,18 @@ export async function processHookEventInput(
     return okResult();
   }
 
-  const eventType = String(payload.hook_event_name ?? 'Unknown');
+  const eventType = String(
+    payload.hook_event_name ??
+      payload.event ??
+      payload.eventName ??
+      'Unknown',
+  );
   const sessionId =
-    typeof payload.session_id === 'string' ? payload.session_id : null;
+    typeof payload.session_id === 'string'
+      ? payload.session_id
+      : typeof payload.sessionId === 'string'
+        ? payload.sessionId
+        : null;
 
   addHookEvent(agent.name, eventType, sessionId, input);
 
@@ -69,6 +82,7 @@ export async function processHookEventInput(
               type: 'text',
               text: JSON.stringify({
                 ok: true,
+                decision: 'allow',
                 hint: { agent_name: hint.agent_name, message: hint.message },
               }),
             },
