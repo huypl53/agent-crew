@@ -59,7 +59,7 @@ export async function handleInputBlock(
     });
   }
 
-  if (subcommand === 'on') {
+  if (subcommand === 'on' || subcommand === 'block' || subcommand === 'arm' || subcommand === 'enable') {
     const mode = params.persist ? 'persist' : 'armed';
     return ok({
       name: target.name,
@@ -68,7 +68,7 @@ export async function handleInputBlock(
     });
   }
 
-  if (subcommand === 'off') {
+  if (subcommand === 'off' || subcommand === 'unblock' || subcommand === 'disarm' || subcommand === 'disable') {
     return ok({
       name: target.name,
       room: target.room,
@@ -76,5 +76,5 @@ export async function handleInputBlock(
     });
   }
 
-  return err(`Unknown input-block subcommand: ${subcommand}`);
+  return err(`Unknown input-block subcommand: ${subcommand}. Use: on, off, status, block, unblock`);
 }

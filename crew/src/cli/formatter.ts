@@ -13,47 +13,47 @@ export function formatHelp(): string {
 Usage: crew <command> [flags]
 
 Commands:
-  join       --room <name> --role <role> --name <name>    Register in a room
-             [--room-id <id>]                             Join room by ID instead of CWD
-  leave      --room <name|id|path> --name <name>          Leave a room
+  join        --room <name> --role <role> [--name <name>]  Register in a room (name auto-detected if omitted)
+              [--room-id <id>]                             Join room by ID instead of CWD
+  leave       --room <name|id|path> [--name <name>]        Leave a room
   rooms                                                    List all rooms
-  members    --room <name|id|path>                        List room members
-  send       --room <name|id|path> (--text <text> | --file <path>) --name <name>    Send a message
-             [--to <agent>] [--kind <kind>] [--mode <mode>]
-  read       --name <name> [--room <name|id|path>] [--limit N]    Read messages
-             [--kinds task,completion]
-  status     <agent_name> [--name <self>]                 Check agent status
-  check      --name <name> [--scopes messages,agents]     Check for changes
-  refresh    --name <name>                                Re-register agent
-  topic      --room <name|id|path> --text <text> --name <name>    Set room topic
-  interrupt  --worker <name> --room <name|id|path> --name <name>  Interrupt worker
-  inspect    --worker <name> --name <leader>              Inspect recent worker turns
-             [--room <name|id|path>] [--turns N]
-  ib         [on|off|status] [-n <agent>] [-p]            Manage input-block mode (default: status)
-  block      [-n <agent>] [-p]                            Arm input block (use -p for persistent)
-  unblock    [-n <agent>]                                 Clear input block
-  input-block on|off|status [--name <agent>] [--persist] Manage input-block mode (legacy)
-  clear      --worker <name> --room <name|id|path> --name <name>  Clear worker session
-  reassign   --worker <name> --room <name|id|path> --text <t>     Replace current assignment
-             --name <name>
-  create-room --room <name> --name <self> [--topic <t>]   Create a new room
-  delete-room [<name|id|path>] --confirm --name <self>            Delete room (removes members + messages)
-  mute-idle  --name <name>                                Mute idle notifications (leader only)
-  unmute-idle --name <name>                               Unmute idle notifications
-  pause-polling [--reason <text>]                         Pause sweep delivery (defer to queue)
-  resume-polling                                           Resume sweep delivery and flush deferred queue
-  polling-status                                           Show sweep pause/busy control state
-  set-polling-busy --mode <auto|manual_busy|manual_free> Set busy mode behavior
-  hint       set|unset|lookup                              Manage registered-agent hint (auto-detects current agent)
-             set "your message" [-c N] (default cadence: 3)
-             lookup is read-only; use hook-event for cadence ticking
-  wait-idle  --target <pane> [--timeout <ms>]             Wait until pane is idle (stable content)
-             [--stable-count N] [--idle-seconds N]        exit 0 = idle, exit 2 = timed out
-  serve      [--port N] [--host H] [--summary-interval N] Start browser dashboard server (default port 3456)
+  members     --room <name|id|path>                        List room members
+  send        --room <name|id|path> (--text <text> | --file <path>) [--name <name>]
+              [--to <agent>] [--kind <kind>] [--mode <mode>] Send a message
+  read        [--name <name>] [--room <name|id|path>] [--limit N]
+              [--kinds task,completion]                    Read messages
+  status      <agent_name> [--name <self>]                 Check agent status
+  check       [--name <name>] [--scopes messages,agents]   Check for changes
+  refresh     [--name <name>]                              Re-register agent
+  topic       --room <name|id|path> --text <text> [--name <name>] Set room topic
+  interrupt   --worker <name> --room <name|id|path> [--name <name>] Interrupt worker
+  inspect     --worker <name> [--name <leader>]            Inspect recent worker turns
+              [--room <name|id|path>] [--turns N]
+  clear       --worker <name> --room <name|id|path> [--name <name>] Clear worker session
+  reassign    --worker <name> --room <name|id|path> --text <t> [--name <name>]
+              Replace current assignment
+  create-room --room <name> [--name <self>] [--topic <t>]  Create a new room
+  delete-room [<name|id|path>] --confirm [--name <self>]   Delete room (removes members + messages)
+
+  input-block [on|off|status] [--name <agent>] [--persist] Manage input-block mode (alias: ib)
+
+  mute        idle [--name <name>]                         Mute idle notifications (leader only)
+  unmute      idle [--name <name>]                         Unmute idle notifications
+
+  polling     pause [--reason <text>]                      Pause sweep delivery
+  polling     resume                                       Resume sweep delivery & flush queue
+  polling     status                                       Show sweep status
+  polling     busy <auto|manual_busy|manual_free>         Set busy mode behavior
+
+  hint        set|unset|lookup                             Manage registered-agent hint
+              set "your message" [-c N] (default cadence: 3)
+  wait-idle   --target <pane> [--timeout <ms>]             Wait until pane is idle (stable content)
+              [--stable-count N] [--idle-seconds N]
+  serve       [--port N] [--host H] [--summary-interval N] Start browser dashboard server (default port 3456)
 
 Flags:
-  --json     Output raw JSON instead of text
-  --help     Show this help message`;
+  --json      Output raw JSON instead of text
+  --help      Show this help message`;
 }
 
 const formatInputBlock = (d: any) =>
@@ -156,6 +156,10 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     `${d.name} idle notifications ${d.idle_muted ? 'muted' : 'unmuted'}. ${d.note ?? ''}`,
   'unmute-idle': (d) =>
     `${d.name} idle notifications ${d.idle_muted ? 'muted' : 'unmuted'}. ${d.note ?? ''}`,
+  mute: (d) =>
+    `${d.name} idle notifications ${d.idle_muted ? 'muted' : 'unmuted'}. ${d.note ?? ''}`,
+  unmute: (d) =>
+    `${d.name} idle notifications ${d.idle_muted ? 'muted' : 'unmuted'}. ${d.note ?? ''}`,
   'pause-polling': (d) =>
     `polling paused=${d.paused} mode=${d.busy_mode}${d.reason ? ` reason:${d.reason}` : ''}`,
   'resume-polling': (d) => `polling paused=${d.paused} mode=${d.busy_mode}`,
@@ -163,6 +167,8 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     `polling paused=${d.paused} mode=${d.busy_mode}${d.reason ? ` reason:${d.reason}` : ''}`,
   'set-polling-busy': (d) =>
     `polling busy_mode=${d.busy_mode} paused=${d.paused}`,
+  polling: (d) =>
+    `polling paused=${d.paused} mode=${d.busy_mode}${d.reason ? ` reason:${d.reason}` : ''}`,
   hint: (d) => {
     if (d.error) return `Error: ${d.error}`;
     if (d.hint?.status) return d.hint.status;

@@ -200,6 +200,7 @@ describe('worker inspection gateway', () => {
       JSON.stringify({
         hook_event_name: 'UserPromptSubmit',
         session_id: 'sess-1',
+        nonce: 'new-activity',
       }),
     );
 

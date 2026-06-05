@@ -21,7 +21,7 @@ describe('PaneQueue bootstrap delivery', () => {
       }));
 
       mock.module(${JSON.stringify(stateIndexUrl)}, () => ({
-        getAgentByPane: () => ({ name: 'worker-1', role: 'worker' }),
+        getAgentByPane: () => ({ name: 'worker-1', role: 'worker', input_block_mode: 'off' }),
         getLatestHookEvent: () => null,
       }));
 

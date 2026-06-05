@@ -60,3 +60,27 @@ export function handleSetPollingBusy(params: SetPollingBusyParams): ToolResult {
     updated_at: state.updated_at,
   });
 }
+
+interface PollingParams {
+  subcommand?: string;
+  reason?: string;
+  mode?: string;
+}
+
+export function handlePolling(params: PollingParams): ToolResult {
+  const subcommand = params.subcommand ?? 'status';
+
+  if (subcommand === 'status') {
+    return handlePollingStatus();
+  }
+  if (subcommand === 'pause') {
+    return handlePausePolling({ reason: params.reason });
+  }
+  if (subcommand === 'resume') {
+    return handleResumePolling();
+  }
+  if (subcommand === 'busy' || subcommand === 'set-busy') {
+    return handleSetPollingBusy({ mode: params.mode });
+  }
+  return err(`Unknown polling subcommand: '${subcommand}'. Use: pause, resume, status, busy`);
+}

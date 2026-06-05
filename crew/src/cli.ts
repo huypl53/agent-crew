@@ -109,6 +109,27 @@ if (parsed.command === 'serve') {
 
 initDb();
 
+// Auto-detect caller name if --name is not explicitly provided
+if (!parsed.flags.name) {
+  const envName = process.env.CREW_AGENT_NAME?.trim();
+  if (envName) {
+    parsed.flags.name = envName;
+  } else {
+    const pane = process.env.TMUX_PANE;
+    if (pane) {
+      try {
+        const { getAgentByPane } = await import('./state/index.ts');
+        const paneAgent = getAgentByPane(pane);
+        if (paneAgent) {
+          parsed.flags.name = paneAgent.name;
+        }
+      } catch (e) {
+        // ignore state import error
+      }
+    }
+  }
+}
+
 const cmd = COMMANDS[parsed.command];
 if (!cmd) {
   console.error(

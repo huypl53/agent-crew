@@ -222,4 +222,37 @@ describe('CLI formatter', () => {
     expect(out).toContain('degradation_reason: session_unresolved');
     expect(out).toContain('[assistant] Waiting for permission.');
   });
+
+  test('formats mute and unmute outputs', () => {
+    const data = {
+      name: 'lead-01',
+      idle_muted: true,
+      note: 'notifications muted',
+    };
+    const muteOut = formatResult('mute', data);
+    expect(muteOut).toContain('lead-01');
+    expect(muteOut).toContain('muted');
+    expect(muteOut).toContain('notifications muted');
+
+    const unmuteOut = formatResult('unmute', {
+      ...data,
+      idle_muted: false,
+      note: 'notifications unmuted',
+    });
+    expect(unmuteOut).toContain('lead-01');
+    expect(unmuteOut).toContain('unmuted');
+    expect(unmuteOut).toContain('notifications unmuted');
+  });
+
+  test('formats polling status outputs', () => {
+    const data = {
+      paused: true,
+      busy_mode: 'manual_busy',
+      reason: 'test pause',
+    };
+    const out = formatResult('polling', data);
+    expect(out).toContain('paused=true');
+    expect(out).toContain('mode=manual_busy');
+    expect(out).toContain('reason:test pause');
+  });
 });

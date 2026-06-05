@@ -21,6 +21,7 @@ import { handleMuteIdle } from '../tools/mute-idle.ts';
 import { handleParty } from '../tools/party.ts';
 import {
   handlePausePolling,
+  handlePolling,
   handlePollingStatus,
   handleResumePolling,
   handleSetPollingBusy,
@@ -137,6 +138,22 @@ export const COMMANDS: Record<
     handler: handleMuteIdle,
     buildParams: (f) => ({ name: f.name, action: 'unmute' as const }),
   },
+  mute: {
+    handler: handleMuteIdle,
+    buildParams: (f, p) => ({
+      name: f.name,
+      action: 'mute' as const,
+      target: p[0],
+    }),
+  },
+  unmute: {
+    handler: handleMuteIdle,
+    buildParams: (f, p) => ({
+      name: f.name,
+      action: 'unmute' as const,
+      target: p[0],
+    }),
+  },
   'pause-polling': {
     handler: handlePausePolling,
     buildParams: (f) => ({ reason: f.reason }),
@@ -152,6 +169,14 @@ export const COMMANDS: Record<
   'set-polling-busy': {
     handler: handleSetPollingBusy,
     buildParams: (f) => ({ mode: f.mode }),
+  },
+  polling: {
+    handler: handlePolling,
+    buildParams: (f, p) => ({
+      subcommand: p[0],
+      reason: f.reason,
+      mode: f.mode ?? p[1],
+    }),
   },
   'create-room': {
     handler: handleCreateRoom,

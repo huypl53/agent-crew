@@ -22,9 +22,12 @@ async function runCli(
 }
 
 async function createPaneSession(): Promise<{ session: string; panes: string[] }> {
+  const socket = process.env.CREW_TMUX_SOCKET;
+  const socketArgs = socket ? ['-L', socket] : [];
   const create = Bun.spawn(
     [
       'tmux',
+      ...socketArgs,
       'new-session',
       '-d',
       '-c',
@@ -46,6 +49,7 @@ async function createPaneSession(): Promise<{ session: string; panes: string[] }
   const split = Bun.spawn(
     [
       'tmux',
+      ...socketArgs,
       'split-window',
       '-d',
       '-c',
@@ -69,7 +73,9 @@ async function createPaneSession(): Promise<{ session: string; panes: string[] }
 }
 
 async function killPaneSession(session: string): Promise<void> {
-  const proc = Bun.spawn(['tmux', 'kill-session', '-t', session], {
+  const socket = process.env.CREW_TMUX_SOCKET;
+  const socketArgs = socket ? ['-L', socket] : [];
+  const proc = Bun.spawn(['tmux', ...socketArgs, 'kill-session', '-t', session], {
     cwd: CLI_CWD,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -125,6 +131,9 @@ describe('CLI integration', () => {
         ],
         { CREW_STATE_DIR: stateDir },
       );
+      if (result.exitCode !== 0) {
+        console.error('join leader failed stderr:', result.err, 'stdout:', result.out);
+      }
       expect(result.exitCode).toBe(0);
 
       result = await runCli(
@@ -141,6 +150,9 @@ describe('CLI integration', () => {
         ],
         { CREW_STATE_DIR: stateDir },
       );
+      if (result.exitCode !== 0) {
+        console.error('join worker failed stderr:', result.err, 'stdout:', result.out);
+      }
       expect(result.exitCode).toBe(0);
 
       result = await runCli(

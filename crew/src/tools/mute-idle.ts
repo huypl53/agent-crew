@@ -8,10 +8,15 @@ import {
 interface MuteIdleParams {
   name: string;
   action: 'mute' | 'unmute';
+  target?: string;
 }
 
 export function handleMuteIdle(params: MuteIdleParams): ToolResult {
-  const { name, action } = params;
+  const { name, action, target } = params;
+
+  if (target && target !== 'idle') {
+    return err(`Unknown target: '${target}'. Supported target: idle`);
+  }
 
   if (!name) return err('Missing required param: name');
 
