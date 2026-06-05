@@ -14,7 +14,9 @@ export async function handleListRooms(): Promise<ToolResult> {
       }
     }
     return {
+      id: room.id,
       name: room.name,
+      path: room.path,
       member_count: members.length,
       roles,
     };

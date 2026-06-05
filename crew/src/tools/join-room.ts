@@ -1,13 +1,14 @@
 import { getPaneStatus } from '../shared/pane-status.ts';
 import { normalizePath } from '../shared/path-utils.ts';
 import { logServer } from '../shared/server-log.ts';
-import type { AgentRole, ToolResult } from '../shared/types.ts';
+import type { AgentRole, ToolResult, Room } from '../shared/types.ts';
 import { err, generateRandomName, ok, randomSuffix } from '../shared/types.ts';
 import {
   addAgent,
   getAgentByRoomAndName,
   getAllAgents,
   getOrCreateRoom,
+  getRoom,
   removeAgentFully,
 } from '../state/index.ts';
 import { getPaneCwd, paneExists } from '../tmux/index.ts';
@@ -15,10 +16,11 @@ import { getPaneCwd, paneExists } from '../tmux/index.ts';
 const VALID_ROLES: AgentRole[] = ['leader', 'worker'];
 
 interface JoinRoomParams {
-  room: string;
+  room?: string;
   role: string;
   name?: string;
   tmux_target?: string;
+  room_id?: number;
 }
 
 function getTmuxSocketArgs(): string[] {
@@ -143,7 +145,7 @@ export async function detectAgentType(
 export async function handleJoinRoom(
   params: JoinRoomParams,
 ): Promise<ToolResult> {
-  const { role, tmux_target } = params;
+  const { role, tmux_target, room_id } = params;
 
   if (!role) {
     return err('Missing required param: role');
@@ -176,7 +178,6 @@ export async function handleJoinRoom(
   }
 
   const normalizedPath = normalizePath(cwd);
-  const room = params.room;
 
   // Generate random name if not provided
   const explicitName = params.name?.trim();
@@ -192,7 +193,20 @@ export async function handleJoinRoom(
     }
   }
 
-  const roomObj = getOrCreateRoom(normalizedPath, room);
+  let roomObj: Room;
+  if (room_id !== undefined) {
+    const existing = getRoom(room_id);
+    if (!existing) {
+      return err(`Room with ID ${room_id} does not exist`);
+    }
+    roomObj = existing;
+  } else {
+    const room = params.room;
+    if (!room) {
+      return err('Missing required param: room or room-id');
+    }
+    roomObj = getOrCreateRoom(normalizedPath, room);
+  }
 
   // Resolve name collisions
   const existing = getAgentByRoomAndName(roomObj.id, name);
@@ -228,21 +242,6 @@ export async function handleJoinRoom(
     });
   }
 
-  try {
-    if (roomObj.topic && target) {
-      const { getQueue } = await import('../delivery/pane-queue.ts');
-      await getQueue(target, { role: role as AgentRole }).enqueue({
-        type: 'paste',
-        text: `Room topic: ${roomObj.topic}`,
-      });
-    }
-  } catch (e) {
-    logServer(
-      'WARN',
-      `topic inject failed for ${name} in ${roomObj.name}: ${e instanceof Error ? e.message : String(e)}`,
-    );
-  }
-
   // Rename Claude Code session to agent name
   try {
     if (target) {
@@ -261,6 +260,7 @@ export async function handleJoinRoom(
     name: agent.name,
     role: agent.role,
     room: roomObj.name,
+    room_id: roomObj.id,
     room_path: roomObj.path,
     tmux_target: agent.tmux_target,
     pull_only: target === null,

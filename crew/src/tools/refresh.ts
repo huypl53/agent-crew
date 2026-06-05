@@ -2,6 +2,8 @@ import { normalizePath } from '../shared/path-utils.ts';
 import type { ToolResult } from '../shared/types.ts';
 import { err, ok, randomSuffix } from '../shared/types.ts';
 import {
+  getAgent,
+  getRoom,
   getAgentByRoomAndName,
   getRoomByPath,
   refreshAgent,
@@ -46,7 +48,10 @@ export async function handleRefresh(
   }
 
   const normalizedPath = normalizePath(cwd);
-  const room = getRoomByPath(normalizedPath);
+
+  // Try lookup by existing agent globally first (so we know their old room)
+  const existingAgent = getAgent(name);
+  let room = existingAgent ? getRoom(existingAgent.room_id) : getRoomByPath(normalizedPath);
 
   if (!room) {
     return err(
@@ -54,7 +59,7 @@ export async function handleRefresh(
     );
   }
 
-  const oldAgent = getAgentByRoomAndName(room.id, name);
+  const oldAgent = existingAgent || getAgentByRoomAndName(room.id, name);
   const oldPane = oldAgent?.tmux_target ?? null;
 
   const agent = await refreshAgent(room.id, name, target);
@@ -99,6 +104,7 @@ export async function handleRefresh(
     name: agent.name,
     role: agent.role,
     room: agent.room_name,
+    room_id: agent.room_id,
     room_path: agent.room_path,
     tmux_target: agent.tmux_target,
   });

@@ -13,27 +13,28 @@ export function formatHelp(): string {
 Usage: crew <command> [flags]
 
 Commands:
-  join       --room <room> --role <role> --name <name>    Register in a room
-  leave      --room <room> --name <name>                  Leave a room
+  join       --room <name> --role <role> --name <name>    Register in a room
+             [--room-id <id>]                             Join room by ID instead of CWD
+  leave      --room <name|id|path> --name <name>          Leave a room
   rooms                                                    List all rooms
-  members    --room <room>                                List room members
-  send       --room <room> (--text <text> | --file <path>) --name <name>    Send a message
+  members    --room <name|id|path>                        List room members
+  send       --room <name|id|path> (--text <text> | --file <path>) --name <name>    Send a message
              [--to <agent>] [--kind <kind>] [--mode <mode>]
-  read       --name <name> [--room <room>] [--limit N]    Read messages
+  read       --name <name> [--room <name|id|path>] [--limit N]    Read messages
              [--kinds task,completion]
   status     <agent_name> [--name <self>]                 Check agent status
   check      --name <name> [--scopes messages,agents]     Check for changes
   refresh    --name <name>                                Re-register agent
-  topic      --room <room> --text <text> --name <name>    Set room topic
-  interrupt  --worker <name> --room <room> --name <name>  Interrupt worker
+  topic      --room <name|id|path> --text <text> --name <name>    Set room topic
+  interrupt  --worker <name> --room <name|id|path> --name <name>  Interrupt worker
   inspect    --worker <name> --name <leader>              Inspect recent worker turns
-             [--room <room>] [--turns N]
+             [--room <name|id|path>] [--turns N]
   input-block on|off|status [--name <agent>] [--persist] Manage input-block mode
-  clear      --worker <name> --room <room> --name <name>  Clear worker session
-  reassign   --worker <name> --room <room> --text <t>     Replace current assignment
+  clear      --worker <name> --room <name|id|path> --name <name>  Clear worker session
+  reassign   --worker <name> --room <name|id|path> --text <t>     Replace current assignment
              --name <name>
   create-room --room <name> --name <self> [--topic <t>]   Create a new room
-  delete-room --room <name> --confirm --name <self>       Delete room (removes members + messages)
+  delete-room [<name|id|path>] --confirm --name <self>            Delete room (removes members + messages)
   mute-idle  --name <name>                                Mute idle notifications (leader only)
   unmute-idle --name <name>                               Unmute idle notifications
   pause-polling [--reason <text>]                         Pause sweep delivery (defer to queue)
@@ -70,7 +71,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     return d.rooms
       .map(
         (r: any) =>
-          `${r.name} ${r.member_count} members (${r.roles.leader}l ${r.roles.worker}w)`,
+          `[ID: ${r.id}] ${r.name} (${r.path}) ${r.member_count} members (${r.roles.leader}l ${r.roles.worker}w)`,
       )
       .join('\n');
   },
@@ -106,12 +107,12 @@ const FORMATTERS: Record<string, (data: any) => string> = {
   },
 
   join: (d) =>
-    `Joined ${d.room} as ${d.name} (${d.role}) pane:${d.tmux_target}`,
+    `Joined ${d.room} (ID: ${d.room_id}) as ${d.name} (${d.role}) pane:${d.tmux_target}`,
   'input-block': (d) =>
     `${d.name} input-block:${d.input_block_mode}`,
   leave: () => 'Left room',
   refresh: (d) =>
-    `Refreshed ${d.name} room:${d.room ?? d.room_name ?? ''} pane:${d.tmux_target}`,
+    `Refreshed ${d.name} room:${d.room ?? d.room_name ?? ''} (ID: ${d.room_id ?? ''}) pane:${d.tmux_target}`,
   topic: (d) => `Topic set: ${d.topic}`,
   interrupt: () => 'Interrupted worker',
   inspect: (d) => {

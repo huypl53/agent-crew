@@ -444,11 +444,17 @@ export function getRoom(identifier: string | number): Room | undefined {
   const db = getDb();
   let row: Record<string, unknown> | null;
 
-  if (typeof identifier === 'number') {
+  const parsedId = typeof identifier === 'number' ? identifier : Number(identifier);
+  if (!Number.isNaN(parsedId)) {
     row = db
       .query('SELECT * FROM rooms WHERE id = ?')
-      .get(identifier) as Record<string, unknown> | null;
-  } else if (identifier.startsWith('/')) {
+      .get(parsedId) as Record<string, unknown> | null;
+    if (!row && typeof identifier === 'string') {
+      row = db
+        .query('SELECT * FROM rooms WHERE name = ? ORDER BY id DESC LIMIT 1')
+        .get(identifier) as Record<string, unknown> | null;
+    }
+  } else if (typeof identifier === 'string' && identifier.startsWith('/')) {
     row = db
       .query('SELECT * FROM rooms WHERE path = ?')
       .get(identifier) as Record<string, unknown> | null;

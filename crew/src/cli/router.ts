@@ -48,6 +48,7 @@ export const COMMANDS: Record<
       role: f.role,
       name: f.name,
       tmux_target: f.pane,
+      room_id: f['room-id'] ? parseInt(String(f['room-id']), 10) : undefined,
     }),
   },
   leave: {
@@ -158,7 +159,7 @@ export const COMMANDS: Record<
   },
   'delete-room': {
     handler: handleDeleteRoom,
-    buildParams: (f) => ({ room: f.room, confirm: !!f.confirm, name: f.name }),
+    buildParams: (f, p) => ({ room: f.room ?? p[0], confirm: !!f.confirm, name: f.name }),
   },
   'hook-event': {
     handler: handleHookEvent,
