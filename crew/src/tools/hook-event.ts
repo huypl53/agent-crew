@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { spawnSync } from 'bun';
 import type { ToolResult } from '../shared/types.ts';
 import { getDb, initDb } from '../state/db.ts';
 import {
@@ -8,13 +10,14 @@ import {
   tickHintCadence,
 } from '../state/index.ts';
 
-function okResult(payload: Record<string, unknown> = { ok: true, decision: 'allow' }): ToolResult {
+function okResult(
+  payload: Record<string, unknown> = { ok: true, decision: 'allow' },
+): ToolResult {
   if (payload.decision === undefined) {
     payload.decision = 'allow';
   }
   return { content: [{ type: 'text', text: JSON.stringify(payload) }] };
 }
-
 
 export async function processHookEventInput(
   input: string,
@@ -44,10 +47,7 @@ export async function processHookEventInput(
   }
 
   const eventType = String(
-    payload.hook_event_name ??
-      payload.event ??
-      payload.eventName ??
-      'Unknown',
+    payload.hook_event_name ?? payload.event ?? payload.eventName ?? 'Unknown',
   );
   const sessionId =
     typeof payload.session_id === 'string'
@@ -64,7 +64,9 @@ export async function processHookEventInput(
       canonicalizeHintIdentity(agent.name, pane, sessionId);
     } catch (e) {
       // Fail-open: don't block hook processing on canonicalization errors
-      console.error(`[crew hint] canonicalize error: ${e instanceof Error ? e.message : String(e)}`);
+      console.error(
+        `[crew hint] canonicalize error: ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
   }
 
@@ -74,7 +76,11 @@ export async function processHookEventInput(
   if (eventType === 'UserPromptSubmit') {
     clearArmedInputBlock(agent.name);
     try {
-      const { shouldShow, hint } = tickHintCadence(pane, sessionId, agent.room_id);
+      const { shouldShow, hint } = tickHintCadence(
+        pane,
+        sessionId,
+        agent.room_id,
+      );
       if (shouldShow && hint) {
         return {
           content: [
@@ -91,14 +97,84 @@ export async function processHookEventInput(
       }
     } catch (e) {
       // Fail-open: never block hook processing on hint errors
-      console.error(`[crew hint] cadence error: ${e instanceof Error ? e.message : String(e)}`);
+      console.error(
+        `[crew hint] cadence error: ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
   }
 
   return okResult();
 }
 
+function getParentPid(pid: number): number | null {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+    const parts = stat.split(' ');
+    return parseInt(parts[3], 10);
+  } catch {
+    return null;
+  }
+}
+
+function getAncestry(pid: number): number[] {
+  const list: number[] = [];
+  let current: number | null = pid;
+  while (current && current > 1) {
+    list.push(current);
+    current = getParentPid(current);
+  }
+  return list;
+}
+
+function getTmuxPanes(): Map<number, string> {
+  const map = new Map<number, string>();
+  try {
+    const socket = process.env.CREW_TMUX_SOCKET;
+    const args = socket ? ['-L', socket] : [];
+    const res = spawnSync([
+      'tmux',
+      ...args,
+      'list-panes',
+      '-a',
+      '-F',
+      '#{pane_pid} #{pane_id}',
+    ]);
+    if (res.success) {
+      const output = res.stdout.toString().trim();
+      for (const line of output.split('\n')) {
+        const [pidStr, paneId] = line.trim().split(/\s+/);
+        if (pidStr && paneId) {
+          const pid = parseInt(pidStr, 10);
+          if (Number.isInteger(pid)) {
+            map.set(pid, paneId);
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return map;
+}
+
+export function resolvePaneId(): string | undefined {
+  if (process.env.TMUX_PANE) {
+    return process.env.TMUX_PANE;
+  }
+  const panes = getTmuxPanes();
+  if (panes.size === 0) return undefined;
+
+  const ancestry = getAncestry(process.pid);
+  for (const pid of ancestry) {
+    const paneId = panes.get(pid);
+    if (paneId) {
+      return paneId;
+    }
+  }
+  return undefined;
+}
+
 export async function handleHookEvent(_params?: unknown): Promise<ToolResult> {
   const input = await Bun.stdin.text();
-  return processHookEventInput(input, process.env.TMUX_PANE);
+  return processHookEventInput(input, resolvePaneId());
 }
