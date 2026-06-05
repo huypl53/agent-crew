@@ -13,7 +13,9 @@ interface InputBlockParams {
   persist?: boolean;
 }
 
-function resolveTarget(params: InputBlockParams): { name: string; room: string } | { error: string } {
+function resolveTarget(
+  params: InputBlockParams,
+): { name: string; room: string } | { error: string } {
   const explicitName = params.name?.trim();
   const pane = process.env.TMUX_PANE ?? null;
   const paneAgent = pane ? getAgentByPane(pane) : undefined;
@@ -44,8 +46,7 @@ function resolveTarget(params: InputBlockParams): { name: string; room: string }
 export async function handleInputBlock(
   params: InputBlockParams,
 ): Promise<ToolResult> {
-  const subcommand = params.subcommand;
-  if (!subcommand) return err('Missing input-block subcommand');
+  const subcommand = params.subcommand ?? 'status';
 
   const target = resolveTarget(params);
   if ('error' in target) return err(target.error);

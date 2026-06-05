@@ -29,7 +29,10 @@ Commands:
   interrupt  --worker <name> --room <name|id|path> --name <name>  Interrupt worker
   inspect    --worker <name> --name <leader>              Inspect recent worker turns
              [--room <name|id|path>] [--turns N]
-  input-block on|off|status [--name <agent>] [--persist] Manage input-block mode
+  ib         [on|off|status] [-n <agent>] [-p]            Manage input-block mode (default: status)
+  block      [-n <agent>] [-p]                            Arm input block (use -p for persistent)
+  unblock    [-n <agent>]                                 Clear input block
+  input-block on|off|status [--name <agent>] [--persist] Manage input-block mode (legacy)
   clear      --worker <name> --room <name|id|path> --name <name>  Clear worker session
   reassign   --worker <name> --room <name|id|path> --text <t>     Replace current assignment
              --name <name>
@@ -52,6 +55,9 @@ Flags:
   --json     Output raw JSON instead of text
   --help     Show this help message`;
 }
+
+const formatInputBlock = (d: any) =>
+  `${d.name} input-block:${d.input_block_mode}`;
 
 const FORMATTERS: Record<string, (data: any) => string> = {
   check: (d) =>
@@ -108,8 +114,10 @@ const FORMATTERS: Record<string, (data: any) => string> = {
 
   join: (d) =>
     `Joined ${d.room} (ID: ${d.room_id}) as ${d.name} (${d.role}) pane:${d.tmux_target}`,
-  'input-block': (d) =>
-    `${d.name} input-block:${d.input_block_mode}`,
+  'input-block': formatInputBlock,
+  ib: formatInputBlock,
+  block: formatInputBlock,
+  unblock: formatInputBlock,
   leave: () => 'Left room',
   refresh: (d) =>
     `Refreshed ${d.name} room:${d.room ?? d.room_name ?? ''} (ID: ${d.room_id ?? ''}) pane:${d.tmux_target}`,

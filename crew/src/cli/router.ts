@@ -159,7 +159,11 @@ export const COMMANDS: Record<
   },
   'delete-room': {
     handler: handleDeleteRoom,
-    buildParams: (f, p) => ({ room: f.room ?? p[0], confirm: !!f.confirm, name: f.name }),
+    buildParams: (f, p) => ({
+      room: f.room ?? p[0],
+      confirm: !!f.confirm,
+      name: f.name,
+    }),
   },
   'hook-event': {
     handler: handleHookEvent,
@@ -168,9 +172,32 @@ export const COMMANDS: Record<
   'input-block': {
     handler: handleInputBlock,
     buildParams: (f, p) => ({
-      subcommand: p[0],
+      subcommand: p[0] ?? 'status',
       name: f.name,
       persist: !!f.persist,
+    }),
+  },
+  ib: {
+    handler: handleInputBlock,
+    buildParams: (f, p) => ({
+      subcommand: p[0] ?? 'status',
+      name: f.name,
+      persist: !!f.persist,
+    }),
+  },
+  block: {
+    handler: handleInputBlock,
+    buildParams: (f) => ({
+      subcommand: 'on',
+      name: f.name,
+      persist: !!f.persist,
+    }),
+  },
+  unblock: {
+    handler: handleInputBlock,
+    buildParams: (f) => ({
+      subcommand: 'off',
+      name: f.name,
     }),
   },
   party: {

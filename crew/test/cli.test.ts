@@ -41,6 +41,13 @@ describe('CLI arg parser', () => {
     ]);
     expect(result.flags.kinds).toBe('task,completion');
   });
+
+  test('parses short flags and short boolean flags', () => {
+    const result = parseArgs(['block', '-n', 'wk-01', '-p']);
+    expect(result.command).toBe('block');
+    expect(result.flags.name).toBe('wk-01');
+    expect(result.flags.persist).toBe(true);
+  });
 });
 
 describe('CLI formatter', () => {
@@ -139,6 +146,27 @@ describe('CLI formatter', () => {
     });
     expect(out).toContain('wk-01');
     expect(out).toContain('armed');
+
+    const ibOut = formatResult('ib', {
+      name: 'wk-01',
+      input_block_mode: 'armed',
+    });
+    expect(ibOut).toContain('wk-01');
+    expect(ibOut).toContain('armed');
+
+    const blockOut = formatResult('block', {
+      name: 'wk-01',
+      input_block_mode: 'persist',
+    });
+    expect(blockOut).toContain('wk-01');
+    expect(blockOut).toContain('persist');
+
+    const unblockOut = formatResult('unblock', {
+      name: 'wk-01',
+      input_block_mode: 'off',
+    });
+    expect(unblockOut).toContain('wk-01');
+    expect(unblockOut).toContain('off');
   });
 
   test('formats inspect output with turns and degradation metadata', () => {
