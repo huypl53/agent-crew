@@ -67,4 +67,51 @@ describe('TUI Interactive Prompts', () => {
     const result = await promise;
     expect(result).toEqual(['opt1', 'opt2']);
   });
+
+  test('selectOne clears stdout and resolves with null on Ctrl+C', async () => {
+    const stdin = new MockStdin();
+    const stdout = new MockStdout();
+    const items = [
+      { value: 'opt1', label: 'Option 1' },
+      { value: 'opt2', label: 'Option 2' },
+    ];
+
+    const promise = selectOne({
+      title: 'Select one',
+      items,
+      stdin,
+      stdout,
+    });
+
+    stdin.sendKey({ name: 'c', ctrl: true });
+
+    const result = await promise;
+    expect(result).toBeNull();
+
+    // Check if clear sequence is sent to stdout on Ctrl+C.
+    // Line count for 2 items is 3, so clear code is '\u001b[3A\u001b[J'
+    const clears = stdout.output.filter((o) => o.includes('\u001b[3A\u001b[J'));
+    expect(clears.length).toBeGreaterThan(0);
+  });
+
+  test('selectOne and selectMultiple resolve with null immediately if items is empty', async () => {
+    const stdin = new MockStdin();
+    const stdout = new MockStdout();
+
+    const resultOne = await selectOne({
+      title: 'Select one',
+      items: [],
+      stdin,
+      stdout,
+    });
+    expect(resultOne).toBeNull();
+
+    const resultMultiple = await selectMultiple({
+      title: 'Select multiple',
+      items: [],
+      stdin,
+      stdout,
+    });
+    expect(resultMultiple).toBeNull();
+  });
 });

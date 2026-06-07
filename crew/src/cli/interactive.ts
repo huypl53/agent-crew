@@ -25,6 +25,11 @@ export function selectOne<T>(options: PromptOptions<T>): Promise<T | null> {
     stdin = process.stdin,
     stdout = process.stdout,
   } = options;
+
+  if (!items || items.length === 0) {
+    return Promise.resolve(null);
+  }
+
   return new Promise((resolve) => {
     let cursor = 0;
     const stream = stdin as ReadStream;
@@ -70,6 +75,7 @@ export function selectOne<T>(options: PromptOptions<T>): Promise<T | null> {
     ) => {
       if (!key) return;
       if (key.ctrl && key.name === 'c') {
+        clear();
         cleanup();
         resolve(null);
         return;
@@ -108,6 +114,11 @@ export function selectMultiple<T>(
     stdin = process.stdin,
     stdout = process.stdout,
   } = options;
+
+  if (!items || items.length === 0) {
+    return Promise.resolve(null);
+  }
+
   return new Promise((resolve) => {
     let cursor = 0;
     const selected = new Set<number>();
@@ -156,6 +167,7 @@ export function selectMultiple<T>(
     ) => {
       if (!key) return;
       if (key.ctrl && key.name === 'c') {
+        clear();
         cleanup();
         resolve(null);
         return;
