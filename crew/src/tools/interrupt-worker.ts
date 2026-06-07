@@ -44,8 +44,12 @@ export async function handleInterruptWorker(
     return err(`Worker "${worker_name}" has no tmux target`);
   }
 
-  // Send Escape (priority — jumps to front of queue)
-  await getQueue(worker.tmux_target).enqueue({ type: 'escape' });
+  // Send Escape or Sigint (priority — jumps to front of queue)
+  if (worker.agent_type === 'claude-code' || worker.agent_type === 'codex') {
+    await getQueue(worker.tmux_target).enqueue({ type: 'sigint' });
+  } else {
+    await getQueue(worker.tmux_target).enqueue({ type: 'escape' });
+  }
 
   // Record and send system notification to worker
   const notifyBody = `Your current assignment was interrupted by ${name}`;

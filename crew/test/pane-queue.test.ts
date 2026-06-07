@@ -61,13 +61,19 @@ describe('PaneQueue', () => {
     await q.enqueue({ type: 'escape' });
   });
 
+  test('enqueue sigint delivers C-c to pane', async () => {
+    const q = getQueue(testPane);
+    // Should not throw
+    await q.enqueue({ type: 'sigint' });
+  });
+
   test('enqueue clear delivers Ctrl-L to pane', async () => {
     const q = getQueue(testPane);
     // Should not throw
     await q.enqueue({ type: 'clear' });
   });
 
-  test('escape items jump to front of queue', async () => {
+  test('escape and sigint items jump to front of queue', async () => {
     const q = getQueue(testPane);
     const order: string[] = [];
     // Enqueue paste then escape — escape should process first
@@ -75,9 +81,10 @@ describe('PaneQueue', () => {
       .enqueue({ type: 'paste', text: 'first' })
       .then(() => order.push('paste'));
     const p2 = q.enqueue({ type: 'escape' }).then(() => order.push('escape'));
-    await Promise.all([p1, p2]);
-    // escape should have been processed before paste
-    expect(order[0]).toBe('escape');
+    const p3 = q.enqueue({ type: 'sigint' }).then(() => order.push('sigint'));
+    await Promise.all([p1, p2, p3]);
+    // escape/sigint should have been processed before paste
+    expect(order[2]).toBe('paste');
   });
 
   test('delivery still works with typing gate checks enabled', async () => {

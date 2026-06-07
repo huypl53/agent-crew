@@ -46,7 +46,11 @@ export async function handleReassignTask(
     return err(`Worker "${worker_name}" has no tmux target`);
   }
 
-  await getQueue(worker.tmux_target).enqueue({ type: 'escape' });
+  if (worker.agent_type === 'claude-code' || worker.agent_type === 'codex') {
+    await getQueue(worker.tmux_target).enqueue({ type: 'sigint' });
+  } else {
+    await getQueue(worker.tmux_target).enqueue({ type: 'escape' });
+  }
   await deliverMessage(name, room, text, worker_name, 'push', 'task');
 
   return ok({ reassigned: true });

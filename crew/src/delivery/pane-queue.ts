@@ -21,6 +21,7 @@ import {
   sendClear,
   sendCommand,
   sendEscape,
+  sendSigint,
   sendKeys,
 } from '../tmux/index.ts';
 
@@ -28,6 +29,7 @@ export type QueueItem =
   | { type: 'paste'; text: string } // content message — gets role suffix
   | { type: 'command'; text: string } // CLI command (/rename, crew join, etc.) — no suffix
   | { type: 'escape' }
+  | { type: 'sigint' }
   | { type: 'clear' };
 
 interface QueueEntry {
@@ -116,7 +118,7 @@ export class PaneQueue {
   enqueue(item: QueueItem): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const entry: QueueEntry = { item, resolve, reject };
-      if (item.type === 'escape') {
+      if (item.type === 'escape' || item.type === 'sigint') {
         this.queue.unshift(entry);
       } else {
         this.queue.push(entry);
@@ -238,6 +240,15 @@ export class PaneQueue {
         if (!r.delivered)
           throw new PaneDeliveryError(
             r.error ?? 'escape delivery failed',
+            'DELIVERY_FAILED',
+          );
+        break;
+      }
+      case 'sigint': {
+        const r = await sendSigint(this.target);
+        if (!r.delivered)
+          throw new PaneDeliveryError(
+            r.error ?? 'sigint delivery failed',
             'DELIVERY_FAILED',
           );
         break;

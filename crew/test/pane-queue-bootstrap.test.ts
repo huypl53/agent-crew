@@ -34,6 +34,7 @@ describe('PaneQueue bootstrap delivery', () => {
         },
         sendCommand: async () => ({ delivered: true }),
         sendEscape: async () => ({ delivered: true }),
+        sendSigint: async () => ({ delivered: true }),
         sendClear: async () => ({ delivered: true }),
       }));
 

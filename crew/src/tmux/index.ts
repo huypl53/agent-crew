@@ -199,6 +199,28 @@ export async function sendEscape(
   }
 }
 
+export async function sendSigint(
+  target: string,
+): Promise<{ delivered: boolean; error?: string }> {
+  try {
+    const result = await run('send-keys', '-t', target, 'C-c');
+    if (!result.success) {
+      return {
+        delivered: false,
+        error: result.stderr || 'send-keys C-c failed',
+      };
+    }
+    await Bun.sleep(PASTE_SETTLE_MS);
+    return { delivered: true };
+  } catch (e) {
+    logServer(
+      'ERROR',
+      `SIGINT delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return { delivered: false, error: 'SIGINT delivery failed' };
+  }
+}
+
 export async function sendClear(
   target: string,
 ): Promise<{ delivered: boolean; error?: string }> {
