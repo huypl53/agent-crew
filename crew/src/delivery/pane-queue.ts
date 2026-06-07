@@ -151,6 +151,11 @@ export class PaneQueue {
     // Hook events are the only reliable readiness signal we have for Claude.
     // If a pane has no recent hook history yet, do not guess based on prompt
     // text captured from tmux — first-delivery bootstrap should proceed.
+    //
+    // IMPORTANT: Only throw PANE_BLOCKED_INPUT when we *positively confirm*
+    // block mode is active via a successful DB read. Any DB error (lock/busy)
+    // should fall through and allow delivery — we must not silently drop
+    // messages just because SQLite was temporarily unavailable.
     try {
       const agent = getAgentByPane(this.target);
       if (agent) {
@@ -169,14 +174,16 @@ export class PaneQueue {
       }
     } catch (error) {
       if (error instanceof PaneDeliveryError) {
+        // Only re-throw the block error — this is a positive detection.
         throw error;
       }
-      // If the error is because DB was never initialized (e.g. in some basic unit tests),
-      // allow delivery. Otherwise, propagate the DB error to prevent fail-open during DB lock/busy.
-      if (error instanceof Error && error.message.includes('DB not initialized')) {
-        return;
-      }
-      throw error;
+      // For any other error (DB lock/busy, not-initialized, etc.), allow
+      // delivery to proceed. We cannot confirm block mode so we fail open.
+      logServer(
+        'WARN',
+        `pane-queue: waitForReady DB read failed for ${this.target}, allowing delivery: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return;
     }
     return;
   }
