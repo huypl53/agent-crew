@@ -890,6 +890,8 @@ describe('MCP tools', () => {
         name: 'w1',
         tmux_target: testPaneA,
       });
+      const { getDb } = await import('../src/state/db.ts');
+      getDb().run("UPDATE agents SET agent_type = 'claude-code' WHERE name = 'w1'");
       const result = await handleRefresh({
         name: 'w1',
         tmux_target: testPaneB,

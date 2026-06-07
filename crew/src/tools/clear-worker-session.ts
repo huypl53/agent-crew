@@ -57,7 +57,7 @@ export async function handleClearWorkerSession(
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
   // Step 3: Send crew:refresh command to re-register the worker
-  const refreshText = `/crew:refresh --name ${worker_name}`;
+  const refreshText = `!crew refresh --name ${worker_name}`;
   try {
     await getQueue(worker.tmux_target).enqueue({
       type: 'command',
@@ -65,16 +65,6 @@ export async function handleClearWorkerSession(
     });
   } catch (e) {
     return err(e instanceof Error ? e.message : String(e));
-  }
-
-  // Step 4: Rename Claude Code session to worker name (same as join flow)
-  try {
-    await getQueue(worker.tmux_target, { role: 'worker' }).enqueue({
-      type: 'command',
-      text: `/rename ${worker_name}@${room}`,
-    });
-  } catch {
-    // Non-critical — ignore failure
   }
 
   return ok({
