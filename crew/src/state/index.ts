@@ -1109,6 +1109,10 @@ async function deliverWithRetry(leader: Agent, message: string): Promise<void> {
   const RETRY_DELAY_MS = 1500;
   const MAX_RETRIES = 2;
 
+  if (getAgentInputBlockMode(leader.name) !== 'off') {
+    return;
+  }
+
   // Check if leader is currently busy (recent UserPromptSubmit event)
   const latestEvent = getLatestHookEvent(leader.name);
   if (latestEvent?.event_type === 'UserPromptSubmit') {
@@ -1121,6 +1125,9 @@ async function deliverWithRetry(leader: Agent, message: string): Promise<void> {
 
   // Try delivery with retries
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (getAgentInputBlockMode(leader.name) !== 'off') {
+      return;
+    }
     const result = await sendKeys(leader.tmux_target!, message);
     if (result.delivered) return;
 

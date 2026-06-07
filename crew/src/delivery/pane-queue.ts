@@ -171,7 +171,12 @@ export class PaneQueue {
       if (error instanceof PaneDeliveryError) {
         throw error;
       }
-      // DB not available — allow delivery instead of guessing from pane text
+      // If the error is because DB was never initialized (e.g. in some basic unit tests),
+      // allow delivery. Otherwise, propagate the DB error to prevent fail-open during DB lock/busy.
+      if (error instanceof Error && error.message.includes('DB not initialized')) {
+        return;
+      }
+      throw error;
     }
     return;
   }

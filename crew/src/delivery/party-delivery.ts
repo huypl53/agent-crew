@@ -1,5 +1,5 @@
-import type { Agent, PartyResponse } from '../shared/types.ts';
 import { logServer } from '../shared/server-log.ts';
+import type { Agent, PartyResponse } from '../shared/types.ts';
 import { getRoom } from '../state/index.ts';
 import { sendKeys } from '../tmux/index.ts';
 
@@ -39,8 +39,15 @@ Reply with your perspective.`;
   }
 
   const deliveries = workers
-    .filter((w) => w.tmux_target)
-    .map((w) => deliverToPane(w.tmux_target!, message, 'worker'));
+    .map((w) => {
+      if (w.input_block_mode !== 'off') {
+        logServer('INFO', `party-delivery: skipping topic delivery to worker ${w.name} (pane ${w.tmux_target}) because input block is active`);
+        return null;
+      }
+      return w.tmux_target ? { target: w.tmux_target, agent: w } : null;
+    })
+    .filter((x): x is { target: string; agent: Agent } => !!x)
+    .map((x) => deliverToPane(x.target, message, 'worker'));
 
   await Promise.allSettled(deliveries);
 }
@@ -73,8 +80,15 @@ ${responseLines}
 Reply: "crew party next --topic '...'" to continue, or "crew party end" to finish.`;
 
   const deliveries = leaders
-    .filter((l) => l.tmux_target)
-    .map((l) => deliverToPane(l.tmux_target!, message, 'leader'));
+    .map((l) => {
+      if (l.input_block_mode !== 'off') {
+        logServer('INFO', `party-delivery: skipping digest delivery to leader ${l.name} (pane ${l.tmux_target}) because input block is active`);
+        return null;
+      }
+      return l.tmux_target ? { target: l.tmux_target, agent: l } : null;
+    })
+    .filter((x): x is { target: string; agent: Agent } => !!x)
+    .map((x) => deliverToPane(x.target, message, 'leader'));
 
   await Promise.allSettled(deliveries);
 }
