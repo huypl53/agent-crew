@@ -198,8 +198,12 @@ describe('TUI Interactive Prompts', () => {
 
     const hasCursorHide = stdout.output.some((o) => o.includes('\u001b[?25l'));
     const hasCursorShow = stdout.output.some((o) => o.includes('\u001b[?25h'));
+    const hasLineClear = stdout.output.some((o) =>
+      o.includes('\u001b[2A\u001b[J'),
+    );
     expect(hasCursorHide).toBe(false);
     expect(hasCursorShow).toBe(false);
+    expect(hasLineClear).toBe(false);
   });
 
   test('selectOne and selectMultiple resolve with null immediately if items is empty', async () => {

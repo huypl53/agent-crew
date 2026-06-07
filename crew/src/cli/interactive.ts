@@ -62,8 +62,10 @@ function runPrompt<T, R>({
     };
 
     const clearPrompt = () => {
-      const lineCount = items.length + 1;
-      stdout.write(`\u001b[${lineCount}A\u001b[J`);
+      if (isTTYOut) {
+        const lineCount = items.length + 1;
+        stdout.write(`\u001b[${lineCount}A\u001b[J`);
+      }
     };
 
     const cleanupPrompt = () => {
@@ -82,18 +84,23 @@ function runPrompt<T, R>({
       cleanupPrompt();
     };
 
+    const handleSIGINT = () => {
+      cleanupPrompt();
+      process.exit(130);
+    };
+
     const handleUncaught = (err: Error) => {
       cleanupPrompt();
       throw err;
     };
 
     process.once('exit', handleUnexpectedExit);
-    process.once('SIGINT', handleUnexpectedExit);
+    process.once('SIGINT', handleSIGINT);
     process.once('uncaughtException', handleUncaught);
 
     const resolveWith = (val: R | null) => {
       process.off('exit', handleUnexpectedExit);
-      process.off('SIGINT', handleUnexpectedExit);
+      process.off('SIGINT', handleSIGINT);
       process.off('uncaughtException', handleUncaught);
       resolve(val);
     };
