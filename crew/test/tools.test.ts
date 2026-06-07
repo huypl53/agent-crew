@@ -1507,5 +1507,108 @@ describe('MCP tools', () => {
         'Successfully interrupted worker worker-2',
       );
     });
+
+    test('bulk removes workers and leaders from room', async () => {
+      const room = getOrCreateRoom('/test/manage-room-bulk-remove', 'manage-room-bulk-remove');
+      const { handleManage } = await import('../src/tools/manage.ts');
+      const { Readable, Writable } = await import('node:stream');
+
+      class MockStdin extends Readable {
+        isTTY = true;
+        rawModeEnabled = false;
+        _read() {}
+        setRawMode(mode: boolean) {
+          this.rawModeEnabled = mode;
+          return this;
+        }
+        sendKey(key: { name: string; ctrl?: boolean }) {
+          this.emit('keypress', null, key);
+        }
+      }
+
+      class MockStdout extends Writable {
+        isTTY = true;
+        output: string[] = [];
+        _write(chunk: any, encoding: any, callback: any) {
+          this.output.push(chunk.toString());
+          callback();
+        }
+      }
+
+      const stdin = new MockStdin();
+      const stdout = new MockStdout();
+
+      const { addAgent } = await import('../src/state/index.ts');
+      addAgent('lead-a', 'leader', room.id, testPaneA);
+      addAgent('lead-b', 'leader', room.id, testPaneB);
+      addAgent('work-a', 'worker', room.id, '%99');
+      addAgent('work-b', 'worker', room.id, '%100');
+
+      const promise = handleManage({ name: 'lead-a', stdin, stdout });
+
+      // Select room
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'return' });
+
+      // Select "Manage members (Bulk)" (index 1)
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'down' });
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'return' });
+
+      // Bulk menu actions:
+      // 0: Bulk Interrupt Workers
+      // 1: Bulk Clear Sessions
+      // 2: Bulk Remove from Room
+      // 3: Back
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'down' });
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'down' });
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'return' });
+
+      // Checklist menu for bulk remove
+      // Choices: lead-b, work-a, work-b
+      // select lead-b (index 0)
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'space' });
+      // move to work-a (index 1)
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'down' });
+      // move to work-b (index 2)
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'down' });
+      // select work-b (index 2)
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'space' });
+      // confirm
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'return' });
+
+      // Wait a moment for handleLeaveRoom to complete and menus to render
+      await Bun.sleep(200);
+
+      // Escape from bulk menu
+      stdin.sendKey({ name: 'escape' });
+      await Bun.sleep(100);
+      // Escape from room menu
+      stdin.sendKey({ name: 'escape' });
+      await Bun.sleep(100);
+      // Escape from room selection list
+      stdin.sendKey({ name: 'escape' });
+
+      await promise;
+
+      expect(stdout.output.join('')).toContain('Successfully removed lead-b');
+      expect(stdout.output.join('')).toContain('Successfully removed work-b');
+      
+      const { getRoomMembers } = await import('../src/state/index.ts');
+      const finalMembers = getRoomMembers(room.id).map(m => m.name);
+      expect(finalMembers).toContain('lead-a');
+      expect(finalMembers).toContain('work-a');
+      expect(finalMembers).not.toContain('lead-b');
+      expect(finalMembers).not.toContain('work-b');
+    });
   });
 });

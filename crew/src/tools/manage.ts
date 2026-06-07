@@ -246,10 +246,10 @@ async function manageMembersMenu(
 ): Promise<void> {
   while (true) {
     const members = getRoomMembers(room.id).filter(
-      (m) => m.name !== callerName && m.role === 'worker',
+      (m) => m.name !== callerName,
     );
     if (members.length === 0) {
-      stdout.write('No workers in this room.\n');
+      stdout.write('No other members in this room.\n');
       break;
     }
 
@@ -259,7 +259,7 @@ async function manageMembersMenu(
     }));
 
     const selectedMember = await selectOne<Agent | 'back'>({
-      title: 'Select a worker to manage',
+      title: 'Select a member to manage',
       items: [...memberChoices, { value: 'back', label: 'Back' }],
       stdin,
       stdout,
@@ -270,14 +270,19 @@ async function manageMembersMenu(
     }
 
     const memberActions = [
-      { value: 'interrupt', label: 'Interrupt Worker' },
-      { value: 'clear', label: 'Clear Session' },
-      { value: 'reassign', label: 'Reassign Task' },
+      ...(selectedMember.role === 'worker'
+        ? [
+            { value: 'interrupt', label: 'Interrupt Worker' },
+            { value: 'clear', label: 'Clear Session' },
+            { value: 'reassign', label: 'Reassign Task' },
+          ]
+        : []),
+      { value: 'remove', label: 'Remove from Room' },
       { value: 'back', label: 'Back' },
     ];
 
     const action = await selectOne<string>({
-      title: `Worker: ${selectedMember.name} - Select action`,
+      title: `Member: ${selectedMember.name} (${selectedMember.role}) - Select action`,
       items: memberActions,
       stdin,
       stdout,
@@ -287,7 +292,20 @@ async function manageMembersMenu(
       continue;
     }
 
-    if (action === 'interrupt') {
+    if (action === 'remove') {
+      const result = await handleLeaveRoom({
+        room: room.name,
+        name: selectedMember.name,
+      });
+      if (result.isError) {
+        const errMsg = result.content[0]?.text || 'Error';
+        stdout.write(`Error: ${errMsg}\n`);
+      } else {
+        stdout.write(
+          `Successfully removed ${selectedMember.name} from room ${room.name}\n`,
+        );
+      }
+    } else if (action === 'interrupt') {
       const result = await handleInterruptWorker({
         worker_name: selectedMember.name,
         room: room.name,
@@ -349,16 +367,17 @@ async function manageBulkMembersMenu(
 ): Promise<void> {
   while (true) {
     const members = getRoomMembers(room.id).filter(
-      (m) => m.name !== callerName && m.role === 'worker',
+      (m) => m.name !== callerName,
     );
     if (members.length === 0) {
-      stdout.write('No workers in this room.\n');
+      stdout.write('No other members in this room.\n');
       break;
     }
 
     const actions = [
       { value: 'interrupt', label: 'Bulk Interrupt Workers' },
       { value: 'clear', label: 'Bulk Clear Sessions' },
+      { value: 'remove', label: 'Bulk Remove from Room' },
       { value: 'back', label: 'Back' },
     ];
 
@@ -373,12 +392,16 @@ async function manageBulkMembersMenu(
       break;
     }
 
-    const memberChoices = members.map((m) => ({
-      value: m.name,
-      label: `${m.name} (${m.role})`,
-    }));
-
     if (action === 'interrupt') {
+      const workersOnly = members.filter((m) => m.role === 'worker');
+      if (workersOnly.length === 0) {
+        stdout.write('No workers in this room to interrupt.\n');
+        continue;
+      }
+      const memberChoices = workersOnly.map((m) => ({
+        value: m.name,
+        label: `${m.name} (${m.role})`,
+      }));
       const selectedNames = await selectMultiple<string>({
         title:
           'Select workers to interrupt (Space to select, Enter to confirm)',
@@ -403,6 +426,15 @@ async function manageBulkMembersMenu(
         }
       }
     } else if (action === 'clear') {
+      const workersOnly = members.filter((m) => m.role === 'worker');
+      if (workersOnly.length === 0) {
+        stdout.write('No workers in this room to clear.\n');
+        continue;
+      }
+      const memberChoices = workersOnly.map((m) => ({
+        value: m.name,
+        label: `${m.name} (${m.role})`,
+      }));
       const selectedNames = await selectMultiple<string>({
         title:
           'Select workers to clear session (Space to select, Enter to confirm)',
@@ -423,6 +455,33 @@ async function manageBulkMembersMenu(
             stdout.write(`Error clearing ${worker_name} session: ${errMsg}\n`);
           } else {
             stdout.write(`Successfully cleared session for ${worker_name}\n`);
+          }
+        }
+      }
+    } else if (action === 'remove') {
+      const memberChoices = members.map((m) => ({
+        value: m.name,
+        label: `${m.name} (${m.role})`,
+      }));
+      const selectedNames = await selectMultiple<string>({
+        title:
+          'Select members to remove from room (Space to select, Enter to confirm)',
+        items: memberChoices,
+        stdin,
+        stdout,
+      });
+
+      if (selectedNames && selectedNames.length > 0) {
+        for (const name of selectedNames) {
+          const result = await handleLeaveRoom({
+            room: room.name,
+            name,
+          });
+          if (result.isError) {
+            const errMsg = result.content[0]?.text || 'Error';
+            stdout.write(`Error removing ${name}: ${errMsg}\n`);
+          } else {
+            stdout.write(`Successfully removed ${name} from room ${room.name}\n`);
           }
         }
       }
