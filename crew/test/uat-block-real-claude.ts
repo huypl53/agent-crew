@@ -59,7 +59,11 @@ async function exec(
     stdout: 'pipe',
     stderr: 'pipe',
     stdin: opts?.stdin ? new Response(opts.stdin) : 'ignore',
-    env: { ...process.env, CREW_STATE_DIR: join(TEST_DIR, 'state'), ...opts?.env },
+    env: {
+      ...process.env,
+      CREW_STATE_DIR: join(TEST_DIR, 'state'),
+      ...opts?.env,
+    },
   });
   const timer = setTimeout(() => proc.kill(), opts?.timeout ?? 15_000);
   const [stdout, stderr] = await Promise.all([
@@ -80,7 +84,9 @@ async function crew(
     opts,
   );
   if (exitCode !== 0) {
-    throw new Error(`crew ${args.join(' ')} failed (${exitCode}): ${stderr.trim()}`);
+    throw new Error(
+      `crew ${args.join(' ')} failed (${exitCode}): ${stderr.trim()}`,
+    );
   }
   return stdout.trim();
 }
@@ -91,7 +97,16 @@ async function tmuxSend(pane: string, keys: string): Promise<void> {
 }
 
 async function capturePane(pane: string): Promise<string> {
-  const { stdout } = await exec(['tmux', 'capture-pane', '-p', '-J', '-t', pane, '-S', '-300']);
+  const { stdout } = await exec([
+    'tmux',
+    'capture-pane',
+    '-p',
+    '-J',
+    '-t',
+    pane,
+    '-S',
+    '-300',
+  ]);
   return stdout;
 }
 
@@ -108,7 +123,10 @@ function isClaudeIdle(text: string): boolean {
   return hasPrompt && !isBusy;
 }
 
-async function waitForClaudeIdle(pane: string, timeoutMs = 120_000): Promise<boolean> {
+async function waitForClaudeIdle(
+  pane: string,
+  timeoutMs = 120_000,
+): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   await Bun.sleep(3000);
   while (Date.now() < deadline) {
@@ -123,7 +141,9 @@ function getMaxEventId(): number {
   if (!existsSync(DB_PATH)) return 0;
   try {
     const db = new Database(DB_PATH, { readonly: true });
-    const row = db.query('SELECT MAX(id) as maxId FROM hook_events').get() as { maxId: number | null } | null;
+    const row = db.query('SELECT MAX(id) as maxId FROM hook_events').get() as {
+      maxId: number | null;
+    } | null;
     db.close();
     return row?.maxId ?? 0;
   } catch {
@@ -142,8 +162,14 @@ async function waitForDbEvent(
       try {
         const db = new Database(DB_PATH, { readonly: true });
         const row = db
-          .query('SELECT * FROM hook_events WHERE event_type = ? AND id > ? ORDER BY id DESC LIMIT 1')
-          .get(eventType, afterId) as { id: number; agent_name: string; payload: string | null } | null;
+          .query(
+            'SELECT * FROM hook_events WHERE event_type = ? AND id > ? ORDER BY id DESC LIMIT 1',
+          )
+          .get(eventType, afterId) as {
+          id: number;
+          agent_name: string;
+          payload: string | null;
+        } | null;
         db.close();
         if (row) return row;
       } catch {
@@ -155,7 +181,10 @@ async function waitForDbEvent(
   return null;
 }
 
-async function spawnClaudeInPane(pane: string, workDir: string): Promise<boolean> {
+async function spawnClaudeInPane(
+  pane: string,
+  workDir: string,
+): Promise<boolean> {
   // Each send-keys call includes 'Enter' — give shell time to process each command
   await tmuxSend(pane, `cd ${workDir}`);
   await Bun.sleep(500);
@@ -185,7 +214,9 @@ async function main() {
   // Check claude is available
   const { exitCode: claudeCheck } = await exec(['which', 'claude']);
   if (claudeCheck !== 0) {
-    console.error('ERROR: `claude` not found in PATH. This UAT requires real Claude Code.');
+    console.error(
+      'ERROR: `claude` not found in PATH. This UAT requires real Claude Code.',
+    );
     process.exit(1);
   }
 
@@ -201,36 +232,95 @@ async function main() {
   mkdirSync(workDirB, { recursive: true });
 
   // Write simple files for Claude to read (keeps tasks short/deterministic)
-  await Bun.write(join(workDirA, 'task.txt'), 'What is 3+3? Reply with ONLY: "DONE-A: <number>"');
-  await Bun.write(join(workDirB, 'task.txt'), 'What is 4+4? Reply with ONLY: "DONE-B: <number>"');
+  await Bun.write(
+    join(workDirA, 'task.txt'),
+    'What is 3+3? Reply with ONLY: "DONE-A: <number>"',
+  );
+  await Bun.write(
+    join(workDirB, 'task.txt'),
+    'What is 4+4? Reply with ONLY: "DONE-B: <number>"',
+  );
 
   // Create tmux session with enough panes
-  await exec(['tmux', 'new-session', '-d', '-s', SESSION, '-x', '220', '-y', '50']);
-  const { stdout: p0raw } = await exec(['tmux', 'display-message', '-p', '-t', SESSION, '#{pane_id}']);
+  await exec([
+    'tmux',
+    'new-session',
+    '-d',
+    '-s',
+    SESSION,
+    '-x',
+    '220',
+    '-y',
+    '50',
+  ]);
+  const { stdout: p0raw } = await exec([
+    'tmux',
+    'display-message',
+    '-p',
+    '-t',
+    SESSION,
+    '#{pane_id}',
+  ]);
   const pane0 = p0raw.trim(); // utility pane
 
   // Create 4 panes: leaderA, workerA, leaderB, workerB
-  const { stdout: paLeaderA } = await exec(['tmux', 'split-window', '-P', '-F', '#{pane_id}', '-t', SESSION, '-d', '-h']);
+  const { stdout: paLeaderA } = await exec([
+    'tmux',
+    'split-window',
+    '-P',
+    '-F',
+    '#{pane_id}',
+    '-t',
+    SESSION,
+    '-d',
+    '-h',
+  ]);
   const leaderPaneA = paLeaderA.trim();
-  const { stdout: paWorkerA } = await exec(['tmux', 'split-window', '-P', '-F', '#{pane_id}', '-t', SESSION, '-d']);
+  const { stdout: paWorkerA } = await exec([
+    'tmux',
+    'split-window',
+    '-P',
+    '-F',
+    '#{pane_id}',
+    '-t',
+    SESSION,
+    '-d',
+  ]);
   const workerPaneA = paWorkerA.trim();
-  const { stdout: paLeaderB } = await exec(['tmux', 'split-window', '-P', '-F', '#{pane_id}', '-t', pane0, '-d']);
+  const { stdout: paLeaderB } = await exec([
+    'tmux',
+    'split-window',
+    '-P',
+    '-F',
+    '#{pane_id}',
+    '-t',
+    pane0,
+    '-d',
+  ]);
   const leaderPaneB = paLeaderB.trim();
-  const { stdout: paWorkerB } = await exec(['tmux', 'split-window', '-P', '-F', '#{pane_id}', '-t', paLeaderB.trim(), '-d']);
+  const { stdout: paWorkerB } = await exec([
+    'tmux',
+    'split-window',
+    '-P',
+    '-F',
+    '#{pane_id}',
+    '-t',
+    paLeaderB.trim(),
+    '-d',
+  ]);
   const workerPaneB = paWorkerB.trim();
 
-  console.log(`Panes — leaderA:${leaderPaneA}  workerA:${workerPaneA}  leaderB:${leaderPaneB}  workerB:${workerPaneB}`);
+  console.log(
+    `Panes — leaderA:${leaderPaneA}  workerA:${workerPaneA}  leaderB:${leaderPaneB}  workerB:${workerPaneB}`,
+  );
 
   // Start crew server (sweep loop lives inside 'serve')
-  serverProc = Bun.spawn(
-    ['bun', 'crew/src/cli.ts', 'serve', '--headless'],
-    {
-      stdout: 'pipe',
-      stderr: 'pipe',
-      env: { ...process.env, CREW_STATE_DIR: stateDir },
-      cwd: '/home/vtit/code/utils/agent-crew',
-    },
-  );
+  serverProc = Bun.spawn(['bun', 'crew/src/cli.ts', 'serve', '--headless'], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: { ...process.env, CREW_STATE_DIR: stateDir },
+    cwd: join(import.meta.dirname, '../..'),
+  });
   await Bun.sleep(2500);
   console.log('Crew server started (sweep loop active).\n');
 
@@ -241,7 +331,9 @@ async function main() {
   console.log('Hooks installed in work dirs.\n');
 
   // ─── Spawn Claude in both worker panes ────────────────────────────────────
-  console.log('Spawning Claude Code in worker panes (this may take ~30–90s per pane)...');
+  console.log(
+    'Spawning Claude Code in worker panes (this may take ~30–90s per pane)...',
+  );
 
   const readyA = await spawnClaudeInPane(workerPaneA, workDirA);
   if (!assert(readyA, 'Claude Code (worker-A) reached idle prompt')) {
@@ -256,7 +348,9 @@ async function main() {
   }
 
   if (!readyA || !readyB) {
-    console.log('\nCannot continue — Claude failed to start in one or more panes.');
+    console.log(
+      '\nCannot continue — Claude failed to start in one or more panes.',
+    );
     await cleanup();
     process.exit(1);
   }
@@ -276,23 +370,75 @@ async function main() {
   await Bun.sleep(500);
 
   // Register agents in crew
-  await crew(['join', '--room', ROOM_A, '--name', 'leader-a', '--role', 'leader', '--pane', leaderPaneA]);
-  await crew(['join', '--room', ROOM_A, '--name', 'worker-a', '--role', 'worker', '--pane', workerPaneA]);
-  await crew(['join', '--room', ROOM_B, '--name', 'leader-b', '--role', 'leader', '--pane', leaderPaneB]);
-  await crew(['join', '--room', ROOM_B, '--name', 'worker-b', '--role', 'worker', '--pane', workerPaneB]);
+  await crew([
+    'join',
+    '--room',
+    ROOM_A,
+    '--name',
+    'leader-a',
+    '--role',
+    'leader',
+    '--pane',
+    leaderPaneA,
+  ]);
+  await crew([
+    'join',
+    '--room',
+    ROOM_A,
+    '--name',
+    'worker-a',
+    '--role',
+    'worker',
+    '--pane',
+    workerPaneA,
+  ]);
+  await crew([
+    'join',
+    '--room',
+    ROOM_B,
+    '--name',
+    'leader-b',
+    '--role',
+    'leader',
+    '--pane',
+    leaderPaneB,
+  ]);
+  await crew([
+    'join',
+    '--room',
+    ROOM_B,
+    '--name',
+    'worker-b',
+    '--role',
+    'worker',
+    '--pane',
+    workerPaneB,
+  ]);
   console.log('\nAgents registered.\n');
 
   // ─── Scenario A: block=off, leader MUST receive the notification ──────────
-  console.log('─── Scenario A: block=off → leader MUST receive completion notification ───\n');
+  console.log(
+    '─── Scenario A: block=off → leader MUST receive completion notification ───\n',
+  );
 
-  const blockStatusA = await crew(['input-block', '--name', 'leader-a', 'status']).catch(() => '');
-  assert(!blockStatusA.includes('persist') && !blockStatusA.includes('armed'),
-    `leader-a block=off: ${blockStatusA}`);
+  const blockStatusA = await crew([
+    'input-block',
+    '--name',
+    'leader-a',
+    'status',
+  ]).catch(() => '');
+  assert(
+    !blockStatusA.includes('persist') && !blockStatusA.includes('armed'),
+    `leader-a block=off: ${blockStatusA}`,
+  );
 
   const preIdA = getMaxEventId();
   // Send a simple prompt — Claude will complete it and fire the Stop hook
   const { sendKeys } = await import('../src/tmux/index.ts');
-  const sendResultA = await sendKeys(workerPaneA, 'Read task.txt and follow its instructions exactly.');
+  const sendResultA = await sendKeys(
+    workerPaneA,
+    'Read task.txt and follow its instructions exactly.',
+  );
   assert(sendResultA.delivered, 'sendKeys delivered prompt to worker-A');
 
   // Wait for Stop hook event from worker-a
@@ -300,48 +446,92 @@ async function main() {
   const stopEventA = await waitForDbEvent('Stop', preIdA, 120_000);
   assert(stopEventA !== null, 'Stop hook fired for worker-a');
   if (stopEventA) {
-    assert(stopEventA.agent_name === 'worker-a', `Stop event agent = worker-a (got: ${stopEventA.agent_name})`);
+    assert(
+      stopEventA.agent_name === 'worker-a',
+      `Stop event agent = worker-a (got: ${stopEventA.agent_name})`,
+    );
   }
 
   // Wait for leader pane to receive the notification.
   // The sweep loop runs every 5s and notifies after IDLE_THRESHOLD_MS (1min) of idle.
   // Wait up to 90s to cover the full cycle.
-  console.log('  Waiting for leader-a pane to receive notification (up to 90s via sweep)...');
+  console.log(
+    '  Waiting for leader-a pane to receive notification (up to 90s via sweep)...',
+  );
   const deadline = Date.now() + 90_000;
   let leaderGotIt = false;
   while (Date.now() < deadline) {
     const content = await capturePane(leaderPaneA);
-    if (content.includes('worker-a') || content.includes('DONE-A') || content.includes('completed')
-        || content.includes('idle') || content.includes('system@')) {
+    if (
+      content.includes('worker-a') ||
+      content.includes('DONE-A') ||
+      content.includes('completed') ||
+      content.includes('idle') ||
+      content.includes('system@')
+    ) {
       leaderGotIt = true;
       break;
     }
     await Bun.sleep(2000);
   }
-  assert(leaderGotIt, 'Leader-A pane received worker completion notification (block=off)');
+  assert(
+    leaderGotIt,
+    'Leader-A pane received worker completion notification (block=off)',
+  );
 
   // Always dump leader pane full content and server stderr for diagnosis
   const leaderContent = await capturePane(leaderPaneA);
-  console.log(`  Leader-A pane (full capture ${leaderPaneA}):\n${leaderContent.split('\n').filter(l => l.trim()).slice(-20).join('\n') || '  (empty)'}`);
+  console.log(
+    `  Leader-A pane (full capture ${leaderPaneA}):\n${
+      leaderContent
+        .split('\n')
+        .filter((l) => l.trim())
+        .slice(-20)
+        .join('\n') || '  (empty)'
+    }`,
+  );
 
   // Read server log to see sweep logs
   const logPath = join(stateDir, 'server.log');
   if (existsSync(logPath)) {
     const serverLog = await Bun.file(logPath).text();
-    const sweepLines = serverLog.split('\n').filter(l => l.includes('SWEEP') || l.includes('flush') || l.includes('defer') || l.includes('WARN') || l.includes('START'));
-    console.log(`  Server sweep logs (last 20):\n${sweepLines.slice(-20).join('\n') || '  (none)'}`);
+    const sweepLines = serverLog
+      .split('\n')
+      .filter(
+        (l) =>
+          l.includes('SWEEP') ||
+          l.includes('flush') ||
+          l.includes('defer') ||
+          l.includes('WARN') ||
+          l.includes('START'),
+      );
+    console.log(
+      `  Server sweep logs (last 20):\n${sweepLines.slice(-20).join('\n') || '  (none)'}`,
+    );
   }
 
-
   // ─── Scenario B: block=persist, leader must NOT receive anything ──────────
-  console.log('\n─── Scenario B: block=persist → leader must NOT receive notification ───\n');
+  console.log(
+    '\n─── Scenario B: block=persist → leader must NOT receive notification ───\n',
+  );
 
   await crew(['block', '--name', 'leader-b', '-p']);
-  const blockStatusB = await crew(['input-block', '--name', 'leader-b', 'status']).catch(() => '');
-  assert(blockStatusB.includes('persist'), `leader-b block=persist: ${blockStatusB}`);
+  const blockStatusB = await crew([
+    'input-block',
+    '--name',
+    'leader-b',
+    'status',
+  ]).catch(() => '');
+  assert(
+    blockStatusB.includes('persist'),
+    `leader-b block=persist: ${blockStatusB}`,
+  );
 
   const preIdB = getMaxEventId();
-  const sendResultB = await sendKeys(workerPaneB, 'Read task.txt and follow its instructions exactly.');
+  const sendResultB = await sendKeys(
+    workerPaneB,
+    'Read task.txt and follow its instructions exactly.',
+  );
   assert(sendResultB.delivered, 'sendKeys delivered prompt to worker-B');
 
   // Wait for Stop hook from worker-b
@@ -349,23 +539,37 @@ async function main() {
   const stopEventB = await waitForDbEvent('Stop', preIdB, 120_000);
   assert(stopEventB !== null, 'Stop hook fired for worker-b');
   if (stopEventB) {
-    assert(stopEventB.agent_name === 'worker-b', `Stop event agent = worker-b (got: ${stopEventB.agent_name})`);
+    assert(
+      stopEventB.agent_name === 'worker-b',
+      `Stop event agent = worker-b (got: ${stopEventB.agent_name})`,
+    );
   }
 
   // Capture baseline leader-B content right after Stop
   const leaderBBefore = await capturePane(leaderPaneB);
 
   // Wait 10s — nothing should appear in leader-B pane
-  console.log('  Waiting 10s to confirm NO notification delivered to leader-B...');
+  console.log(
+    '  Waiting 10s to confirm NO notification delivered to leader-B...',
+  );
   await Bun.sleep(10_000);
   const leaderBAfter = await capturePane(leaderPaneB);
 
   // Check that no crew notification appeared (new content referencing worker-b/DONE-B)
   const newContent = leaderBAfter.replace(leaderBBefore, '').trim();
-  const leaked = newContent.includes('worker-b') || newContent.includes('DONE-B') || newContent.includes('completed');
-  assert(!leaked, 'Leader-B pane did NOT receive notification when block=persist');
+  const leaked =
+    newContent.includes('worker-b') ||
+    newContent.includes('DONE-B') ||
+    newContent.includes('completed');
+  assert(
+    !leaked,
+    'Leader-B pane did NOT receive notification when block=persist',
+  );
   if (leaked) {
-    console.log('  Leaked content:\n', newContent.split('\n').slice(-8).join('\n'));
+    console.log(
+      '  Leaked content:\n',
+      newContent.split('\n').slice(-8).join('\n'),
+    );
   }
 
   // ─── Results ───────────────────────────────────────────────────────────────

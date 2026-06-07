@@ -791,6 +791,102 @@ describe('MCP tools', () => {
         true,
       );
     });
+
+    test('concurrent crew CLI send messages to DB without locking', async () => {
+      closeDb();
+      const testDir = process.cwd();
+      const testDbPath = `${testDir}/crew.db`;
+      const fs = await import('node:fs');
+
+      // Clean up previous files if any
+      try {
+        fs.unlinkSync(testDbPath);
+      } catch {}
+      try {
+        fs.unlinkSync(`${testDbPath}-wal`);
+      } catch {}
+      try {
+        fs.unlinkSync(`${testDbPath}-shm`);
+      } catch {}
+
+      process.env.CREW_STATE_DIR = testDir;
+      initDb();
+
+      await handleJoinRoom({
+        room: 'parallel-cli-test',
+        role: 'leader',
+        name: 'lead-1',
+        tmux_target: testPaneA,
+      });
+      await handleJoinRoom({
+        room: 'parallel-cli-test',
+        role: 'worker',
+        name: 'builder-1',
+        tmux_target: testPaneB,
+      });
+
+      // Spawn 10 concurrent CLI send commands
+      const promises = Array.from({ length: 10 }).map(async (_, i) => {
+        const proc = Bun.spawn(
+          [
+            'bun',
+            'src/cli.ts',
+            'send',
+            '--room',
+            'parallel-cli-test',
+            '--text',
+            `msg-${i}`,
+            '--to',
+            'builder-1',
+            '--name',
+            'lead-1',
+          ],
+          {
+            env: {
+              ...process.env,
+              CREW_STATE_DIR: testDir,
+              TMUX_PANE: testPaneA,
+            },
+            stdout: 'pipe',
+            stderr: 'pipe',
+          },
+        );
+        const exitCode = await proc.exited;
+        const errOutput = await new Response(proc.stderr).text();
+        const outOutput = await new Response(proc.stdout).text();
+        return { exitCode, errOutput, outOutput };
+      });
+
+      const results = await Promise.all(promises);
+
+      // Verify all succeeded
+      for (const r of results) {
+        expect(r.exitCode).toBe(0);
+        expect(r.errOutput).toBe('');
+      }
+
+      // Read messages and expect all 10 to be stored
+      const readResult = await handleReadMessages({
+        name: 'builder-1',
+        room: 'parallel-cli-test',
+      });
+      const readData = JSON.parse(readResult.content[0]!.text);
+      expect(readData.messages.length).toBe(10);
+
+      // Clean up
+      closeDb();
+      try {
+        fs.unlinkSync(testDbPath);
+      } catch {}
+      try {
+        fs.unlinkSync(`${testDbPath}-wal`);
+      } catch {}
+      try {
+        fs.unlinkSync(`${testDbPath}-shm`);
+      } catch {}
+      delete process.env.CREW_STATE_DIR;
+      initDb(':memory:');
+    });
   });
 
   describe('set_room_topic', () => {
@@ -891,7 +987,9 @@ describe('MCP tools', () => {
         tmux_target: testPaneA,
       });
       const { getDb } = await import('../src/state/db.ts');
-      getDb().run("UPDATE agents SET agent_type = 'claude-code' WHERE name = 'w1'");
+      getDb().run(
+        "UPDATE agents SET agent_type = 'claude-code' WHERE name = 'w1'",
+      );
       const result = await handleRefresh({
         name: 'w1',
         tmux_target: testPaneB,
@@ -1269,9 +1367,7 @@ describe('MCP tools', () => {
 
       const result = await handleManage({ stdin, stdout });
       expect(result.isError).toBeUndefined();
-      expect(stdout.output.join('')).toContain(
-        'No active rooms found',
-      );
+      expect(stdout.output.join('')).toContain('No active rooms found');
     });
 
     test('exits early if no rooms are found', async () => {
@@ -1371,7 +1467,10 @@ describe('MCP tools', () => {
     });
 
     test('manages room in operator mode (no name)', async () => {
-      const room = getOrCreateRoom('/test/manage-room-operator', 'manage-room-operator');
+      const room = getOrCreateRoom(
+        '/test/manage-room-operator',
+        'manage-room-operator',
+      );
       const { handleManage } = await import('../src/tools/manage.ts');
       const { Readable, Writable } = await import('node:stream');
 
@@ -1511,7 +1610,10 @@ describe('MCP tools', () => {
     });
 
     test('bulk removes workers and leaders from room', async () => {
-      const room = getOrCreateRoom('/test/manage-room-bulk-remove', 'manage-room-bulk-remove');
+      const room = getOrCreateRoom(
+        '/test/manage-room-bulk-remove',
+        'manage-room-bulk-remove',
+      );
       const { handleManage } = await import('../src/tools/manage.ts');
       const { Readable, Writable } = await import('node:stream');
 
@@ -1604,9 +1706,9 @@ describe('MCP tools', () => {
 
       expect(stdout.output.join('')).toContain('Successfully removed lead-b');
       expect(stdout.output.join('')).toContain('Successfully removed work-b');
-      
+
       const { getRoomMembers } = await import('../src/state/index.ts');
-      const finalMembers = getRoomMembers(room.id).map(m => m.name);
+      const finalMembers = getRoomMembers(room.id).map((m) => m.name);
       expect(finalMembers).toContain('lead-a');
       expect(finalMembers).toContain('work-a');
       expect(finalMembers).not.toContain('lead-b');

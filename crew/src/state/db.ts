@@ -180,6 +180,8 @@ export function initDb(path?: string): void {
   }
 
   _db = new Database(dbPath, { create: true });
+  _db.exec('PRAGMA journal_mode=WAL;');
+  _db.exec('PRAGMA busy_timeout=5000;');
 
   const hasRoomsTable = Boolean(
     _db

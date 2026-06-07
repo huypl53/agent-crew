@@ -47,12 +47,20 @@ describe('pid-mapper', () => {
   });
 
   test('resolveSessionPath builds correct JSONL path', () => {
-    const path = resolveSessionPath(
-      'abc-123',
-      '/Users/lee/code/utils/agent-crew',
-    );
+    const path = resolveSessionPath('abc-123', '/workspace/agent-crew');
     expect(path).toContain('.claude/projects/');
     expect(path).toContain('abc-123');
+    expect(path).toEndWith('.jsonl');
+  });
+
+  test('resolveSessionPath handles paths with dots and other non-alphanumeric characters', () => {
+    const path = resolveSessionPath(
+      'abc-123',
+      '/workspace/projects/ai-agent-ai/.worktrees/better-logging',
+    );
+    expect(path).toContain(
+      '-workspace-projects-ai-agent-ai--worktrees-better-logging',
+    );
     expect(path).toEndWith('.jsonl');
   });
 
@@ -251,30 +259,34 @@ describe('codex token collection', () => {
 
 describe('agent type detection', () => {
   test('inferAgentTypeFromProcesses prefers descendant Claude over wrapper commands', async () => {
-    const { inferAgentTypeFromProcesses } = await import('../src/tools/join-room.ts');
+    const { inferAgentTypeFromProcesses } = await import(
+      '../src/tools/join-room.ts'
+    );
     const result = inferAgentTypeFromProcesses([
       {
         comm: 'node',
-        args: '/home/vtit/.nvm/versions/node/v24.15.0/bin/ccs codex',
+        args: 'ccs codex',
       },
       {
         comm: 'claude',
-        args: '/home/vtit/.local/bin/claude --settings /home/vtit/.ccs/glm.settings.json',
+        args: 'claude --settings settings.json',
       },
     ]);
     expect(result).toBe('claude-code');
   });
 
   test('inferAgentTypeFromProcesses detects codex when no Claude process exists', async () => {
-    const { inferAgentTypeFromProcesses } = await import('../src/tools/join-room.ts');
+    const { inferAgentTypeFromProcesses } = await import(
+      '../src/tools/join-room.ts'
+    );
     const result = inferAgentTypeFromProcesses([
       {
         comm: 'node',
-        args: '/home/vtit/.nvm/versions/node/v24.15.0/bin/codex',
+        args: 'codex',
       },
       {
         comm: 'codex',
-        args: '/home/vtit/.nvm/versions/node/v24.15.0/lib/node_modules/@openai/codex/bin/codex',
+        args: 'codex --settings settings.json',
       },
     ]);
     expect(result).toBe('codex');

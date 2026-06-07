@@ -42,23 +42,41 @@ export async function getClaudePidFromPane(
     const shellPid = Number.parseInt(shellPidStr, 10);
     if (Number.isNaN(shellPid)) return null;
 
-    const pgrepProc = Bun.spawn(['pgrep', '-P', String(shellPid)], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    const childPidsStr = (await new Response(pgrepProc.stdout).text()).trim();
-    await pgrepProc.exited;
-    if (!childPidsStr) return null;
+    // BFS to find all descendant PIDs
+    const pending = [shellPid];
+    const descendants: number[] = [];
+    const seen = new Set<number>();
 
-    const childPids = childPidsStr
-      .split('\n')
-      .map((s) => Number.parseInt(s.trim(), 10))
-      .filter((n) => !Number.isNaN(n));
-    for (const pid of childPids) {
+    while (pending.length > 0) {
+      const parentPid = pending.shift();
+      if (parentPid == null || seen.has(parentPid)) continue;
+      seen.add(parentPid);
+
+      const pgrepProc = Bun.spawn(['pgrep', '-P', String(parentPid)], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const childPidOutput = (await new Response(pgrepProc.stdout).text())
+        .trim()
+        .split('\n');
+      await pgrepProc.exited;
+
+      for (const cpid of childPidOutput) {
+        if (!cpid.trim()) continue;
+        const childPid = Number.parseInt(cpid.trim(), 10);
+        if (Number.isNaN(childPid) || seen.has(childPid)) continue;
+        pending.push(childPid);
+        descendants.push(childPid);
+      }
+    }
+
+    if (descendants.length === 0) return null;
+
+    for (const pid of descendants) {
       const sessionFile = join(CLAUDE_SESSIONS_DIR, `${pid}.json`);
       if (existsSync(sessionFile)) return pid;
     }
-    return childPids[0] ?? null;
+    return descendants[0] ?? null;
   } catch {
     return null;
   }
@@ -75,7 +93,7 @@ export function getSessionForPid(pid: number): ClaudeSession | null {
 }
 
 export function resolveSessionPath(sessionId: string, cwd: string): string {
-  const projectHash = cwd.replace(/\//g, '-');
+  const projectHash = cwd.replace(/[^a-zA-Z0-9]/g, '-');
   return join(HOME, '.claude', 'projects', projectHash, `${sessionId}.jsonl`);
 }
 
