@@ -11,11 +11,111 @@ interface ReadStream extends Readable {
   setRawMode?: (mode: boolean) => this;
 }
 
+interface WriteStream extends Writable {
+  isTTY?: boolean;
+}
+
 interface PromptOptions<T> {
   title: string;
   items: Choice<T>[];
   stdin?: Readable;
   stdout?: Writable;
+}
+
+// DRY Shared Prompt Runner
+function runPrompt<T, R>({
+  items,
+  stdin,
+  stdout,
+  render,
+  onKeypress,
+}: {
+  items: Choice<T>[];
+  stdin: Readable;
+  stdout: Writable;
+  render: () => string;
+  onKeypress: (
+    key: { name: string; ctrl?: boolean },
+    clear: () => void,
+    render: () => void,
+    cleanup: () => void,
+    resolve: (val: R | null) => void,
+  ) => void;
+}): Promise<R | null> {
+  const streamIn = stdin as ReadStream;
+  const streamOut = stdout as WriteStream;
+  const isTTYIn = !!streamIn.isTTY;
+  const isTTYOut = !!streamOut.isTTY;
+
+  return new Promise<R | null>((resolve) => {
+    if (isTTYIn && typeof streamIn.setRawMode === 'function') {
+      streamIn.setRawMode(true);
+    }
+    readline.emitKeypressEvents(stdin);
+
+    if (isTTYOut) {
+      stdout.write('\u001b[?25l'); // Hide cursor
+    }
+
+    const renderPrompt = () => {
+      stdout.write(render());
+    };
+
+    const clearPrompt = () => {
+      const lineCount = items.length + 1;
+      stdout.write(`\u001b[${lineCount}A\u001b[J`);
+    };
+
+    const cleanupPrompt = () => {
+      stdin.removeListener('keypress', handleKeypress);
+      if (isTTYIn && typeof streamIn.setRawMode === 'function') {
+        streamIn.setRawMode(false);
+      }
+      stdin.pause();
+      if (isTTYOut) {
+        stdout.write('\u001b[?25h'); // Show cursor
+      }
+    };
+
+    // Safety Exit Guard
+    const handleUnexpectedExit = () => {
+      cleanupPrompt();
+    };
+
+    const handleUncaught = (err: Error) => {
+      cleanupPrompt();
+      throw err;
+    };
+
+    process.once('exit', handleUnexpectedExit);
+    process.once('SIGINT', handleUnexpectedExit);
+    process.once('uncaughtException', handleUncaught);
+
+    const resolveWith = (val: R | null) => {
+      process.off('exit', handleUnexpectedExit);
+      process.off('SIGINT', handleUnexpectedExit);
+      process.off('uncaughtException', handleUncaught);
+      resolve(val);
+    };
+
+    const handleKeypress = (
+      _str: unknown,
+      key: { name: string; ctrl?: boolean },
+    ) => {
+      if (!key) return;
+      if (key.ctrl && key.name === 'c') {
+        clearPrompt();
+        cleanupPrompt();
+        resolveWith(null);
+        return;
+      }
+      onKeypress(key, clearPrompt, renderPrompt, cleanupPrompt, resolveWith);
+    };
+
+    stdin.on('keypress', handleKeypress);
+    stdin.resume();
+    renderPrompt();
+  });
 }
 
 export function selectOne<T>(options: PromptOptions<T>): Promise<T | null> {
@@ -30,20 +130,13 @@ export function selectOne<T>(options: PromptOptions<T>): Promise<T | null> {
     return Promise.resolve(null);
   }
 
-  return new Promise((resolve) => {
-    let cursor = 0;
-    const stream = stdin as ReadStream;
-    const isTTY = !!stream.isTTY;
+  let cursor = 0;
 
-    if (isTTY && typeof stream.setRawMode === 'function') {
-      stream.setRawMode(true);
-    }
-    readline.emitKeypressEvents(stdin);
-
-    // Hide cursor
-    stdout.write('\u001b[?25l');
-
-    const render = () => {
+  return runPrompt<T, T>({
+    items,
+    stdin,
+    stdout,
+    render: () => {
       let lines = `\x1b[36m?\x1b[0m \x1b[1m${title}\x1b[22m\n`;
       for (let i = 0; i < items.length; i++) {
         const prefix = i === cursor ? '\x1b[36m❯\x1b[0m ' : '  ';
@@ -51,35 +144,9 @@ export function selectOne<T>(options: PromptOptions<T>): Promise<T | null> {
           i === cursor ? `\x1b[36m${items[i].label}\x1b[0m` : items[i].label;
         lines += `${prefix}${label}\n`;
       }
-      stdout.write(lines);
-    };
-
-    const clear = () => {
-      const lineCount = items.length + 1;
-      stdout.write(`\u001b[${lineCount}A\u001b[J`);
-    };
-
-    const cleanup = () => {
-      stdin.removeListener('keypress', handleKeypress);
-      if (isTTY && typeof stream.setRawMode === 'function') {
-        stream.setRawMode(false);
-      }
-      stdin.pause();
-      // Show cursor
-      stdout.write('\u001b[?25h');
-    };
-
-    const handleKeypress = (
-      _str: unknown,
-      key: { name: string; ctrl?: boolean },
-    ) => {
-      if (!key) return;
-      if (key.ctrl && key.name === 'c') {
-        clear();
-        cleanup();
-        resolve(null);
-        return;
-      }
+      return lines;
+    },
+    onKeypress: (key, clear, render, cleanup, resolve) => {
       if (key.name === 'up' || key.name === 'k') {
         clear();
         cursor = (cursor - 1 + items.length) % items.length;
@@ -97,11 +164,7 @@ export function selectOne<T>(options: PromptOptions<T>): Promise<T | null> {
         cleanup();
         resolve(null);
       }
-    };
-
-    stdin.on('keypress', handleKeypress);
-    stdin.resume();
-    render();
+    },
   });
 }
 
@@ -119,21 +182,14 @@ export function selectMultiple<T>(
     return Promise.resolve(null);
   }
 
-  return new Promise((resolve) => {
-    let cursor = 0;
-    const selected = new Set<number>();
-    const stream = stdin as ReadStream;
-    const isTTY = !!stream.isTTY;
+  let cursor = 0;
+  const selected = new Set<number>();
 
-    if (isTTY && typeof stream.setRawMode === 'function') {
-      stream.setRawMode(true);
-    }
-    readline.emitKeypressEvents(stdin);
-
-    // Hide cursor
-    stdout.write('\u001b[?25l');
-
-    const render = () => {
+  return runPrompt<T, T[]>({
+    items,
+    stdin,
+    stdout,
+    render: () => {
       let lines = `\x1b[36m?\x1b[0m \x1b[1m${title}\x1b[22m\n`;
       for (let i = 0; i < items.length; i++) {
         const checkbox = selected.has(i) ? '\x1b[32m[x]\x1b[0m' : '[ ]';
@@ -143,35 +199,9 @@ export function selectMultiple<T>(
           i === cursor ? `\x1b[36m${items[i].label}\x1b[0m` : items[i].label;
         lines += `${prefix} ${label}\n`;
       }
-      stdout.write(lines);
-    };
-
-    const clear = () => {
-      const lineCount = items.length + 1;
-      stdout.write(`\u001b[${lineCount}A\u001b[J`);
-    };
-
-    const cleanup = () => {
-      stdin.removeListener('keypress', handleKeypress);
-      if (isTTY && typeof stream.setRawMode === 'function') {
-        stream.setRawMode(false);
-      }
-      stdin.pause();
-      // Show cursor
-      stdout.write('\u001b[?25h');
-    };
-
-    const handleKeypress = (
-      _str: unknown,
-      key: { name: string; ctrl?: boolean },
-    ) => {
-      if (!key) return;
-      if (key.ctrl && key.name === 'c') {
-        clear();
-        cleanup();
-        resolve(null);
-        return;
-      }
+      return lines;
+    },
+    onKeypress: (key, clear, render, cleanup, resolve) => {
       if (key.name === 'up' || key.name === 'k') {
         clear();
         cursor = (cursor - 1 + items.length) % items.length;
@@ -198,10 +228,6 @@ export function selectMultiple<T>(
         cleanup();
         resolve(null);
       }
-    };
-
-    stdin.on('keypress', handleKeypress);
-    stdin.resume();
-    render();
+    },
   });
 }
