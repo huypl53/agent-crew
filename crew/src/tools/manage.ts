@@ -144,6 +144,7 @@ async function manageRoomMenu(
   while (true) {
     let isLeader = true;
     let effectiveCallerName = '';
+    const isOperator = !callerName;
 
     if (callerName) {
       const callerInRoom = getAgentByRoomAndName(room.id, callerName);
@@ -231,9 +232,9 @@ async function manageRoomMenu(
         }
       }
     } else if (action === 'members') {
-      await manageMembersMenu(room, effectiveCallerName, stdin, stdout);
+      await manageMembersMenu(room, effectiveCallerName, stdin, stdout, isOperator);
     } else if (action === 'bulk-members') {
-      await manageBulkMembersMenu(room, effectiveCallerName, stdin, stdout);
+      await manageBulkMembersMenu(room, effectiveCallerName, stdin, stdout, isOperator);
     }
   }
 }
@@ -243,10 +244,11 @@ async function manageMembersMenu(
   callerName: string,
   stdin: Readable,
   stdout: Writable,
+  isOperator: boolean,
 ): Promise<void> {
   while (true) {
     const members = getRoomMembers(room.id).filter(
-      (m) => m.name !== callerName,
+      (m) => isOperator ? true : m.name !== callerName,
     );
     if (members.length === 0) {
       stdout.write('No other members in this room.\n');
@@ -364,10 +366,11 @@ async function manageBulkMembersMenu(
   callerName: string,
   stdin: Readable,
   stdout: Writable,
+  isOperator: boolean,
 ): Promise<void> {
   while (true) {
     const members = getRoomMembers(room.id).filter(
-      (m) => m.name !== callerName,
+      (m) => isOperator ? true : m.name !== callerName,
     );
     if (members.length === 0) {
       stdout.write('No other members in this room.\n');
