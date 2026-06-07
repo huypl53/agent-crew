@@ -34,6 +34,7 @@ Commands:
               Replace current assignment
   create-room --room <name> [--name <self>] [--topic <t>]  Create a new room
   delete-room [<name|id|path>] --confirm [--name <self>]   Delete room (removes members + messages)
+  manage      [--name <self>]                              Interactive room/member management console
 
   input-block [on|off|status] [--name <agent>] [--persist] Manage input-block mode (alias: ib)
 
@@ -183,4 +184,5 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     if (d.hint?.message) return d.hint.message;
     return '';
   },
+  manage: () => 'Management console exited',
 };

@@ -17,6 +17,7 @@ import { handleJoinRoom } from '../tools/join-room.ts';
 import { handleLeaveRoom } from '../tools/leave-room.ts';
 import { handleListMembers } from '../tools/list-members.ts';
 import { handleListRooms } from '../tools/list-rooms.ts';
+import { handleManage } from '../tools/manage.ts';
 import { handleMuteIdle } from '../tools/mute-idle.ts';
 import { handleParty } from '../tools/party.ts';
 import {
@@ -122,6 +123,10 @@ export const COMMANDS: Record<
       text: f.text,
       name: f.name,
     }),
+  },
+  manage: {
+    handler: handleManage,
+    buildParams: (f) => ({ name: f.name }),
   },
   check: {
     handler: handleCheckChanges,

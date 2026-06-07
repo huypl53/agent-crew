@@ -1235,4 +1235,178 @@ describe('MCP tools', () => {
     });
   });
 
+  describe('manage', () => {
+    test('returns error if caller name is missing', async () => {
+      const { handleManage } = await import('../src/tools/manage.ts');
+      const result = await handleManage({ name: '' });
+      expect(result.isError).toBe(true);
+    });
+
+    test('exits early if no rooms are found', async () => {
+      const { handleManage } = await import('../src/tools/manage.ts');
+      const { Readable, Writable } = await import('node:stream');
+
+      class MockStdin extends Readable {
+        _read() {}
+      }
+      class MockStdout extends Writable {
+        output: string[] = [];
+        _write(chunk: any, encoding: any, callback: any) {
+          this.output.push(chunk.toString());
+          callback();
+        }
+      }
+
+      const stdin = new MockStdin();
+      const stdout = new MockStdout();
+
+      const result = await handleManage({ name: 'leader-1', stdin, stdout });
+      expect(result.isError).toBeUndefined();
+      expect(stdout.output.join('')).toContain('No active rooms found');
+    });
+
+    test('manages a room and sets topic', async () => {
+      const room = getOrCreateRoom('/test/manage-room', 'manage-room');
+      const { handleManage } = await import('../src/tools/manage.ts');
+      const { Readable, Writable } = await import('node:stream');
+
+      class MockStdin extends Readable {
+        isTTY = true;
+        rawModeEnabled = false;
+        _read() {}
+        setRawMode(mode: boolean) {
+          this.rawModeEnabled = mode;
+          return this;
+        }
+        sendKey(key: { name: string; ctrl?: boolean }) {
+          this.emit('keypress', null, key);
+        }
+      }
+
+      class MockStdout extends Writable {
+        isTTY = true;
+        output: string[] = [];
+        _write(chunk: any, encoding: any, callback: any) {
+          this.output.push(chunk.toString());
+          callback();
+        }
+      }
+
+      const stdin = new MockStdin();
+      const stdout = new MockStdout();
+
+      const { addAgent } = await import('../src/state/index.ts');
+      addAgent('leader-1', 'leader', room.id, testPaneA);
+
+      const promise = handleManage({ name: 'leader-1', stdin, stdout });
+
+      // Room selection menu
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'return' });
+
+      // Room actions menu
+      // 0: Manage members (Single)
+      // 1: Manage members (Bulk)
+      // 2: Set room topic
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'down' });
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'down' });
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'return' });
+
+      // Prompt for topic
+      await Bun.sleep(100);
+      stdin.push('New cool topic\n');
+
+      // Escape back to room selection
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'escape' });
+
+      // Escape back to exit
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'escape' });
+
+      await promise;
+
+      expect(stdout.output.join('')).toContain('Successfully updated topic');
+      const updatedRoom = getRoom('manage-room');
+      expect(updatedRoom?.topic).toBe('New cool topic');
+    });
+
+    test('manages a member and interrupts worker', async () => {
+      const room = getOrCreateRoom('/test/manage-room-2', 'manage-room-2');
+      const { handleManage } = await import('../src/tools/manage.ts');
+      const { Readable, Writable } = await import('node:stream');
+
+      class MockStdin extends Readable {
+        isTTY = true;
+        rawModeEnabled = false;
+        _read() {}
+        setRawMode(mode: boolean) {
+          this.rawModeEnabled = mode;
+          return this;
+        }
+        sendKey(key: { name: string; ctrl?: boolean }) {
+          this.emit('keypress', null, key);
+        }
+      }
+
+      class MockStdout extends Writable {
+        isTTY = true;
+        output: string[] = [];
+        _write(chunk: any, encoding: any, callback: any) {
+          this.output.push(chunk.toString());
+          callback();
+        }
+      }
+
+      const stdin = new MockStdin();
+      const stdout = new MockStdout();
+
+      const { addAgent } = await import('../src/state/index.ts');
+      addAgent('leader-2', 'leader', room.id, testPaneA);
+      addAgent('worker-2', 'worker', room.id, testPaneB);
+
+      const promise = handleManage({ name: 'leader-2', stdin, stdout });
+
+      // Select room
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'return' });
+
+      // Select "Manage members (Single)" (index 0)
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'return' });
+
+      // Select worker-2 (index 1: leader-2 is index 0)
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'down' });
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'return' });
+
+      // Select "Interrupt Worker" (index 0)
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'return' });
+
+      // Wait for handleInterruptWorker to complete and the next menu to render
+      await Bun.sleep(2000);
+
+      // Escape from member actions
+      stdin.sendKey({ name: 'escape' });
+      await Bun.sleep(100);
+      // Escape from member selection
+      stdin.sendKey({ name: 'escape' });
+      await Bun.sleep(100);
+      // Escape from room menu
+      stdin.sendKey({ name: 'escape' });
+      await Bun.sleep(100);
+      // Escape from room list
+      stdin.sendKey({ name: 'escape' });
+
+      await promise;
+
+      expect(stdout.output.join('')).toContain('Successfully interrupted worker worker-2');
+    });
+  });
+
 });
