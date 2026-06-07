@@ -1245,10 +1245,31 @@ describe('MCP tools', () => {
   });
 
   describe('manage', () => {
-    test('returns error if caller name is missing', async () => {
+    test('allows caller name to be missing (operator mode)', async () => {
       const { handleManage } = await import('../src/tools/manage.ts');
-      const result = await handleManage({ name: '' });
-      expect(result.isError).toBe(true);
+      const { Readable, Writable } = await import('node:stream');
+
+      class MockStdin extends Readable {
+        isTTY = true;
+        _read() {}
+      }
+      class MockStdout extends Writable {
+        isTTY = true;
+        output: string[] = [];
+        _write(chunk: any, encoding: any, callback: any) {
+          this.output.push(chunk.toString());
+          callback();
+        }
+      }
+
+      const stdin = new MockStdin();
+      const stdout = new MockStdout();
+
+      const result = await handleManage({ stdin, stdout });
+      expect(result.isError).toBeUndefined();
+      expect(stdout.output.join('')).toContain(
+        'No active rooms found',
+      );
     });
 
     test('exits early if no rooms are found', async () => {
@@ -1274,7 +1295,7 @@ describe('MCP tools', () => {
       const result = await handleManage({ name: 'leader-1', stdin, stdout });
       expect(result.isError).toBeUndefined();
       expect(stdout.output.join('')).toContain(
-        'You are not a member of any active rooms',
+        'is not a member of any active rooms',
       );
     });
 
@@ -1345,6 +1366,72 @@ describe('MCP tools', () => {
       expect(stdout.output.join('')).toContain('Successfully updated topic');
       const updatedRoom = getRoom('manage-room');
       expect(updatedRoom?.topic).toBe('New cool topic');
+    });
+
+    test('manages room in operator mode (no name)', async () => {
+      const room = getOrCreateRoom('/test/manage-room-operator', 'manage-room-operator');
+      const { handleManage } = await import('../src/tools/manage.ts');
+      const { Readable, Writable } = await import('node:stream');
+
+      class MockStdin extends Readable {
+        isTTY = true;
+        rawModeEnabled = false;
+        _read() {}
+        setRawMode(mode: boolean) {
+          this.rawModeEnabled = mode;
+          return this;
+        }
+        sendKey(key: { name: string; ctrl?: boolean }) {
+          this.emit('keypress', null, key);
+        }
+      }
+
+      class MockStdout extends Writable {
+        isTTY = true;
+        output: string[] = [];
+        _write(chunk: any, encoding: any, callback: any) {
+          this.output.push(chunk.toString());
+          callback();
+        }
+      }
+
+      const stdin = new MockStdin();
+      const stdout = new MockStdout();
+
+      const promise = handleManage({ stdin, stdout });
+
+      // Room selection menu
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'return' });
+
+      // Room actions menu
+      // 0: Manage members (Single)
+      // 1: Manage members (Bulk)
+      // 2: Set room topic
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'down' });
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'down' });
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'return' });
+
+      // Prompt for topic
+      await Bun.sleep(100);
+      stdin.push('Operator topic\n');
+
+      // Escape back to room selection
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'escape' });
+
+      // Escape back to exit
+      await Bun.sleep(100);
+      stdin.sendKey({ name: 'escape' });
+
+      await promise;
+
+      expect(stdout.output.join('')).toContain('Successfully updated topic');
+      const updatedRoom = getRoom('manage-room-operator');
+      expect(updatedRoom?.topic).toBe('Operator topic');
     });
 
     test('manages a member and interrupts worker', async () => {

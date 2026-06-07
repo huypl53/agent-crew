@@ -4,7 +4,7 @@ import { selectMultiple, selectOne } from '../cli/interactive.ts';
 import type { Agent, Room, ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
 import { getDb } from '../state/db.ts';
-import { getAgentByRoomAndName, getRoomMembers } from '../state/index.ts';
+import { getAgent, getAgentByRoomAndName, getRoomMembers } from '../state/index.ts';
 import { handleClearWorkerSession } from './clear-worker-session.ts';
 import { handleDeleteRoom } from './delete-room.ts';
 import { handleInterruptWorker } from './interrupt-worker.ts';
@@ -39,11 +39,38 @@ interface ManageParams {
   stdout?: Writable;
 }
 
+function getOrRegisterLeader(roomId: number): string {
+  const db = getDb();
+
+  // Look for any registered leader in this room
+  const roomMembers = getRoomMembers(roomId);
+  const existingLeader = roomMembers.find((m) => m.role === 'leader');
+  if (existingLeader) {
+    return existingLeader.name;
+  }
+
+  // If no leader exists in the room, we can create a virtual/temporary leader agent named `operator`.
+  const operatorName = 'operator';
+  const existingOperator = roomMembers.find((m) => m.name === operatorName);
+  if (existingOperator) {
+    if (existingOperator.role !== 'leader') {
+      db.run('UPDATE agents SET role = ? WHERE id = ?', ['leader', existingOperator.agent_id]);
+    }
+    return operatorName;
+  }
+
+  // Register 'operator' as a leader agent in this room
+  const ts = new Date().toISOString();
+  db.run(
+    `INSERT INTO agents (room_id, name, role, agent_type, registered_at, status)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [roomId, operatorName, 'leader', 'unknown', ts, 'idle']
+  );
+  return operatorName;
+}
+
 export async function handleManage(params: ManageParams): Promise<ToolResult> {
   const { name } = params;
-  if (!name) {
-    return err('Missing required param: name');
-  }
 
   const stdin = params.stdin ?? process.stdin;
   const stdout = params.stdout ?? process.stdout;
@@ -56,18 +83,33 @@ export async function handleManage(params: ManageParams): Promise<ToolResult> {
 
   while (true) {
     const db = getDb();
-    const rooms = db
-      .query(`
-      SELECT DISTINCT r.* FROM rooms r
-      JOIN agents a ON a.room_id = r.id
-      WHERE a.name = ?
-    `)
-      .all(name) as Room[];
+    let rooms: Room[];
+    if (name) {
+      rooms = db
+        .query(`
+        SELECT DISTINCT r.* FROM rooms r
+        JOIN agents a ON a.room_id = r.id
+        WHERE a.name = ?
+      `)
+        .all(name) as Room[];
+    } else {
+      rooms = db
+        .query(`
+        SELECT * FROM rooms
+      `)
+        .all() as Room[];
+    }
 
     if (rooms.length === 0) {
-      stdout.write(
-        'You are not a member of any active rooms. Join a room first.\n',
-      );
+      if (name) {
+        stdout.write(
+          `Agent "${name}" is not a member of any active rooms. Join a room first.\n`,
+        );
+      } else {
+        stdout.write(
+          'No active rooms found. Create/join a room first.\n',
+        );
+      }
       break;
     }
 
@@ -95,13 +137,22 @@ export async function handleManage(params: ManageParams): Promise<ToolResult> {
 
 async function manageRoomMenu(
   room: Room,
-  callerName: string,
+  callerName: string | undefined,
   stdin: Readable,
   stdout: Writable,
 ): Promise<void> {
   while (true) {
-    const callerInRoom = getAgentByRoomAndName(room.id, callerName);
-    const isLeader = callerInRoom?.role === 'leader';
+    let isLeader = true;
+    let effectiveCallerName = '';
+
+    if (callerName) {
+      const callerInRoom = getAgentByRoomAndName(room.id, callerName);
+      isLeader = callerInRoom?.role === 'leader';
+      effectiveCallerName = callerName;
+    } else {
+      effectiveCallerName = getOrRegisterLeader(room.id);
+      isLeader = true;
+    }
 
     const actions = [
       ...(isLeader
@@ -111,7 +162,7 @@ async function manageRoomMenu(
             { value: 'topic', label: 'Set room topic' },
           ]
         : []),
-      { value: 'leave', label: 'Leave room' },
+      ...(callerName ? [{ value: 'leave', label: 'Leave room' }] : []),
       ...(isLeader ? [{ value: 'delete', label: 'Delete room' }] : []),
       { value: 'back', label: 'Back' },
     ];
@@ -127,7 +178,7 @@ async function manageRoomMenu(
       break;
     }
 
-    if (action === 'leave') {
+    if (action === 'leave' && callerName) {
       const result = await handleLeaveRoom({
         room: room.name,
         name: callerName,
@@ -154,7 +205,7 @@ async function manageRoomMenu(
         const result = await handleDeleteRoom({
           room: room.name,
           confirm: true,
-          name: callerName,
+          name: effectiveCallerName,
         });
         if (result.isError) {
           const errMsg = result.content[0]?.text || 'Error deleting room';
@@ -170,7 +221,7 @@ async function manageRoomMenu(
         const result = await handleSetRoomTopic({
           room: room.name,
           text: newTopic,
-          name: callerName,
+          name: effectiveCallerName,
         });
         if (result.isError) {
           const errMsg = result.content[0]?.text || 'Error setting topic';
@@ -180,9 +231,9 @@ async function manageRoomMenu(
         }
       }
     } else if (action === 'members') {
-      await manageMembersMenu(room, callerName, stdin, stdout);
+      await manageMembersMenu(room, effectiveCallerName, stdin, stdout);
     } else if (action === 'bulk-members') {
-      await manageBulkMembersMenu(room, callerName, stdin, stdout);
+      await manageBulkMembersMenu(room, effectiveCallerName, stdin, stdout);
     }
   }
 }

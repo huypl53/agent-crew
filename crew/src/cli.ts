@@ -110,7 +110,7 @@ if (parsed.command === 'serve') {
 initDb();
 
 // Auto-detect caller name if --name is not explicitly provided
-if (!parsed.flags.name) {
+if (!parsed.flags.name && parsed.command !== 'manage') {
   const envName = process.env.CREW_AGENT_NAME?.trim();
   if (envName) {
     parsed.flags.name = envName;
