@@ -11,6 +11,7 @@ Multi-agent coordination for AI coding agents via tmux rooms. Works with **Claud
 3. Your own session acts as a leader — give natural language direction
 4. Leaders coordinate workers, workers execute assignments, everyone communicates through rooms
 5. Assignment delivery via pushed messages — leaders can interrupt or replace worker assignments
+6. **Interactive management TUI** — `crew manage` gives leaders a zero-dependency terminal UI to select rooms and members, then apply actions (interrupt, clear session, reassign task, set topic, leave, delete) on one or many targets at once
 6. Dashboard visualization — dashboard plus room/template management views
 8. Automatic token/cost tracking — collects usage from Claude Code and Codex CLI, displays in dashboard
 9. Worker session management — leaders can clear a worker's Claude Code context and auto-refresh their registration between assignment sequences
@@ -216,6 +217,7 @@ crew <command>
 | `unmute-idle` | `crew unmute-idle --name lead-01` | `lead-01 idle notifications unmuted` |
 | `create-room` | `crew create-room --room proj --name lead-01 --topic "Sprint 1"` | `Created room: proj (Sprint 1)` |
 | `delete-room` | `crew delete-room --room proj --confirm --name lead-01` | `Deleted room: proj (3 members removed, 12 messages deleted)` |
+| `manage` | `crew manage --name lead-01` | Interactive TUI — pick rooms/members and apply actions |
 | `wait-idle` | `crew wait-idle --target %42 --timeout 30000` | exit 0 = idle, exit 2 = timed out |
 | `party start` | `crew party start --room crew --topic "..." --name lead-01` | `{"started":true,"round":1,...}` |
 | `party next` | `crew party next --room crew --topic "..." --name lead-01` | `{"round":2,...}` |
@@ -226,6 +228,58 @@ crew <command>
 | `hint unset` | `crew hint unset --agent builder-1 --room crew` | `Hint removed for builder-1 in crew` |
 | `hint lookup` | `crew hint lookup --pane %42` | `agent_name: builder-1, cadence: 3, next_reminder_at: 2` |
 | `serve` | `crew serve --port 3456` | `Browser dashboard at http://127.0.0.1:3456` |
+
+### Interactive Management TUI (`crew manage`)
+
+`crew manage --name <your-leader-name>` opens a zero-dependency terminal UI (uses Node's built-in `readline` — no extra packages needed) for leaders to inspect and control their rooms interactively.
+
+**Flow:**
+```
+ crew manage --name lead-01
+
+  ? Select a room to manage
+  ❯ my-project (/path/to/project)
+    other-room  (/path/to/other)
+
+  ↓ Enter
+
+  ? my-project - Select action
+  ❯ Manage members (Single)   ← pick one worker → apply an action
+    Manage members (Bulk)     ← multi-select workers → apply action to all
+    Set room topic
+    Leave room
+    Delete room
+    Back
+
+  ↓ Select "Manage members (Single)"
+
+  ? Select a worker to manage
+  ❯ builder-1 (worker) - status: busy
+    builder-2 (worker) - status: idle
+    Back
+
+  ↓ Enter on builder-1
+
+  ? Worker: builder-1 - Select action
+  ❯ Interrupt Worker
+    Clear Session
+    Reassign Task
+    Back
+```
+
+**Controls:**
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` or `k` / `j` | Move highlight |
+| `Space` | Toggle selection (Bulk mode) |
+| `Enter` | Confirm / apply |
+| `Escape` or `q` | Back / exit |
+| `Ctrl-C` | Quit immediately |
+
+**Bulk mode** lets you select multiple workers with `Space` and apply one action (Interrupt, Clear, or Reassign) to all of them in a single step.
+
+**Access control:** only rooms the caller belongs to are shown; only workers inside the selected room are listed.
 
 ### Flags
 
