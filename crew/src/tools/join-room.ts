@@ -244,7 +244,7 @@ export async function handleJoinRoom(
 
   // Rename Claude Code session to agent name
   try {
-    if (target) {
+    if (target && agentType === 'claude-code') {
       const { getQueue } = await import('../delivery/pane-queue.ts');
       await getQueue(target, { role: role as AgentRole }).enqueue({
         type: 'command',
