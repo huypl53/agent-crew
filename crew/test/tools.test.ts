@@ -199,7 +199,10 @@ describe('MCP tools', () => {
         name: 'leader-1',
         tmux_target: testPaneA,
       });
-      const result = await handleLeaveRoom({ room: 'company', name: 'leader-1' });
+      const result = await handleLeaveRoom({
+        room: 'company',
+        name: 'leader-1',
+      });
       const data = JSON.parse(result.content[0]?.text);
       expect(data.success).toBe(true);
     });
@@ -409,7 +412,10 @@ describe('MCP tools', () => {
       setAgentInputBlockMode('builder-1', 'persist');
 
       // 3. Try reading messages — should return empty list
-      const readResult1 = await handleReadMessages({ name: 'builder-1', room: 'frontend' });
+      const readResult1 = await handleReadMessages({
+        name: 'builder-1',
+        room: 'frontend',
+      });
       const readData1 = JSON.parse(readResult1.content[0]!.text);
       expect(readData1.messages.length).toBe(0);
 
@@ -417,7 +423,10 @@ describe('MCP tools', () => {
       setAgentInputBlockMode('builder-1', 'off');
 
       // 5. Try reading messages — should return the message now
-      const readResult2 = await handleReadMessages({ name: 'builder-1', room: 'frontend' });
+      const readResult2 = await handleReadMessages({
+        name: 'builder-1',
+        room: 'frontend',
+      });
       const readData2 = JSON.parse(readResult2.content[0]!.text);
       expect(readData2.messages.length).toBe(1);
       expect(readData2.messages[0].text).toBe('Hello builder');
@@ -1247,9 +1256,11 @@ describe('MCP tools', () => {
       const { Readable, Writable } = await import('node:stream');
 
       class MockStdin extends Readable {
+        isTTY = true;
         _read() {}
       }
       class MockStdout extends Writable {
+        isTTY = true;
         output: string[] = [];
         _write(chunk: any, encoding: any, callback: any) {
           this.output.push(chunk.toString());
@@ -1262,7 +1273,9 @@ describe('MCP tools', () => {
 
       const result = await handleManage({ name: 'leader-1', stdin, stdout });
       expect(result.isError).toBeUndefined();
-      expect(stdout.output.join('')).toContain('No active rooms found');
+      expect(stdout.output.join('')).toContain(
+        'You are not a member of any active rooms',
+      );
     });
 
     test('manages a room and sets topic', async () => {
@@ -1378,9 +1391,7 @@ describe('MCP tools', () => {
       await Bun.sleep(100);
       stdin.sendKey({ name: 'return' });
 
-      // Select worker-2 (index 1: leader-2 is index 0)
-      await Bun.sleep(100);
-      stdin.sendKey({ name: 'down' });
+      // Select worker-2 (now at index 0 because leader-2 is filtered out)
       await Bun.sleep(100);
       stdin.sendKey({ name: 'return' });
 
@@ -1405,8 +1416,9 @@ describe('MCP tools', () => {
 
       await promise;
 
-      expect(stdout.output.join('')).toContain('Successfully interrupted worker worker-2');
+      expect(stdout.output.join('')).toContain(
+        'Successfully interrupted worker worker-2',
+      );
     });
   });
-
 });

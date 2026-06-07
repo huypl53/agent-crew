@@ -79,7 +79,9 @@ describe('delete-room tool', () => {
   });
 
   test('refuses without --confirm', () => {
-    handleCreateRoom({ room: 'target', name: 'leader-1' });
+    const r = handleCreateRoom({ room: 'target', name: 'leader-1' });
+    const roomId = JSON.parse(r.content[0]!.text).id ?? getRoom('target')?.id;
+    if (roomId) addAgent('leader-1', 'leader', roomId, '%99');
     const result = handleDeleteRoom({ room: 'target', name: 'leader-1' });
     expect(result.isError).toBe(true);
     const data = JSON.parse(result.content[0]!.text);
@@ -87,7 +89,10 @@ describe('delete-room tool', () => {
   });
 
   test('deletes empty room with --confirm', () => {
-    handleCreateRoom({ room: 'empty-room', name: 'leader-1' });
+    const r = handleCreateRoom({ room: 'empty-room', name: 'leader-1' });
+    const roomId =
+      JSON.parse(r.content[0]!.text).id ?? getRoom('empty-room')?.id;
+    if (roomId) addAgent('leader-1', 'leader', roomId, '%99');
     const result = handleDeleteRoom({
       room: 'empty-room',
       confirm: true,
@@ -96,13 +101,14 @@ describe('delete-room tool', () => {
     expect(result.isError).toBeUndefined();
     const data = JSON.parse(result.content[0]!.text);
     expect(data.deleted).toBe(true);
-    expect(data.removed_members).toEqual([]);
+    expect(data.removed_members).toEqual(['leader-1']);
     expect(getRoom('empty-room')).toBeUndefined();
   });
 
   test('reports members and messages deleted', () => {
-    // Create room via addAgent (which also creates the room + membership)
-    addAgent('wk', 'worker', mkRoom('crew-room').id, '%10');
+    const room = mkRoom('crew-room');
+    addAgent('leader-1', 'leader', room.id, '%99');
+    addAgent('wk', 'worker', room.id, '%10');
     const result = handleDeleteRoom({
       room: 'crew-room',
       confirm: true,
@@ -115,15 +121,20 @@ describe('delete-room tool', () => {
   });
 
   test('cleans up agent with no remaining rooms', () => {
-    addAgent('solo-wk', 'worker', mkRoom('solo-room').id, '%20');
+    const room = mkRoom('solo-room');
+    addAgent('leader-1', 'leader', room.id, '%99');
+    addAgent('solo-wk', 'worker', room.id, '%20');
     expect(getAgent('solo-wk')).toBeDefined();
     handleDeleteRoom({ room: 'solo-room', confirm: true, name: 'leader-1' });
     expect(getAgent('solo-wk')).toBeUndefined();
   });
 
   test('deleting one room does not remove agent in another room', () => {
-    addAgent('shared-wk', 'worker', mkRoom('room-a').id, '%30');
-    addAgent('shared-wk', 'worker', mkRoom('room-b').id, '%30');
+    const roomA = mkRoom('room-a');
+    const roomB = mkRoom('room-b');
+    addAgent('leader-1', 'leader', roomA.id, '%99');
+    addAgent('shared-wk', 'worker', roomA.id, '%30');
+    addAgent('shared-wk', 'worker', roomB.id, '%30');
     handleDeleteRoom({ room: 'room-a', confirm: true, name: 'leader-1' });
     const remaining = getAllRooms();
     expect(remaining.some((r) => r.name === 'room-b')).toBe(true);

@@ -33,6 +33,11 @@ export async function handleReassignTask(
   if (!worker) {
     return err(`Worker "${worker_name}" is not registered`);
   }
+  if (worker.role !== 'worker') {
+    return err(
+      `Target "${worker_name}" is not a worker (got role: ${worker.role})`,
+    );
+  }
   if (!(worker.room_name === room || worker.room_path === room)) {
     return err(`Worker "${worker_name}" is not in room "${room}"`);
   }

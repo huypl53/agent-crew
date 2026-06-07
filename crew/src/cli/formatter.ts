@@ -184,5 +184,26 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     if (d.hint?.message) return d.hint.message;
     return '';
   },
+  party: (d) => {
+    if (d.started) {
+      return `Started party round ${d.round} on topic: "${d.topic}"\nWorkers: ${d.workers.join(', ')}`;
+    }
+    if (d.ended) {
+      return `Ended party. Completed ${d.rounds_completed} rounds`;
+    }
+    if (d.round && d.topic) {
+      return `Advanced to round ${d.round} on topic: "${d.topic}"\nWorkers: ${d.workers.join(', ')}`;
+    }
+    if (d.skipped) {
+      return `Skipped worker ${d.skipped}. Pending: ${d.pending.join(', ') || '(none)'}`;
+    }
+    if (d.active === false) {
+      return 'No active party mode in this room';
+    }
+    if (d.active === true) {
+      return `Active party round ${d.round} on topic: "${d.topic}"\nResponded: ${d.responded.join(', ') || '(none)'}\nPending: ${d.pending.join(', ') || '(none)'}`;
+    }
+    return JSON.stringify(d);
+  },
   manage: () => 'Management console exited',
 };

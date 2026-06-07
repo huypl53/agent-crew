@@ -3,7 +3,8 @@ import type { Readable, Writable } from 'node:stream';
 import { selectMultiple, selectOne } from '../cli/interactive.ts';
 import type { Agent, Room, ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
-import { getAllRooms, getRoomMembers } from '../state/index.ts';
+import { getDb } from '../state/db.ts';
+import { getAgentByRoomAndName, getRoomMembers } from '../state/index.ts';
 import { handleClearWorkerSession } from './clear-worker-session.ts';
 import { handleDeleteRoom } from './delete-room.ts';
 import { handleInterruptWorker } from './interrupt-worker.ts';
@@ -25,6 +26,10 @@ function promptText(
       rl.close();
       resolve(answer.trim() || null);
     });
+    rl.on('SIGINT', () => {
+      rl.close();
+      resolve(null);
+    });
   });
 }
 
@@ -43,10 +48,26 @@ export async function handleManage(params: ManageParams): Promise<ToolResult> {
   const stdin = params.stdin ?? process.stdin;
   const stdout = params.stdout ?? process.stdout;
 
+  const isTTYIn = !!(stdin as { isTTY?: boolean }).isTTY;
+  const isTTYOut = !!(stdout as { isTTY?: boolean }).isTTY;
+  if (!isTTYIn || !isTTYOut) {
+    return err('Interactive console requires a TTY terminal');
+  }
+
   while (true) {
-    const rooms = getAllRooms();
+    const db = getDb();
+    const rooms = db
+      .query(`
+      SELECT DISTINCT r.* FROM rooms r
+      JOIN agents a ON a.room_id = r.id
+      WHERE a.name = ?
+    `)
+      .all(name) as Room[];
+
     if (rooms.length === 0) {
-      stdout.write('No active rooms found. Create a room first.\n');
+      stdout.write(
+        'You are not a member of any active rooms. Join a room first.\n',
+      );
       break;
     }
 
@@ -79,12 +100,19 @@ async function manageRoomMenu(
   stdout: Writable,
 ): Promise<void> {
   while (true) {
+    const callerInRoom = getAgentByRoomAndName(room.id, callerName);
+    const isLeader = callerInRoom?.role === 'leader';
+
     const actions = [
-      { value: 'members', label: 'Manage members (Single)' },
-      { value: 'bulk-members', label: 'Manage members (Bulk)' },
-      { value: 'topic', label: 'Set room topic' },
+      ...(isLeader
+        ? [
+            { value: 'members', label: 'Manage members (Single)' },
+            { value: 'bulk-members', label: 'Manage members (Bulk)' },
+            { value: 'topic', label: 'Set room topic' },
+          ]
+        : []),
       { value: 'leave', label: 'Leave room' },
-      { value: 'delete', label: 'Delete room' },
+      ...(isLeader ? [{ value: 'delete', label: 'Delete room' }] : []),
       { value: 'back', label: 'Back' },
     ];
 
@@ -166,9 +194,11 @@ async function manageMembersMenu(
   stdout: Writable,
 ): Promise<void> {
   while (true) {
-    const members = getRoomMembers(room.id);
+    const members = getRoomMembers(room.id).filter(
+      (m) => m.name !== callerName && m.role === 'worker',
+    );
     if (members.length === 0) {
-      stdout.write('No members in this room.\n');
+      stdout.write('No workers in this room.\n');
       break;
     }
 
@@ -178,7 +208,7 @@ async function manageMembersMenu(
     }));
 
     const selectedMember = await selectOne<Agent | 'back'>({
-      title: 'Select a member to manage',
+      title: 'Select a worker to manage',
       items: [...memberChoices, { value: 'back', label: 'Back' }],
       stdin,
       stdout,
@@ -196,7 +226,7 @@ async function manageMembersMenu(
     ];
 
     const action = await selectOne<string>({
-      title: `Member: ${selectedMember.name} - Select action`,
+      title: `Worker: ${selectedMember.name} - Select action`,
       items: memberActions,
       stdin,
       stdout,
@@ -267,9 +297,11 @@ async function manageBulkMembersMenu(
   stdout: Writable,
 ): Promise<void> {
   while (true) {
-    const members = getRoomMembers(room.id);
+    const members = getRoomMembers(room.id).filter(
+      (m) => m.name !== callerName && m.role === 'worker',
+    );
     if (members.length === 0) {
-      stdout.write('No members in this room.\n');
+      stdout.write('No workers in this room.\n');
       break;
     }
 
