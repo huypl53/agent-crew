@@ -700,6 +700,31 @@ export function advanceCursor(
   }
 }
 
+export function getPushCursor(agentName: string): number {
+  const agent = getAgent(agentName);
+  if (!agent) return 0;
+  const row = getDb()
+    .query('SELECT last_seq FROM push_cursors WHERE agent_id = ?')
+    .get(agent.agent_id) as { last_seq: number } | null;
+  return row?.last_seq ?? 0;
+}
+
+export function advancePushCursor(
+  agentName: string,
+  sequence: number,
+): void {
+  const agent = getAgent(agentName);
+  if (!agent) return;
+
+  const current = getPushCursor(agentName);
+  if (sequence > current) {
+    getDb().run(
+      'INSERT OR REPLACE INTO push_cursors (agent_id, last_seq) VALUES (?, ?)',
+      [agent.agent_id, sequence],
+    );
+  }
+}
+
 export function readRoomMessages(
   agentName: string,
   room: string,
@@ -1661,6 +1686,6 @@ function rowToHint(row: Record<string, unknown>): HintRecord {
 export function clearState(): void {
   const db = getDb();
   db.exec(
-    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM party_responses; DELETE FROM hook_events; DELETE FROM agent_hints; DELETE FROM messages; DELETE FROM cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
+    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM party_responses; DELETE FROM hook_events; DELETE FROM agent_hints; DELETE FROM messages; DELETE FROM cursors; DELETE FROM push_cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
   );
 }

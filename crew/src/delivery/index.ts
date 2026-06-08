@@ -1,6 +1,7 @@
 import type { Agent, MessageKind } from '../shared/types.ts';
 import { config } from '../config.ts';
 import { dbClearAgentPane } from '../state/db-write.ts';
+import { getDb } from '../state/db.ts';
 import {
   addMessage,
   getAgent,
@@ -9,13 +10,17 @@ import {
   getRoomReminderDispatchCount,
   incrementRoomReminderDispatchCount,
   markAgentStale,
+  advancePushCursor,
+  getPushCursor,
+  getAllAgents,
+  getAgentInputBlockMode,
 } from '../state/index.ts';
 import {
   capturePaneTail,
   paneCommandLooksAlive,
   paneExists,
 } from '../tmux/index.ts';
-import { getQueue } from './pane-queue.ts';
+import { getQueue, PaneDeliveryError } from './pane-queue.ts';
 import { parsePaneInputSection } from '../shared/pane-status.ts';
 
 const NOTIFY_KINDS: MessageKind[] = ['completion', 'error', 'question'];
@@ -122,6 +127,7 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
           text: fullText,
         });
         incrementRoomReminderDispatchCount(roomName);
+        advancePushCursor(agent.name, msg.sequence);
         return {
           message_id: msg.message_id,
           delivered: true,
@@ -247,13 +253,20 @@ export async function deliverMessage(
 
         // Push notifications to all leaders in parallel
         await Promise.allSettled(
-          leaders.map((leader) => {
+          leaders.map(async (leader) => {
             const target = leader.tmux_target;
-            if (!target) return Promise.resolve();
-            return getQueue(target, { role: leader.role }).enqueue({
+            if (!target) return;
+            await getQueue(target, { role: leader.role }).enqueue({
               type: 'paste',
               text: notifyText,
             });
+            const matchedResult = results.find((r) => r.message_id !== '-1');
+            if (matchedResult) {
+              const seq = parseInt(matchedResult.message_id, 10);
+              if (!Number.isNaN(seq)) {
+                advancePushCursor(leader.name, seq);
+              }
+            }
           }),
         );
       }
@@ -261,4 +274,66 @@ export async function deliverMessage(
   }
 
   return results;
+}
+
+export async function flushPushQueue(): Promise<void> {
+  const agents = getAllAgents();
+  const activeAgents = agents.filter((a) => a.tmux_target);
+
+  for (const agent of activeAgents) {
+    const pane = agent.tmux_target!;
+    const blockMode = getAgentInputBlockMode(agent.name);
+    if (blockMode !== 'off') {
+      continue;
+    }
+
+    const cursor = getPushCursor(agent.name);
+    const db = getDb();
+    
+    const rows = db.query(`
+      SELECT m.*, r.name as room_name, s.role as sender_role
+      FROM messages m
+      JOIN rooms r ON r.id = m.room_id
+      LEFT JOIN agents s ON s.name = m.sender AND s.room_id = m.room_id
+      WHERE (m.recipient = ? OR (m.recipient IS NULL AND m.room_id = ? AND m.sender != ? AND (s.role IS NULL OR s.role != 'worker' OR ? = 'leader')))
+        AND m.id > ?
+      ORDER BY m.id
+    `).all(agent.name, agent.room_id, agent.name, agent.role, cursor) as Record<string, unknown>[];
+
+    for (const row of rows) {
+      const sequence = Number(row.id);
+      const from = String(row.sender);
+      const text = String(row.text);
+      const kind = String(row.kind ?? 'chat');
+      const mode = row.mode ? String(row.mode) : null;
+      const roomName = String(row.room_name);
+      
+      let pushText: string | null = null;
+      if (mode === 'push') {
+        pushText = `[${from}@${roomName}]: ${text}`;
+      } else if (mode === 'pull' && NOTIFY_KINDS.includes(kind as any)) {
+        const summary = text.length > config.notifyMaxChars
+          ? `${text.slice(0, config.notifyMaxChars - 3)}...`
+          : text;
+        pushText = `[system@${roomName}]: ${from} ${kind}: "${summary}"`;
+      }
+
+      if (pushText !== null) {
+        try {
+          await getQueue(pane, { role: agent.role }).enqueue({
+            type: 'paste',
+            text: pushText,
+          });
+        } catch (e) {
+          if (e instanceof PaneDeliveryError && e.code === 'PANE_BLOCKED_INPUT') {
+            break;
+          }
+          console.error(`Failed to push message ${sequence} to ${agent.name}:`, e);
+          break;
+        }
+      }
+
+      advancePushCursor(agent.name, sequence);
+    }
+  }
 }

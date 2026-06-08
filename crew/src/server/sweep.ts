@@ -3,6 +3,7 @@ import {
   PaneDeliveryError,
   removeQueue,
 } from '../delivery/pane-queue.ts';
+import { flushPushQueue } from '../delivery/index.ts';
 import { getPaneStatus } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
 import type { SweepBusyMode } from '../shared/types.ts';
@@ -255,6 +256,7 @@ async function runSweep(): Promise<void> {
   tickCount++;
   try {
     await runIdleDetection();
+    await flushPushQueue();
     await runPartyTimeoutCheck();
     if (tickCount % LIVENESS_TICKS === 0) {
       await runLivenessCheck();

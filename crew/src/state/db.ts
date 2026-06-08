@@ -55,6 +55,11 @@ const SCHEMA = `
     last_seq INTEGER NOT NULL DEFAULT 0
   );
 
+  CREATE TABLE IF NOT EXISTS push_cursors (
+    agent_id INTEGER PRIMARY KEY REFERENCES agents(id) ON DELETE CASCADE,
+    last_seq INTEGER NOT NULL DEFAULT 0
+  );
+
   CREATE TABLE IF NOT EXISTS token_usage (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_id INTEGER NOT NULL UNIQUE REFERENCES agents(id) ON DELETE CASCADE,
@@ -205,6 +210,7 @@ export function initDb(path?: string): void {
         PRAGMA foreign_keys=OFF;
         DROP TABLE IF EXISTS members;
         DROP TABLE IF EXISTS cursors;
+        DROP TABLE IF EXISTS push_cursors;
         DROP TABLE IF EXISTS messages;
         DROP TABLE IF EXISTS token_usage;
         DROP TABLE IF EXISTS room_templates;
