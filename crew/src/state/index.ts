@@ -2,9 +2,9 @@ import { config } from '../config.ts';
 import type {
   Agent,
   AgentRole,
-  InputBlockMode,
   AgentTemplate,
   HookEvent,
+  InputBlockMode,
   Message,
   MessageKind,
   PartyResponse,
@@ -64,7 +64,8 @@ function dbRowToAgent(row: Record<string, unknown>): Agent {
       | 'codex'
       | 'unknown',
     status: (row.status as string | null) ?? null,
-    input_block_mode: ((row.input_block_mode as string) ?? 'off') as InputBlockMode,
+    input_block_mode: ((row.input_block_mode as string) ??
+      'off') as InputBlockMode,
     persona: (row.persona as string | null) ?? null,
     capabilities: (row.capabilities as string | null) ?? null,
     reminder_policy: parseReminderPolicy(row.reminder_policy),
@@ -417,7 +418,9 @@ export function removeAgentFully(name: string): void {
 /** Remove agent by database ID (for precise deletion) */
 export function removeAgentById(id: number): void {
   const db = getDb();
-  const row = db.query('SELECT room_id, name FROM agents WHERE id = ?').get(id) as {
+  const row = db
+    .query('SELECT room_id, name FROM agents WHERE id = ?')
+    .get(id) as {
     room_id: number;
     name: string;
   } | null;
@@ -444,11 +447,13 @@ export function getRoom(identifier: string | number): Room | undefined {
   const db = getDb();
   let row: Record<string, unknown> | null;
 
-  const parsedId = typeof identifier === 'number' ? identifier : Number(identifier);
+  const parsedId =
+    typeof identifier === 'number' ? identifier : Number(identifier);
   if (!Number.isNaN(parsedId)) {
-    row = db
-      .query('SELECT * FROM rooms WHERE id = ?')
-      .get(parsedId) as Record<string, unknown> | null;
+    row = db.query('SELECT * FROM rooms WHERE id = ?').get(parsedId) as Record<
+      string,
+      unknown
+    > | null;
     if (!row && typeof identifier === 'string') {
       row = db
         .query('SELECT * FROM rooms WHERE name = ? ORDER BY id DESC LIMIT 1')
@@ -508,7 +513,9 @@ export function getAllRooms(): Room[] {
 
 export function getRoomReminderDispatchCount(roomName: string): number {
   const row = getDb()
-    .query('SELECT reminder_dispatch_count FROM rooms WHERE name = ? ORDER BY id DESC LIMIT 1')
+    .query(
+      'SELECT reminder_dispatch_count FROM rooms WHERE name = ? ORDER BY id DESC LIMIT 1',
+    )
     .get(roomName) as { reminder_dispatch_count: number } | null;
   return row?.reminder_dispatch_count ?? 0;
 }
@@ -521,7 +528,9 @@ export function incrementRoomReminderDispatchCount(roomName: string): void {
 }
 
 export function resetRoomReminderDispatchCount(roomName: string): void {
-  getDb().run('UPDATE rooms SET reminder_dispatch_count = 0 WHERE name = ?', [roomName]);
+  getDb().run('UPDATE rooms SET reminder_dispatch_count = 0 WHERE name = ?', [
+    roomName,
+  ]);
 }
 
 export function getAgentByRoomAndName(
@@ -709,10 +718,7 @@ export function getPushCursor(agentName: string): number {
   return row?.last_seq ?? 0;
 }
 
-export function advancePushCursor(
-  agentName: string,
-  sequence: number,
-): void {
+export function advancePushCursor(agentName: string, sequence: number): void {
   const agent = getAgent(agentName);
   if (!agent) return;
 
@@ -744,7 +750,8 @@ export function readRoomMessages(
   }
 
   // Only return messages addressed to this agent within this room.
-  let sql = 'SELECT * FROM messages WHERE room_id = ? AND id > ? AND recipient = ?';
+  let sql =
+    'SELECT * FROM messages WHERE room_id = ? AND id > ? AND recipient = ?';
   const params: unknown[] = [roomObj.id, cursor, agentName];
   if (kinds && kinds.length > 0) {
     sql += ` AND kind IN (${kinds.map(() => '?').join(',')})`;
@@ -991,9 +998,15 @@ export function getPricingForModel(modelName: string): PricingEntry | null {
 const DEDUP_WINDOW_MS = 2000;
 const dedupCache = new Map<string, number>();
 
-function isDuplicateEvent(agentName: string, eventType: string, sessionId: string | null, payload: string): boolean {
+function isDuplicateEvent(
+  agentName: string,
+  eventType: string,
+  sessionId: string | null,
+  payload: string,
+): boolean {
   if (eventType !== 'UserPromptSubmit') return false;
-  const fp = payload.length > 200 ? payload.slice(0, 200) + payload.length : payload;
+  const fp =
+    payload.length > 200 ? payload.slice(0, 200) + payload.length : payload;
   const key = `${agentName}:${eventType}:${sessionId}:${fp}`;
   const now = Date.now();
   const last = dedupCache.get(key);
@@ -1009,7 +1022,11 @@ export function addHookEvent(
 ): number {
   const db = getDb();
   if (isDuplicateEvent(agentName, eventType, sessionId, payload)) {
-    const row = db.query('SELECT id FROM hook_events WHERE agent_name = ? AND event_type = ? ORDER BY id DESC LIMIT 1').get(agentName, eventType) as { id: number } | null;
+    const row = db
+      .query(
+        'SELECT id FROM hook_events WHERE agent_name = ? AND event_type = ? ORDER BY id DESC LIMIT 1',
+      )
+      .get(agentName, eventType) as { id: number } | null;
     return row?.id ?? 0;
   }
   const stmt = db.run(
@@ -1051,7 +1068,13 @@ function capturePartyResponseIfActive(
 
   if (!response.trim()) return;
 
-  addPartyResponse(agent.room_id, partyState.round, agentName, response, hookEventId);
+  addPartyResponse(
+    agent.room_id,
+    partyState.round,
+    agentName,
+    response,
+    hookEventId,
+  );
 
   // Check if round complete → notify leader (async, fire-and-forget)
   checkAndNotifyRoundComplete(agent.room_id, partyState.round);
@@ -1110,7 +1133,7 @@ function notifyLeadersOnWorkerStop(agentName: string, payload: string): void {
   const message = `[${agentName}@${roomName}] completed:\n${truncated}`;
 
   // Record completion message in DB
-  addMessage(
+  const msg = addMessage(
     roomName,
     agentName,
     roomName,
@@ -1122,7 +1145,7 @@ function notifyLeadersOnWorkerStop(agentName: string, payload: string): void {
 
   // Deliver to each leader with retry logic (fire-and-forget)
   for (const leader of leaders) {
-    deliverWithRetry(leader, message).catch(() => {});
+    deliverWithRetry(leader, message, msg.sequence).catch(() => {});
   }
 }
 
@@ -1130,7 +1153,11 @@ function notifyLeadersOnWorkerStop(agentName: string, payload: string): void {
  * Deliver notification to leader with retry if they're busy.
  * Waits if leader recently submitted a prompt (race condition avoidance).
  */
-async function deliverWithRetry(leader: Agent, message: string): Promise<void> {
+async function deliverWithRetry(
+  leader: Agent,
+  message: string,
+  sequence: number,
+): Promise<void> {
   const RETRY_DELAY_MS = 1500;
   const MAX_RETRIES = 2;
 
@@ -1141,7 +1168,8 @@ async function deliverWithRetry(leader: Agent, message: string): Promise<void> {
   // Check if leader is currently busy (recent UserPromptSubmit event)
   const latestEvent = getLatestHookEvent(leader.name);
   if (latestEvent?.event_type === 'UserPromptSubmit') {
-    const eventAge = Date.now() - new Date(latestEvent.created_at + 'Z').getTime();
+    const eventAge =
+      Date.now() - new Date(latestEvent.created_at + 'Z').getTime();
     // If leader submitted within last 2s, wait for them to settle
     if (eventAge < 2000) {
       await Bun.sleep(RETRY_DELAY_MS);
@@ -1154,7 +1182,10 @@ async function deliverWithRetry(leader: Agent, message: string): Promise<void> {
       return;
     }
     const result = await sendKeys(leader.tmux_target!, message);
-    if (result.delivered) return;
+    if (result.delivered) {
+      advancePushCursor(leader.name, sequence);
+      return;
+    }
 
     // If not delivered and retries remain, wait and try again
     if (attempt < MAX_RETRIES) {
@@ -1434,10 +1465,15 @@ export function getPartyResponses(
     .all(roomId, round) as PartyResponse[];
 }
 
-export function getPendingPartyWorkers(roomId: number, round: number): string[] {
+export function getPendingPartyWorkers(
+  roomId: number,
+  round: number,
+): string[] {
   const db = getDb();
   const responded = db
-    .query('SELECT agent_name FROM party_responses WHERE room_id = ? AND round = ?')
+    .query(
+      'SELECT agent_name FROM party_responses WHERE room_id = ? AND round = ?',
+    )
     .all(roomId, round) as { agent_name: string }[];
   const respondedNames = new Set(responded.map((r) => r.agent_name));
 
@@ -1504,7 +1540,12 @@ export interface HintRecord {
  * Message is required — it's the text injected into the agent's conversation.
  * Cadence controls how often (every N turns) the hint fires (default 3).
  */
-export function setHint(agentName: string, roomId: number, message: string, options?: { pane?: string; cadence?: number }): HintRecord {
+export function setHint(
+  agentName: string,
+  roomId: number,
+  message: string,
+  options?: { pane?: string; cadence?: number },
+): HintRecord {
   const db = getDb();
   const ts = now();
   const agent = getAgentByRoomAndName(roomId, agentName);
@@ -1518,10 +1559,13 @@ export function setHint(agentName: string, roomId: number, message: string, opti
   // DELETE + INSERT as a single transaction so concurrent setHint calls
   // cannot leave a window with no row.
   const result = db.transaction(() => {
-    db.run('DELETE FROM agent_hints WHERE agent_name = ? AND room_id = ?', [agentName, roomId]);
+    db.run('DELETE FROM agent_hints WHERE agent_name = ? AND room_id = ?', [
+      agentName,
+      roomId,
+    ]);
     const stmt = db.run(
       'INSERT INTO agent_hints (agent_name, pane_bootstrap, session_id, room_id, turn_count, message, cadence, created_at, updated_at) VALUES (?, ?, NULL, ?, 0, ?, ?, ?, ?)',
-      [agentName, pane, roomId, message, cadence, ts, ts]
+      [agentName, pane, roomId, message, cadence, ts, ts],
     );
     return Number(stmt.lastInsertRowid);
   })();
@@ -1535,7 +1579,10 @@ export function setHint(agentName: string, roomId: number, message: string, opti
  */
 export function unsetHint(agentName: string, roomId: number): boolean {
   const db = getDb();
-  const result = db.run('DELETE FROM agent_hints WHERE agent_name = ? AND room_id = ?', [agentName, roomId]);
+  const result = db.run(
+    'DELETE FROM agent_hints WHERE agent_name = ? AND room_id = ?',
+    [agentName, roomId],
+  );
   if (result.changes > 0) bumpChangeLog('hints');
   return result.changes > 0;
 }
@@ -1544,7 +1591,11 @@ export function unsetHint(agentName: string, roomId: number): boolean {
  * Get hint by pane (bootstrap) or session_id (canonical).
  * Returns null if no hint exists.
  */
-export function getHint(pane: string | null, sessionId: string | null, roomId?: number): HintRecord | null {
+export function getHint(
+  pane: string | null,
+  sessionId: string | null,
+  roomId?: number,
+): HintRecord | null {
   const db = getDb();
   const roomFilter = roomId ? ' AND room_id = ?' : '';
   const roomArgs: (string | number)[] = roomId ? [roomId] : [];
@@ -1554,11 +1605,15 @@ export function getHint(pane: string | null, sessionId: string | null, roomId?: 
     // When session is provided, match only by session_id — don't fall through
     // to pane. This ensures getHint(pane, 'old-session') returns null after
     // the session is rotated, even though pane_bootstrap is still populated.
-    row = db.query(`SELECT * FROM agent_hints WHERE session_id = ?${roomFilter}`).get(sessionId, ...roomArgs) as Record<string, unknown> | null;
+    row = db
+      .query(`SELECT * FROM agent_hints WHERE session_id = ?${roomFilter}`)
+      .get(sessionId, ...roomArgs) as Record<string, unknown> | null;
   } else if (pane) {
     // No session — look up by pane_bootstrap only.
     // Works after canonicalization since we keep pane_bootstrap populated.
-    row = db.query(`SELECT * FROM agent_hints WHERE pane_bootstrap = ?${roomFilter}`).get(pane, ...roomArgs) as Record<string, unknown> | null;
+    row = db
+      .query(`SELECT * FROM agent_hints WHERE pane_bootstrap = ?${roomFilter}`)
+      .get(pane, ...roomArgs) as Record<string, unknown> | null;
   }
 
   if (!row) return null;
@@ -1569,7 +1624,11 @@ export function getHint(pane: string | null, sessionId: string | null, roomId?: 
  * Increment turn count and return whether to show hint (every 3rd turn).
  * Atomically increments the counter.
  */
-export function tickHintCadence(pane: string, sessionId: string | null, roomId?: number): { shouldShow: boolean; hint: HintRecord | null } {
+export function tickHintCadence(
+  pane: string,
+  sessionId: string | null,
+  roomId?: number,
+): { shouldShow: boolean; hint: HintRecord | null } {
   const db = getDb();
   const ts = now();
 
@@ -1578,15 +1637,20 @@ export function tickHintCadence(pane: string, sessionId: string | null, roomId?:
   const roomArgs: (string | number)[] = roomId ? [roomId] : [];
 
   if (sessionId) {
-    const row = db.query(
-      `UPDATE agent_hints
+    const row = db
+      .query(
+        `UPDATE agent_hints
        SET turn_count = turn_count + 1, updated_at = ?
        WHERE id = COALESCE(
          (SELECT id FROM agent_hints WHERE session_id = ?${roomFilter}),
          (SELECT id FROM agent_hints WHERE pane_bootstrap = ?${roomFilter})
        )
-       RETURNING *`
-    ).get(ts, sessionId, ...roomArgs, pane, ...roomArgs) as Record<string, unknown> | null;
+       RETURNING *`,
+      )
+      .get(ts, sessionId, ...roomArgs, pane, ...roomArgs) as Record<
+      string,
+      unknown
+    > | null;
     if (!row) return { shouldShow: false, hint: null };
 
     const hint = rowToHint(row);
@@ -1594,12 +1658,14 @@ export function tickHintCadence(pane: string, sessionId: string | null, roomId?:
     return { shouldShow, hint: shouldShow ? hint : null };
   }
 
-  const row = db.query(
-    `UPDATE agent_hints
+  const row = db
+    .query(
+      `UPDATE agent_hints
      SET turn_count = turn_count + 1, updated_at = ?
      WHERE pane_bootstrap = ?${roomFilter}
-     RETURNING *`
-  ).get(ts, pane, ...roomArgs) as Record<string, unknown> | null;
+     RETURNING *`,
+    )
+    .get(ts, pane, ...roomArgs) as Record<string, unknown> | null;
   if (!row) return { shouldShow: false, hint: null };
 
   const hint = rowToHint(row);
@@ -1612,7 +1678,11 @@ export function tickHintCadence(pane: string, sessionId: string | null, roomId?:
  * Called from hook-event when session_id is first available.
  * Idempotent: safe to call multiple times for same session.
  */
-export function canonicalizeHintIdentity(agentName: string, pane: string, sessionId: string): void {
+export function canonicalizeHintIdentity(
+  agentName: string,
+  pane: string,
+  sessionId: string,
+): void {
   const db = getDb();
   const ts = now();
 
@@ -1624,9 +1694,9 @@ export function canonicalizeHintIdentity(agentName: string, pane: string, sessio
 
   // Idempotent: this session is already canonicalized. Ensure pane_bootstrap
   // is preserved (in case setHint was re-run) and bail.
-  const existing = db.query(
-    'SELECT id FROM agent_hints WHERE session_id = ? AND room_id = ?',
-  ).get(sessionId, roomId) as { id: number } | null;
+  const existing = db
+    .query('SELECT id FROM agent_hints WHERE session_id = ? AND room_id = ?')
+    .get(sessionId, roomId) as { id: number } | null;
   if (existing) {
     db.run(
       'UPDATE agent_hints SET pane_bootstrap = COALESCE(pane_bootstrap, ?), updated_at = ? WHERE id = ?',
@@ -1640,19 +1710,22 @@ export function canonicalizeHintIdentity(agentName: string, pane: string, sessio
   // normal first-canonicalization migration wins; fall back to any stale
   // session-bound row so Claude restart on the same pane re-binds the hint
   // instead of orphaning it.
-  const prior = db.query(
-    `SELECT id FROM agent_hints
+  const prior = db
+    .query(
+      `SELECT id FROM agent_hints
      WHERE agent_name = ? AND room_id = ?
      ORDER BY (pane_bootstrap = ?) DESC, updated_at DESC LIMIT 1`,
-  ).get(agentName, roomId, pane) as { id: number } | null;
+    )
+    .get(agentName, roomId, pane) as { id: number } | null;
   if (!prior) return;
 
   // Rebind to new session. Keep pane_bootstrap so getHint(pane, null) still works
   // after canonicalization (BUG-3 fix). Preserve turn_count across Claude restarts.
-  db.run(
-    'UPDATE agent_hints SET session_id = ?, updated_at = ? WHERE id = ?',
-    [sessionId, ts, prior.id],
-  );
+  db.run('UPDATE agent_hints SET session_id = ?, updated_at = ? WHERE id = ?', [
+    sessionId,
+    ts,
+    prior.id,
+  ]);
   bumpChangeLog('hints');
 }
 
@@ -1661,7 +1734,9 @@ export function canonicalizeHintIdentity(agentName: string, pane: string, sessio
  */
 function getHintById(id: number): HintRecord | null {
   const db = getDb();
-  const row = db.query('SELECT * FROM agent_hints WHERE id = ?').get(id) as Record<string, unknown> | null;
+  const row = db
+    .query('SELECT * FROM agent_hints WHERE id = ?')
+    .get(id) as Record<string, unknown> | null;
   if (!row) return null;
   return rowToHint(row);
 }

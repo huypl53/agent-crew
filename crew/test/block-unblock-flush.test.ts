@@ -7,9 +7,9 @@ import {
   test,
 } from 'bun:test';
 import { closeDb, initDb } from '../src/state/db.ts';
+import { setAgentInputBlockMode } from '../src/state/index.ts';
 import { handleJoinRoom } from '../src/tools/join-room.ts';
 import { handleSendMessage } from '../src/tools/send-message.ts';
-import { setAgentInputBlockMode } from '../src/state/index.ts';
 import {
   captureFromPane,
   cleanupAllTestSessions,
@@ -107,7 +107,9 @@ describe('Block Unblock Flush', () => {
     setAgentInputBlockMode('leader-1', 'persist');
 
     // 3. Worker stops (sends Stop hook event)
-    const { processHookEventInput } = await import('../src/tools/hook-event.ts');
+    const { processHookEventInput } = await import(
+      '../src/tools/hook-event.ts'
+    );
     await processHookEventInput(
       JSON.stringify({
         hook_event_name: 'Stop',
@@ -135,5 +137,54 @@ describe('Block Unblock Flush', () => {
     // 6. Verify that the message is now delivered
     leaderOutput = await captureFromPane(testPaneA);
     expect(leaderOutput).toContain('Worker finished task successfully');
+  });
+
+  test('Stop hook event notification is delivered exactly once to leader when not blocked', async () => {
+    // 1. Join room
+    await handleJoinRoom({
+      room: 'company',
+      role: 'leader',
+      name: 'leader-1',
+      tmux_target: testPaneA,
+    });
+    await handleJoinRoom({
+      room: 'company',
+      role: 'worker',
+      name: 'worker-1',
+      tmux_target: testPaneB,
+    });
+
+    // 2. Worker stops (sends Stop hook event)
+    const { processHookEventInput } = await import(
+      '../src/tools/hook-event.ts'
+    );
+    await processHookEventInput(
+      JSON.stringify({
+        hook_event_name: 'Stop',
+        session_id: 'sess-worker-stop-once',
+        last_assistant_message: 'Worker finished task successfully and once',
+      }),
+      testPaneB,
+    );
+
+    // Wait a bit for immediate delivery
+    await Bun.sleep(1000);
+    let leaderOutput = await captureFromPane(testPaneA);
+    expect(leaderOutput).toContain(
+      'Worker finished task successfully and once',
+    );
+
+    // 3. Trigger the flush/sweep process
+    const { flushPushQueue } = await import('../src/delivery/index.ts');
+    await flushPushQueue();
+
+    // Wait a bit for potential second delivery
+    await Bun.sleep(1000);
+
+    // 4. Verify that the message is delivered exactly once
+    leaderOutput = await captureFromPane(testPaneA);
+    const matches =
+      leaderOutput.match(/Worker finished task successfully and once/g) || [];
+    expect(matches.length).toBe(1);
   });
 });

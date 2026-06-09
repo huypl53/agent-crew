@@ -102,7 +102,7 @@ describe('MCP tools', () => {
       });
       expect(result.isError).toBeUndefined();
       const data = JSON.parse(result.content[0]?.text);
-      expect(data.name).toMatch(/^worker-agent-[a-z0-9]{4}$/);
+      expect(data.name).toMatch(/^worker-[a-z0-9]{4}$/);
     });
 
     test('generates random name when empty string', async () => {
@@ -114,7 +114,7 @@ describe('MCP tools', () => {
       });
       expect(result.isError).toBeUndefined();
       const data = JSON.parse(result.content[0]?.text);
-      expect(data.name).toMatch(/^worker-agent-[a-z0-9]{4}$/);
+      expect(data.name).toMatch(/^worker-[a-z0-9]{4}$/);
     });
 
     test('rejoin same name same pane updates in place', async () => {
@@ -855,11 +855,13 @@ describe('MCP tools', () => {
       });
 
       // Spawn 10 concurrent CLI send commands
+      const path = await import('node:path');
+      const cliPath = path.resolve(import.meta.dir, '../src/cli.ts');
       const promises = Array.from({ length: 10 }).map(async (_, i) => {
         const proc = Bun.spawn(
           [
             'bun',
-            'src/cli.ts',
+            cliPath,
             'send',
             '--room',
             'parallel-cli-test',
@@ -890,6 +892,9 @@ describe('MCP tools', () => {
 
       // Verify all succeeded
       for (const r of results) {
+        if (r.exitCode !== 0) {
+          console.error('CONCURRENT TEST PROCESS FAILED:', r.errOutput);
+        }
         expect(r.exitCode).toBe(0);
         expect(r.errOutput).toBe('');
       }
