@@ -11,21 +11,34 @@
  * formatter contract, hint CLI room scoping, and read-only lookup.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { COMMANDS } from '../src/cli/router.ts';
 import { formatResult } from '../src/cli/formatter.ts';
-import { closeDb, initDb } from '../src/state/db.ts';
-import { addAgent, clearState, getHint, getOrCreateRoom, setHint } from '../src/state/index.ts';
-import { handleHintLookup, handleHintSet, handleHintUnset } from '../src/tools/hint.ts';
+import { COMMANDS } from '../src/cli/router.ts';
+import { closeDb, getDb, initDb } from '../src/state/db.ts';
+import {
+  addAgent,
+  clearState,
+  getHint,
+  getOrCreateRoom,
+} from '../src/state/index.ts';
+import {
+  handleHintLookup,
+  handleHintSet,
+  handleHintUnset,
+} from '../src/tools/hint.ts';
 
 function parseResult(
-  result: Awaited<ReturnType<typeof handleHintSet>> | Awaited<ReturnType<typeof handleHintUnset>> | Awaited<ReturnType<typeof handleHintLookup>>,
+  result:
+    | Awaited<ReturnType<typeof handleHintSet>>
+    | Awaited<ReturnType<typeof handleHintUnset>>
+    | Awaited<ReturnType<typeof handleHintLookup>>,
 ) {
-  return JSON.parse(result.content[0]!.text);
+  return JSON.parse(result.content[0]?.text);
 }
 
 describe('hook-event formatter (hint reminder emission)', () => {
   test('passes through user message verbatim', () => {
-    const message = 'You are worker-1 in project-x. Check inbox before responding.';
+    const message =
+      'You are worker-1 in project-x. Check inbox before responding.';
     const out = formatResult('hook-event', {
       ok: true,
       hint: { agent_name: 'worker-1', message },
@@ -73,7 +86,10 @@ describe('hint command room scoping', () => {
     addAgent('lead-1', 'leader', company.id, '%210');
     process.env.TMUX_PANE = '%210';
 
-    const result = await handleHintSet({ message: 'You are lead-1 in company.', cadence: 1 });
+    const result = await handleHintSet({
+      message: 'You are lead-1 in company.',
+      cadence: 1,
+    });
     const data = parseResult(result);
 
     expect(result.isError).toBeUndefined();
@@ -101,7 +117,11 @@ describe('hint command room scoping', () => {
     addAgent('lead-1', 'leader', company.id, '%201');
     addAgent('lead-1', 'leader', frontend.id, '%202');
 
-    const result = await handleHintSet({ agent: 'lead-1', room: 'company', message: 'You are lead in company.' });
+    const result = await handleHintSet({
+      agent: 'lead-1',
+      room: 'company',
+      message: 'You are lead in company.',
+    });
     const data = parseResult(result);
 
     expect(result.isError).toBeUndefined();
@@ -152,7 +172,11 @@ describe('hint command room scoping', () => {
   });
 
   test('handleHintSet errors when room not found', async () => {
-    const result = await handleHintSet({ agent: 'lead-1', room: 'nonexistent', message: 'Test' });
+    const result = await handleHintSet({
+      agent: 'lead-1',
+      room: 'nonexistent',
+      message: 'Test',
+    });
     const data = parseResult(result);
 
     expect(result.isError).toBe(true);
@@ -160,10 +184,14 @@ describe('hint command room scoping', () => {
   });
 
   test('handleHintSet errors when agent not in room', async () => {
-    const company = getOrCreateRoom('/test/company', 'company');
+    const _company = getOrCreateRoom('/test/company', 'company');
     // No agent registered in company room
 
-    const result = await handleHintSet({ agent: 'ghost', room: 'company', message: 'Test' });
+    const result = await handleHintSet({
+      agent: 'ghost',
+      room: 'company',
+      message: 'Test',
+    });
     const data = parseResult(result);
 
     expect(result.isError).toBe(true);
@@ -215,13 +243,39 @@ describe('hint lookup (read-only)', () => {
     expect(data.hint).toBeNull();
   });
 
-  test('handleHintLookup errors without pane', async () => {
+  test('handleHintLookup errors without pane and session', async () => {
     delete process.env.TMUX_PANE;
     const result = await handleHintLookup({});
     const data = parseResult(result);
 
     expect(result.isError).toBe(true);
-    expect(data.error).toContain('Pane is required');
+    expect(data.error).toContain('Either session (--session) or pane');
+  });
+
+  test('handleHintLookup supports session ID lookup without pane', async () => {
+    delete process.env.TMUX_PANE;
+    const room = getOrCreateRoom('/test/room', 'room');
+    addAgent('worker-1', 'worker', room.id, '%300');
+
+    // Set hint
+    await handleHintSet({
+      agent: 'worker-1',
+      room: 'room',
+      message: 'Session hint.',
+    });
+
+    // Update agent_hints directly to simulate session mapping
+    const db = getDb();
+    db.run(
+      "UPDATE agent_hints SET session_id = 'session-999' WHERE agent_name = 'worker-1'",
+    );
+
+    const result = await handleHintLookup({ session: 'session-999' });
+    const data = parseResult(result);
+
+    expect(result.isError).toBeUndefined();
+    expect(data.hint.agent_name).toBe('worker-1');
+    expect(data.hint.message).toBe('Session hint.');
   });
 });
 
@@ -229,7 +283,7 @@ describe('hint subcommand routing', () => {
   test('returns isError=true for missing subcommand', async () => {
     const params = COMMANDS.hint.buildParams({}, []);
     const result = await COMMANDS.hint.handler(params);
-    const data = JSON.parse(result.content[0]!.text);
+    const data = JSON.parse(result.content[0]?.text);
 
     expect(result.isError).toBe(true);
     expect(data.error).toContain('Unknown hint subcommand');
@@ -239,7 +293,7 @@ describe('hint subcommand routing', () => {
   test('returns isError=true for invalid subcommand', async () => {
     const params = COMMANDS.hint.buildParams({}, ['bogus']);
     const result = await COMMANDS.hint.handler(params);
-    const data = JSON.parse(result.content[0]!.text);
+    const data = JSON.parse(result.content[0]?.text);
 
     expect(result.isError).toBe(true);
     expect(data.error).toContain("'bogus'");

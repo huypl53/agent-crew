@@ -226,7 +226,7 @@ crew <command>
 | `party status` | `crew party status --room crew` | `{"active":true,"round":1,"topic":"...","responded":[...],"pending":[...]}` |
 | `hint set` | `crew hint set "You are builder-1 in project-x." -c 3` | `Hint set for builder-1 in crew. Will inject your message every 3 turn(s).` |
 | `hint unset` | `crew hint unset --agent builder-1 --room crew` | `Hint removed for builder-1 in crew` |
-| `hint lookup` | `crew hint lookup --pane %42` | `agent_name: builder-1, cadence: 3, next_reminder_at: 2` |
+| `hint lookup` | `crew hint lookup --pane %42` or `crew hint lookup --session <id>` | `agent_name: builder-1, cadence: 3, next_reminder_at: 2` |
 | `serve` | `crew serve --port 3456` | `Browser dashboard at http://127.0.0.1:3456` |
 
 ### Interactive Management TUI (`crew manage`)
@@ -439,6 +439,8 @@ crew hint set --agent builder-1 --room myproject "You own the auth module. Only 
 
 # Look up current hint state (read-only, does not advance cadence)
 crew hint lookup --pane %42
+# Or pane-less via session ID:
+crew hint lookup --session <id>
 
 # Remove a hint
 crew hint unset --agent builder-1 --room myproject

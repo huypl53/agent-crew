@@ -1,14 +1,15 @@
+import { flushPushQueue } from '../delivery/index.ts';
 import {
   getQueue,
   PaneDeliveryError,
   removeQueue,
 } from '../delivery/pane-queue.ts';
-import { flushPushQueue } from '../delivery/index.ts';
 import { getPaneStatus } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
 import type { SweepBusyMode } from '../shared/types.ts';
 import {
   getActivePartyRooms,
+  getAgentByPane,
   getAllAgents,
   getLatestHookEvent,
   getPendingPartyWorkers,
@@ -194,6 +195,13 @@ async function shouldDeferForLeader(
   if (control.delivery_paused) return { defer: true, source: 'manual' };
   if (control.busy_mode === 'manual_busy')
     return { defer: true, source: 'manual' };
+
+  // Defer if leader is in input block mode
+  const agent = getAgentByPane(target);
+  if (agent && agent.input_block_mode !== 'off') {
+    return { defer: true, source: 'auto' };
+  }
+
   if (control.busy_mode === 'manual_free')
     return { defer: false, source: 'manual' };
   return { defer: await isLeaderBusyAuto(target), source: 'auto' };
@@ -280,7 +288,7 @@ async function runPartyTimeoutCheck(): Promise<void> {
 
     if (partyTimeoutNotified.get(key)) continue;
 
-    const startedAt = new Date(room.party_started_at + 'Z').getTime();
+    const startedAt = new Date(`${room.party_started_at}Z`).getTime();
     const elapsed = now - startedAt;
 
     if (elapsed < PARTY_ROUND_TIMEOUT_MS) continue;
@@ -347,10 +355,7 @@ async function runIdleDetection(): Promise<void> {
     const submitEvent = getLatestHookEvent(w.name, 'UserPromptSubmit');
 
     // If most recent event is UserPromptSubmit (agent is busy), reset idle tracking
-    if (
-      submitEvent &&
-      (!stopEvent || submitEvent.id > stopEvent.id)
-    ) {
+    if (submitEvent && (!stopEvent || submitEvent.id > stopEvent.id)) {
       lastNotified.delete(w.name);
       resetIdleTransition(w.name);
       continue;
@@ -359,7 +364,7 @@ async function runIdleDetection(): Promise<void> {
     // If no Stop event yet, no idle data
     if (!stopEvent) continue;
 
-    const elapsedMs = now - new Date(stopEvent.created_at + 'Z').getTime();
+    const elapsedMs = now - new Date(`${stopEvent.created_at}Z`).getTime();
     if (elapsedMs >= IDLE_THRESHOLD_MS && shouldNotifyIdleTransition(w.name)) {
       const reason = `idle (${Math.round(elapsedMs / 60_000)}m)`;
       await maybeNotify(w, reason, notificationsByLeader, stopEvent.payload);
@@ -440,7 +445,9 @@ async function maybeNotify(
   // Use last_assistant_message from hook payload instead of tmux capture
   if (hookPayload) {
     try {
-      const parsed = JSON.parse(hookPayload) as { last_assistant_message?: string };
+      const parsed = JSON.parse(hookPayload) as {
+        last_assistant_message?: string;
+      };
       if (parsed.last_assistant_message) {
         const msg = parsed.last_assistant_message
           .split('\n')
@@ -501,7 +508,7 @@ export function getWorkerSweepStates(): Record<
     const last = lastNotified.get(agent.name);
     result[agent.name] = {
       content_stable_ms: stopEvent
-        ? now - new Date(stopEvent.created_at + 'Z').getTime()
+        ? now - new Date(`${stopEvent.created_at}Z`).getTime()
         : 0,
       last_notified_at: last ? new Date(last).toISOString() : null,
     };

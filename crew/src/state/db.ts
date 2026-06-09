@@ -263,6 +263,11 @@ export function initDb(path?: string): void {
       "ALTER TABLE agents ADD COLUMN input_block_mode TEXT NOT NULL DEFAULT 'off'",
     );
   }
+  if (!agentCols.some((c) => c.name === 'auto_self_on_idle')) {
+    _db.exec(
+      'ALTER TABLE agents ADD COLUMN auto_self_on_idle INTEGER NOT NULL DEFAULT 1',
+    );
+  }
 
   const roomCols = _db.query('PRAGMA table_info(rooms)').all() as Array<{
     name: string;

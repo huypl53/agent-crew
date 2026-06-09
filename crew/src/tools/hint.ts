@@ -1,3 +1,5 @@
+import type { Agent, ToolResult } from '../shared/types.ts';
+import { err, ok } from '../shared/types.ts';
 import { initDb } from '../state/db.ts';
 import {
   getAgentByPane,
@@ -6,13 +8,16 @@ import {
   getRoom,
   setHint,
   unsetHint,
-  tickHintCadence,
 } from '../state/index.ts';
-import type { Agent, ToolResult } from '../shared/types.ts';
-import { ok, err } from '../shared/types.ts';
 
 type HintTarget =
-  | { agentName: string; roomName: string; roomId: number; agent: Agent; pane: string | null }
+  | {
+      agentName: string;
+      roomName: string;
+      roomId: number;
+      agent: Agent;
+      pane: string | null;
+    }
   | { error: string };
 
 /**
@@ -20,7 +25,11 @@ type HintTarget =
  * Auto-detects from TMUX_PANE when possible; validates explicit flags.
  * Returns fully resolved data (room + agent) to avoid redundant lookups.
  */
-function resolveHintTarget(params: { agent?: string; room?: string; name?: string }): HintTarget {
+function resolveHintTarget(params: {
+  agent?: string;
+  room?: string;
+  name?: string;
+}): HintTarget {
   const explicitAgentName = params.agent ?? params.name;
   const explicitRoomName = params.room;
   const pane = process.env.TMUX_PANE ?? null;
@@ -31,8 +40,17 @@ function resolveHintTarget(params: { agent?: string; room?: string; name?: strin
     const room = getRoom(explicitRoomName);
     if (!room) return { error: `Room not found: ${explicitRoomName}` };
     const agent = getAgentByRoomAndName(room.id, explicitAgentName);
-    if (!agent) return { error: `Agent ${explicitAgentName} is not in room ${explicitRoomName}` };
-    return { agentName: explicitAgentName, roomName: explicitRoomName, roomId: room.id, agent, pane };
+    if (!agent)
+      return {
+        error: `Agent ${explicitAgentName} is not in room ${explicitRoomName}`,
+      };
+    return {
+      agentName: explicitAgentName,
+      roomName: explicitRoomName,
+      roomId: room.id,
+      agent,
+      pane,
+    };
   }
 
   // Auto-detect from pane
@@ -65,7 +83,8 @@ function resolveHintTarget(params: { agent?: string; room?: string; name?: strin
 
   // Won't reach here (caught above), but satisfies type checker
   return {
-    error: 'No registered agent found for current pane. Run from a registered agent pane or pass both --agent and --room explicitly.',
+    error:
+      'No registered agent found for current pane. Run from a registered agent pane or pass both --agent and --room explicitly.',
   };
 }
 
@@ -83,11 +102,16 @@ export async function handleHintSet(params: {
   initDb();
 
   if (!params.message?.trim()) {
-    return err('Message is required. Example: crew hint set "You are worker-1 in project-x."');
+    return err(
+      'Message is required. Example: crew hint set "You are worker-1 in project-x."',
+    );
   }
-  const cadence = params.cadence != null ? Math.max(1, Math.floor(params.cadence)) : 3;
+  const cadence =
+    params.cadence != null ? Math.max(1, Math.floor(params.cadence)) : 3;
   if (params.cadence != null && cadence !== params.cadence) {
-    return err(`-c/--cadence must be a positive integer (got ${params.cadence})`);
+    return err(
+      `-c/--cadence must be a positive integer (got ${params.cadence})`,
+    );
   }
 
   const target = resolveHintTarget(params);
@@ -127,7 +151,8 @@ export async function handleHintUnset(params: {
   if ('error' in target) return err(target.error);
 
   const removed = unsetHint(target.agentName, target.roomId);
-  if (!removed) return err(`No hint found for ${target.agentName} in ${target.roomName}`);
+  if (!removed)
+    return err(`No hint found for ${target.agentName} in ${target.roomName}`);
 
   return ok({
     ok: true,
@@ -147,9 +172,13 @@ export async function handleHintLookup(params: {
   pane?: string;
 }): Promise<ToolResult> {
   const sessionId = params.session ?? null;
-  const pane = params.pane ?? process.env.TMUX_PANE;
+  const pane = params.pane ?? process.env.TMUX_PANE ?? null;
 
-  if (!pane) return err('Pane is required (--pane or TMUX_PANE env)');
+  if (!sessionId && !pane) {
+    return err(
+      'Either session (--session) or pane (--pane or TMUX_PANE env) is required',
+    );
+  }
 
   initDb();
 

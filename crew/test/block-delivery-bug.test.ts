@@ -7,9 +7,9 @@ import {
   test,
 } from 'bun:test';
 import { closeDb, initDb } from '../src/state/db.ts';
+import { setAgentInputBlockMode } from '../src/state/index.ts';
 import { handleJoinRoom } from '../src/tools/join-room.ts';
 import { handleSendMessage } from '../src/tools/send-message.ts';
-import { setAgentInputBlockMode } from '../src/state/index.ts';
 import {
   captureFromPane,
   cleanupAllTestSessions,
@@ -21,18 +21,18 @@ setDefaultTimeout(15000);
 describe('Block Delivery Bug Reproduction', () => {
   let testPaneA: string;
   let testPaneB: string;
-  let sessionA: string;
-  let sessionB: string;
+  let _sessionA: string;
+  let _sessionB: string;
 
   beforeEach(async () => {
     initDb(':memory:');
     const sa = await createTestSession('block-a');
     testPaneA = sa.pane;
-    sessionA = sa.session;
+    _sessionA = sa.session;
 
     const sb = await createTestSession('block-b');
     testPaneB = sb.pane;
-    sessionB = sb.session;
+    _sessionB = sb.session;
   });
 
   afterEach(async () => {
@@ -98,7 +98,9 @@ describe('Block Delivery Bug Reproduction', () => {
     setAgentInputBlockMode('leader-1', 'persist');
 
     // 3. Worker stops (sends Stop hook event)
-    const { processHookEventInput } = await import('../src/tools/hook-event.ts');
+    const { processHookEventInput } = await import(
+      '../src/tools/hook-event.ts'
+    );
     await processHookEventInput(
       JSON.stringify({
         hook_event_name: 'Stop',
@@ -144,7 +146,9 @@ describe('Block Delivery Bug Reproduction', () => {
     });
 
     // 4. Worker responds (fires Stop hook)
-    const { processHookEventInput } = await import('../src/tools/hook-event.ts');
+    const { processHookEventInput } = await import(
+      '../src/tools/hook-event.ts'
+    );
     await processHookEventInput(
       JSON.stringify({
         hook_event_name: 'Stop',
@@ -161,5 +165,43 @@ describe('Block Delivery Bug Reproduction', () => {
     console.log('Leader Pane Output with Party Digest:', leaderOutput);
 
     expect(leaderOutput).not.toContain('Worker perspective on strategy');
+  });
+
+  test('incoming message with push mode from worker is not delivered to leader when blocked', async () => {
+    // 1. Join room
+    await handleJoinRoom({
+      room: 'company',
+      role: 'leader',
+      name: 'leader-1',
+      tmux_target: testPaneA,
+    });
+    await handleJoinRoom({
+      room: 'company',
+      role: 'worker',
+      name: 'worker-1',
+      tmux_target: testPaneB,
+    });
+
+    // 2. Set input block to persist on leader
+    setAgentInputBlockMode('leader-1', 'persist');
+
+    // 3. Worker sends a message to leader with push mode
+    const { deliverMessage } = await import('../src/delivery/index.ts');
+    await deliverMessage(
+      'worker-1',
+      'company',
+      'Hello Leader Push',
+      'leader-1',
+      'push',
+      'completion',
+    );
+
+    // Wait a bit to see if tmux would have pasted it
+    await Bun.sleep(1000);
+
+    const leaderOutput = await captureFromPane(testPaneA);
+    console.log('Leader Pane Output with Push Mode:', leaderOutput);
+
+    expect(leaderOutput).not.toContain('Hello Leader Push');
   });
 });
