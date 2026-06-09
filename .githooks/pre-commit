@@ -1,13 +1,38 @@
 #!/bin/sh
-# Run Biome lint on staged TS/TSX files before commit
+# Pre-commit hook: format and lint staged TS/TSX/JS/JSON files in crew/
 set -e
 
-STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx)$' | grep '^crew/' || true)
+REPO_ROOT=$(git rev-parse --show-toplevel)
+CREW_DIR="$REPO_ROOT/crew"
+
+# Collect staged files inside crew/ that Biome handles
+STAGED=$(git diff --cached --name-only --diff-filter=ACM \
+  | grep -E '\.(ts|tsx|js|jsx|json)$' \
+  | grep '^crew/' \
+  | sed 's|^crew/||' \
+  || true)
 
 if [ -z "$STAGED" ]; then
   exit 0
 fi
 
-echo "Running Biome lint on staged files..."
-cd "$(git rev-parse --show-toplevel)/crew"
-echo "$STAGED" | sed 's|^crew/||' | xargs bunx biome check --reporter=summary
+echo "🔧 Biome: formatting staged files..."
+cd "$CREW_DIR"
+echo "$STAGED" | xargs bunx biome format --write 2>&1
+
+echo "🔍 Biome: linting staged files..."
+echo "$STAGED" | xargs bunx biome check --reporter=summary 2>&1
+STATUS=$?
+
+if [ $STATUS -ne 0 ]; then
+  echo ""
+  echo "❌ Biome lint failed. Fix errors above or run:"
+  echo "   cd crew && bun run lint:fix"
+  exit 1
+fi
+
+# Re-add files that Biome may have reformatted
+cd "$REPO_ROOT"
+echo "$STAGED" | sed 's|^|crew/|' | xargs git add
+
+echo "✅ Biome checks passed."
