@@ -1,4 +1,5 @@
 import { err } from '../shared/types.ts';
+import { handleAutoSelf } from '../tools/auto-self.ts';
 import { handleCheckChanges } from '../tools/check-changes.ts';
 import { handleClearWorkerSession } from '../tools/clear-worker-session.ts';
 import { handleCreateRoom } from '../tools/create-room.ts';
@@ -266,5 +267,9 @@ export const COMMANDS: Record<
       message: p.slice(1).join(' ') || undefined,
       cadence: f.cadence != null ? parseInt(String(f.cadence), 10) : undefined,
     }),
+  },
+  'auto-self': {
+    handler: async (p) => handleAutoSelf(p),
+    buildParams: (f, p) => ({ name: f.name, action: p[0] ?? 'on' }),
   },
 };

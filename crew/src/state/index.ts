@@ -130,6 +130,27 @@ export function isAgentIdleMuted(name: string): boolean {
   return row?.idle_muted === 1;
 }
 
+export function setAgentAutoSelfOnIdle(name: string, enabled: boolean): void {
+  const agent = getDb()
+    .query('SELECT id FROM agents WHERE name = ? ORDER BY id DESC LIMIT 1')
+    .get(name) as { id: number } | null;
+  if (agent) {
+    getDb().run('UPDATE agents SET auto_self_on_idle = ? WHERE id = ?', [
+      enabled ? 1 : 0,
+      agent.id,
+    ]);
+  }
+}
+
+export function isAgentAutoSelfOnIdle(name: string): boolean {
+  const row = getDb()
+    .query(
+      'SELECT auto_self_on_idle FROM agents WHERE name = ? ORDER BY id DESC LIMIT 1',
+    )
+    .get(name) as { auto_self_on_idle: number } | null;
+  return row?.auto_self_on_idle !== 0; // default is on
+}
+
 export function setAgentStatus(name: string, status: 'busy' | 'idle'): void {
   // Update status on most recent agent with this name
   const agent = getDb()
@@ -1219,6 +1240,9 @@ async function deliverWithRetry(
 function autoSelfOnLeaderIdle(agentName: string, currentEventId: number): void {
   const agent = getAgent(agentName);
   if (!agent || agent.role !== 'leader' || !agent.tmux_target) return;
+
+  // Respect per-leader toggle (default: on)
+  if (!isAgentAutoSelfOnIdle(agentName)) return;
 
   // Check previous event: only trigger on busy→idle transition
   const db = getDb();

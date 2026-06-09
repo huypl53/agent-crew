@@ -48,6 +48,7 @@ Commands:
 
   hint        set|unset|lookup                             Manage registered-agent hint
               set "your message" [-c N] (default cadence: 3)
+  auto-self   on|off [--name <leader>]                     Toggle auto crew status --self on leader idle
   wait-idle   --target <pane> [--timeout <ms>]             Wait until pane is idle (stable content)
               [--stable-count N] [--idle-seconds N]
   serve       [--port N] [--host H] [--summary-interval N] Start browser dashboard server (default port 3456)
@@ -221,4 +222,6 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     return JSON.stringify(d);
   },
   manage: () => 'Management console exited',
+  'auto-self': (d) =>
+    `${d.name} auto-self-on-idle:${d.auto_self_on_idle ? 'on' : 'off'} ${d.note ?? ''}`,
 };
