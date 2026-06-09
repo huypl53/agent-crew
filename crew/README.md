@@ -202,7 +202,7 @@ crew <command>
 | `members` | `crew members --room crew` | `[crew] topic\n  wk-01 worker idle` |
 | `send` | `crew send --room crew --text "done" --name wk-01 --kind completion` | `msg:42 delivered` |
 | `read` | `crew read --name wk-01 --room crew` | `[leader@crew→wk-01](task): do the thing` |
-| `status` | `crew status wk-01` | `wk-01 idle %33 crew (/path/to/project)` |
+| `status` | `crew status wk-01` or `crew status --session <id>` | `wk-01 idle %33 crew (/path/to/project)` |
 | `check` | `crew check --name wk-01` | `messages:42 agents:8` |
 | `refresh` | `crew refresh --name wk-01` | `Refreshed wk-01 rooms:crew pane:%42` |
 | `topic` | `crew topic --room crew --text "Sprint 3" --name lead-01` | `Topic set: Sprint 3` |

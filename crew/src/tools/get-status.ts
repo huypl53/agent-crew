@@ -221,14 +221,18 @@ async function handleSelfStatus(params: GetStatusParams): Promise<ToolResult> {
   const status = await resolveAgentLiveStatus(agent);
   const inputBlockMode = getAgentInputBlockMode(agent.name);
 
-  // Hint
+  // Hint: try session_id first, fall back to pane-only lookup
   let hintData: { message: string; cadence: number } | null = null;
   const latestEvent = getLatestHookEvent(agent.name);
-  const hint = getHint(
+  let hint = getHint(
     agent.tmux_target ?? null,
     latestEvent?.session_id ?? null,
     agent.room_id,
   );
+  // If session_id didn't match any hint, try pane-only (no session filter)
+  if (!hint && latestEvent?.session_id) {
+    hint = getHint(agent.tmux_target ?? null, null, agent.room_id);
+  }
   if (hint) {
     hintData = { message: hint.message, cadence: hint.cadence };
   }
