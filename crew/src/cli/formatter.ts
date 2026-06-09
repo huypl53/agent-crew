@@ -22,7 +22,7 @@ Commands:
               [--to <agent>] [--kind <kind>] [--mode <mode>] Send a message
   read        [--name <name>] [--room <name|id|path>] [--limit N]
               [--kinds task,completion]                    Read messages
-  status      <agent_name> [--name <self>]                 Check agent status
+  status      [<agent_name>] [--self] [--json] [--session <id>] [--name <self>] Check agent status (--self for dashboard)
   check       [--name <name>] [--scopes messages,agents]   Check for changes
   refresh     [--name <name>]                              Re-register agent
   topic       --room <name|id|path> --text <text> [--name <name>] Set room topic
@@ -70,6 +70,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
       .join(' '),
 
   status: (d) => {
+    if (d.dashboard) return d.dashboard;
     return `${d.name} ${d.status} ${d.tmux_target} ${d.room_name ?? d.room ?? ''}${d.room_path ? ` (${d.room_path})` : ''}`;
   },
 

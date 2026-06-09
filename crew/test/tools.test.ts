@@ -1749,4 +1749,43 @@ describe('MCP tools', () => {
       expect(finalMembers).not.toContain('work-b');
     });
   });
+
+  describe('get_status by session', () => {
+    test('resolves agent status by session ID', async () => {
+      await handleJoinRoom({
+        room: 'session-room',
+        role: 'worker',
+        name: 'worker-session-test',
+        tmux_target: testPaneA,
+      });
+
+      // Register a hook event to link the session ID to the agent
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Start',
+          session_id: 'test-session-uuid-123',
+        }),
+        testPaneA,
+      );
+
+      // Query status by session ID
+      const result = await handleGetStatus({
+        session: 'test-session-uuid-123',
+      });
+      expect(result.isError).toBeUndefined();
+
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.name).toBe('worker-session-test');
+      expect(data.status).toBe('busy');
+    });
+
+    test('returns error for non-existent session ID', async () => {
+      const result = await handleGetStatus({
+        session: 'non-existent-session-uuid',
+      });
+      expect(result.isError).toBe(true);
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.error).toContain('No registered agent found for session ID');
+    });
+  });
 });

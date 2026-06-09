@@ -568,6 +568,17 @@ export function getAgentByPane(pane: string): Agent | undefined {
   return dbRowToAgent(row);
 }
 
+export function getAgentBySessionId(sessionId: string): Agent | undefined {
+  const db = getDb();
+  const row = db
+    .query(
+      'SELECT agent_name FROM hook_events WHERE session_id = ? ORDER BY id DESC LIMIT 1',
+    )
+    .get(sessionId) as { agent_name: string } | null;
+  if (!row) return undefined;
+  return getAgent(row.agent_name);
+}
+
 export function getRoomMembers(roomId: number): Agent[] {
   const db = getDb();
   const rows = db

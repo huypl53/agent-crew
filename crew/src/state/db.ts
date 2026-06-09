@@ -130,6 +130,8 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_hook_events_agent ON hook_events(agent_name);
   CREATE INDEX IF NOT EXISTS idx_hook_events_type ON hook_events(agent_name, event_type);
+  CREATE INDEX IF NOT EXISTS idx_hook_events_session ON hook_events(session_id) WHERE session_id IS NOT NULL;
+
 
   CREATE TRIGGER IF NOT EXISTS trg_hook_events_insert AFTER INSERT ON hook_events
   BEGIN
@@ -356,22 +358,40 @@ export function initDb(path?: string): void {
   // Migration: drop old single-column unique indexes if they exist.
   _db.exec('DROP INDEX IF EXISTS idx_agent_hints_pane');
   _db.exec('DROP INDEX IF EXISTS idx_agent_hints_session');
-  _db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_hints_pane ON agent_hints(pane_bootstrap, room_id) WHERE pane_bootstrap IS NOT NULL');
-  _db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_hints_session ON agent_hints(session_id, room_id) WHERE session_id IS NOT NULL');
-  _db.exec('CREATE INDEX IF NOT EXISTS idx_agent_hints_agent_room ON agent_hints(agent_name, room_id)');
+  _db.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_hints_pane ON agent_hints(pane_bootstrap, room_id) WHERE pane_bootstrap IS NOT NULL',
+  );
+  _db.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_hints_session ON agent_hints(session_id, room_id) WHERE session_id IS NOT NULL',
+  );
+  _db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_agent_hints_agent_room ON agent_hints(agent_name, room_id)',
+  );
 
   // Additive column migrations for agent_hints (custom message + cadence)
   const hintCols = _db.query('PRAGMA table_info(agent_hints)').all() as Array<{
     name: string;
   }>;
   if (!hintCols.some((c) => c.name === 'message')) {
-    _db.exec("ALTER TABLE agent_hints ADD COLUMN message TEXT NOT NULL DEFAULT ''");
+    _db.exec(
+      "ALTER TABLE agent_hints ADD COLUMN message TEXT NOT NULL DEFAULT ''",
+    );
   }
   if (!hintCols.some((c) => c.name === 'cadence')) {
-    _db.exec('ALTER TABLE agent_hints ADD COLUMN cadence INTEGER NOT NULL DEFAULT 3');
+    _db.exec(
+      'ALTER TABLE agent_hints ADD COLUMN cadence INTEGER NOT NULL DEFAULT 3',
+    );
   }
 
-  const scopes = ['agents', 'messages', 'templates', 'room-templates', 'hook-events', 'party', 'hints'];
+  const scopes = [
+    'agents',
+    'messages',
+    'templates',
+    'room-templates',
+    'hook-events',
+    'party',
+    'hints',
+  ];
   for (const scope of scopes) {
     _db.run(
       'INSERT OR IGNORE INTO change_log (scope, version, updated_at) VALUES (?, 0, datetime("now"))',

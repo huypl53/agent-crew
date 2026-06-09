@@ -12,6 +12,7 @@ const BOOLEAN_FLAGS = new Set([
   'dev',
   'headless',
   'persist',
+  'self',
 ]);
 
 /** Short flag aliases: -c → cadence, etc. */

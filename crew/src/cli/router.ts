@@ -93,6 +93,7 @@ export const COMMANDS: Record<
       name: f.name,
       self: !!f.self,
       json: !!f.json,
+      session: typeof f.session === 'string' ? f.session : undefined,
     }),
   },
   refresh: {

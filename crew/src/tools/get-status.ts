@@ -6,6 +6,7 @@ import { getDb, initDb } from '../state/db.ts';
 import {
   getAgent,
   getAgentByPane,
+  getAgentBySessionId,
   getAgentInputBlockMode,
   getAgentMessageCounts,
   getHint,
@@ -20,6 +21,7 @@ interface GetStatusParams {
   name?: string; // calling agent's own identity
   self?: boolean; // auto-detect agent from TMUX_PANE, show dashboard
   json?: boolean; // structured JSON output (with --self)
+  session?: string; // Query agent by session ID
 }
 
 // --- Dashboard formatting (--self mode) ---
@@ -158,16 +160,27 @@ export async function handleGetStatus(
     return handleSelfStatus(params);
   }
 
-  // Original behavior: query a specific agent by name
-  const targetName = params.agent_name ?? params.name;
+  let agent: Agent | undefined;
 
-  if (!targetName) {
-    return err('Missing required param: agent_name or name');
-  }
+  if (params.session) {
+    agent = getAgentBySessionId(params.session);
+    if (!agent) {
+      return err(
+        `No registered agent found for session ID "${params.session}"`,
+      );
+    }
+  } else {
+    // Original behavior: query a specific agent by name
+    const targetName = params.agent_name ?? params.name;
 
-  const agent = getAgent(targetName);
-  if (!agent) {
-    return err(`Agent "${targetName}" is not registered`);
+    if (!targetName) {
+      return err('Missing required param: agent_name, name, or session');
+    }
+
+    agent = getAgent(targetName);
+    if (!agent) {
+      return err(`Agent "${targetName}" is not registered`);
+    }
   }
 
   const status = await resolveAgentLiveStatus(agent);
