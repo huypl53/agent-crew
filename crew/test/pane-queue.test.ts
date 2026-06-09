@@ -19,6 +19,7 @@ import {
   cleanupAllTestSessions,
   createTestSession,
   sendToPane,
+  waitForPaneOutput,
 } from './helpers.ts';
 
 // PaneQueue tests involve real tmux delivery: waitForReady (~1s) + paste settle (500ms) + Enter retry.
@@ -76,6 +77,26 @@ describe('PaneQueue', () => {
   test('enqueue key delivers BSpace to pane', async () => {
     const q = getQueue(testPane);
     await q.enqueue({ type: 'key', key: 'BSpace' });
+  });
+
+  test('enqueue key-hex 7f deletes a character (Backspace UAT)', async () => {
+    // Type some text so the shell has chars to erase, then send 0x7f.
+    // tmux control mode encodes the resulting BS as \010 (octal) in %output.
+    await sendToPane(testPane, 'printf "abc"');
+    await Bun.sleep(300);
+
+    const q = getQueue(testPane);
+    // Use onReady callback: enqueue fires only AFTER the control-mode client
+    // has confirmed connection (%end seen), eliminating the startup race.
+    const { matched } = await waitForPaneOutput(
+      testPane,
+      /\\010/,
+      4000,
+      async () => {
+        await q.enqueue({ type: 'key-hex', hex: '7f' });
+      },
+    );
+    expect(matched).toBe(true);
   });
 
   test('escape and sigint items jump to front of queue', async () => {

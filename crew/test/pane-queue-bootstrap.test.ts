@@ -44,6 +44,7 @@ describe('PaneQueue bootstrap delivery', () => {
         sendSigint: async () => ({ delivered: true }),
         sendClear: async () => ({ delivered: true }),
         sendKey: async () => ({ delivered: true }),
+        sendKeyHex: async () => ({ delivered: true }),
       }));
 
       const { PaneQueue } = await import(${JSON.stringify(paneQueueUrl)});

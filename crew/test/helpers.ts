@@ -151,3 +151,101 @@ export async function cleanupAllTestSessions(tag?: string): Promise<void> {
     // No tmux server running — nothing to clean
   }
 }
+
+/**
+ * Wait for a pane to emit output matching `pattern` using tmux control mode.
+ *
+ * Opens a `-C attach` control-mode client on the test socket and listens to
+ * live `%output <paneId> <data>` lines. This is more reliable than polling
+ * `capture-pane` because it receives data as it arrives — no sleep timers,
+ * no stale snapshots, no cross-session contamination.
+ *
+ * Usage pattern to avoid startup race:
+ *   const result = await waitForPaneOutput(pane, /pattern/, 4000, async () => {
+ *     // This callback fires only AFTER control mode is connected (%end seen).
+ *     await queue.enqueue(...);
+ *   });
+ *
+ * @param target     Pane ID to watch (e.g. '%5')
+ * @param pattern    String or RegExp to match against each output chunk
+ * @param timeoutMs  Max wait time in milliseconds (default 5000)
+ * @param onReady    Optional async callback called once control mode is connected
+ */
+export async function waitForPaneOutput(
+  target: string,
+  pattern: string | RegExp,
+  timeoutMs = 5000,
+  onReady?: () => Promise<void>,
+): Promise<{ matched: boolean; seen: string }> {
+  ensureTestTmuxSocketEnv();
+
+  // Find which session the pane belongs to so we can attach to it
+  const sessionOut = await runTmux(
+    'display-message',
+    '-t',
+    target,
+    '-p',
+    '#{session_name}',
+  ).catch(() => '');
+  const session = sessionOut.trim();
+  if (!session) return { matched: false, seen: '' };
+
+  const seen: string[] = [];
+  const re = typeof pattern === 'string' ? new RegExp(pattern) : pattern;
+  const outputPrefix = `%output ${target} `;
+
+  const proc = Bun.spawn(
+    ['tmux', ...getSocketArgs(), '-C', 'attach-session', '-t', session],
+    { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
+  );
+
+  let resolved = false;
+  let matched = false;
+  let readyFired = false;
+
+  const deadline = setTimeout(() => {
+    if (!resolved) {
+      resolved = true;
+      proc.stdin.end();
+      proc.kill();
+    }
+  }, timeoutMs);
+
+  const reader = proc.stdout.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+
+  try {
+    while (!resolved) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      // tmux control mode uses CRLF line endings
+      const lines = buf.split(/\r?\n/);
+      buf = lines.pop() ?? '';
+      for (const line of lines) {
+        // Fire onReady after the first %end guard — control mode is now live
+        if (!readyFired && line.startsWith('%end') && onReady) {
+          readyFired = true;
+          // Don't await inline — let the read loop continue while action runs
+          onReady().catch(() => {});
+        }
+        if (!line.startsWith(outputPrefix)) continue;
+        const chunk = line.slice(outputPrefix.length);
+        seen.push(chunk);
+        if (re.test(chunk)) {
+          matched = true;
+          resolved = true;
+          proc.stdin.end();
+          proc.kill();
+          break;
+        }
+      }
+    }
+  } finally {
+    clearTimeout(deadline);
+    reader.releaseLock();
+  }
+
+  return { matched, seen: seen.join('') };
+}

@@ -23,6 +23,7 @@ import {
   sendCommand,
   sendEscape,
   sendKey,
+  sendKeyHex,
   sendKeys,
   sendSigint,
 } from '../tmux/index.ts';
@@ -33,7 +34,8 @@ export type QueueItem =
   | { type: 'escape' }
   | { type: 'sigint' }
   | { type: 'clear' }
-  | { type: 'key'; key: string };
+  | { type: 'key'; key: string } // named tmux key (e.g. 'BSpace', 'Enter')
+  | { type: 'key-hex'; hex: string }; // key by Unicode hex codepoint via send-keys -H
 
 interface QueueEntry {
   item: QueueItem;
@@ -272,6 +274,15 @@ export class PaneQueue {
         if (!r.delivered)
           throw new PaneDeliveryError(
             r.error ?? `key ${item.key} delivery failed`,
+            'DELIVERY_FAILED',
+          );
+        break;
+      }
+      case 'key-hex': {
+        const r = await sendKeyHex(this.target, item.hex);
+        if (!r.delivered)
+          throw new PaneDeliveryError(
+            r.error ?? `key-hex ${item.hex} delivery failed`,
             'DELIVERY_FAILED',
           );
         break;

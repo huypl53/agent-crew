@@ -617,3 +617,36 @@ export async function sendKey(
     return { delivered: false, error: `Key ${key} delivery failed` };
   }
 }
+
+/**
+ * Send a key by its Unicode hex codepoint using `send-keys -H`.
+ *
+ * Prefer this over sendKey() for control characters or any key where the
+ * tmux named-key lookup is ambiguous or unreliable. Common values:
+ *   '7f' — Backspace (DEL)
+ *   '0d' — Enter / Carriage Return
+ *   '1b' — Escape
+ *   '03' — Ctrl-C (SIGINT)
+ */
+export async function sendKeyHex(
+  target: string,
+  hex: string,
+): Promise<{ delivered: boolean; error?: string }> {
+  try {
+    const result = await run('send-keys', '-t', target, '-H', hex);
+    if (!result.success) {
+      return {
+        delivered: false,
+        error: result.stderr || `send-keys -H ${hex} failed`,
+      };
+    }
+    await Bun.sleep(PASTE_SETTLE_MS);
+    return { delivered: true };
+  } catch (e) {
+    logServer(
+      'ERROR',
+      `Key hex ${hex} delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return { delivered: false, error: `Key hex ${hex} delivery failed` };
+  }
+}
