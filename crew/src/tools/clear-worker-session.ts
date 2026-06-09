@@ -57,21 +57,10 @@ export async function handleClearWorkerSession(
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
   // Step 3: Send crew:refresh command to re-register the worker
-  const refreshText = `!crew refresh --name ${worker_name}`;
   try {
     await getQueue(worker.tmux_target).enqueue({
-      type: 'command',
-      text: refreshText,
-    });
-  } catch (e) {
-    return err(e instanceof Error ? e.message : String(e));
-  }
-
-  // Step 4: Send Backspace (0x7f) to exit command mode
-  try {
-    await getQueue(worker.tmux_target).enqueue({
-      type: 'key-hex',
-      hex: '7f',
+      type: 'crew-command',
+      text: `refresh --name ${worker_name}`,
     });
   } catch (e) {
     return err(e instanceof Error ? e.message : String(e));

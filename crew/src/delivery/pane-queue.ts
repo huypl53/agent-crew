@@ -35,7 +35,8 @@ export type QueueItem =
   | { type: 'sigint' }
   | { type: 'clear' }
   | { type: 'key'; key: string } // named tmux key (e.g. 'BSpace', 'Enter')
-  | { type: 'key-hex'; hex: string }; // key by Unicode hex codepoint via send-keys -H
+  | { type: 'key-hex'; hex: string } // key by Unicode hex codepoint via send-keys -H
+  | { type: 'crew-command'; text: string }; // sends "!crew <text>" then BSpace (0x7f) to exit command mode
 
 interface QueueEntry {
   item: QueueItem;
@@ -176,7 +177,7 @@ export class PaneQueue {
         }
         const event = getLatestHookEvent(agent.name);
         if (event) {
-          const ageMs = Date.now() - new Date(event.created_at + 'Z').getTime();
+          const ageMs = Date.now() - new Date(`${event.created_at}Z`).getTime();
           // Recent event (< 60s) means agent state is known → ready
           if (ageMs < 60_000) return;
         }
@@ -223,7 +224,7 @@ export class PaneQueue {
       case 'paste': {
         let text = item.text;
         const suffix = this.role ? ROLE_SUFFIX[this.role] : undefined;
-        if (suffix) text += '\n' + suffix;
+        if (suffix) text += `\n${suffix}`;
         const r = await sendKeys(this.target, text);
         if (!r.delivered)
           throw new PaneDeliveryError(
@@ -287,6 +288,22 @@ export class PaneQueue {
           );
         break;
       }
+      case 'crew-command': {
+        const r1 = await sendCommand(this.target, `!crew ${item.text}`);
+        if (!r1.delivered)
+          throw new PaneDeliveryError(
+            r1.error ?? `crew-command "${item.text}" delivery failed`,
+            'DELIVERY_FAILED',
+          );
+        // Send BSpace (0x7f) to exit command mode after crew command
+        const r2 = await sendKeyHex(this.target, '7f');
+        if (!r2.delivered)
+          throw new PaneDeliveryError(
+            r2.error ?? 'crew-command BSpace delivery failed',
+            'DELIVERY_FAILED',
+          );
+        break;
+      }
     }
   }
 
@@ -301,7 +318,7 @@ export class PaneQueue {
     try {
       return await fn();
     } finally {
-      releaseLock!();
+      releaseLock?.();
     }
   }
 }

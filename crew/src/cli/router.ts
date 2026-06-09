@@ -88,7 +88,12 @@ export const COMMANDS: Record<
   },
   status: {
     handler: handleGetStatus,
-    buildParams: (f, p) => ({ agent_name: p[0] ?? f.agent, name: f.name }),
+    buildParams: (f, p) => ({
+      agent_name: p[0] ?? f.agent,
+      name: f.name,
+      self: !!f.self,
+      json: !!f.json,
+    }),
   },
   refresh: {
     handler: handleRefresh,

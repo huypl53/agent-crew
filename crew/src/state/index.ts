@@ -18,7 +18,7 @@ import type {
   TokenUsage,
 } from '../shared/types.ts';
 import { isPaneDead, paneCommandLooksAlive, sendKeys } from '../tmux/index.ts';
-import { closeDb, getDb, getDbPath, initDb } from './db.ts';
+import { closeDb, getDb, initDb } from './db.ts';
 
 // Re-export for callers
 export { closeDb, initDb };
@@ -762,7 +762,7 @@ export function readRoomMessages(
     db.query(sql).all(...params) as Record<string, unknown>[]
   ).map(rowToMessage);
   const msgs = allMsgs.length > limit ? allMsgs.slice(-limit) : allMsgs;
-  const maxSeq = msgs.length > 0 ? msgs[msgs.length - 1]!.sequence : cursor;
+  const maxSeq = msgs.length > 0 ? msgs[msgs.length - 1]?.sequence : cursor;
   advanceCursor(agentName, room, maxSeq);
   return { messages: msgs, next_sequence: maxSeq };
 }
@@ -797,7 +797,7 @@ export function readMessages(
     rowToMessage,
   );
   const maxSeq =
-    msgs.length > 0 ? msgs[msgs.length - 1]!.sequence : (sinceSequence ?? 0);
+    msgs.length > 0 ? msgs[msgs.length - 1]?.sequence : (sinceSequence ?? 0);
   return { messages: msgs, next_sequence: maxSeq };
 }
 
@@ -1044,6 +1044,12 @@ export function addHookEvent(
     notifyLeadersOnWorkerStop(agentName, payload);
   }
 
+  // Auto-self on leader idle: when a leader transitions busy→idle,
+  // enqueue !crew status --self so the user sees their status dashboard
+  if (eventType === 'Stop') {
+    autoSelfOnLeaderIdle(agentName, eventId);
+  }
+
   return eventId;
 }
 
@@ -1169,7 +1175,7 @@ async function deliverWithRetry(
   const latestEvent = getLatestHookEvent(leader.name);
   if (latestEvent?.event_type === 'UserPromptSubmit') {
     const eventAge =
-      Date.now() - new Date(latestEvent.created_at + 'Z').getTime();
+      Date.now() - new Date(`${latestEvent.created_at}Z`).getTime();
     // If leader submitted within last 2s, wait for them to settle
     if (eventAge < 2000) {
       await Bun.sleep(RETRY_DELAY_MS);
@@ -1192,6 +1198,37 @@ async function deliverWithRetry(
       await Bun.sleep(RETRY_DELAY_MS);
     }
   }
+}
+
+/**
+ * Auto-trigger `!crew status --self` when a leader transitions from busy→idle.
+ * Only fires if the previous event was NOT a Stop (i.e., genuine busy→idle).
+ * Fire-and-forget: doesn't block hook processing.
+ */
+function autoSelfOnLeaderIdle(agentName: string, currentEventId: number): void {
+  const agent = getAgent(agentName);
+  if (!agent || agent.role !== 'leader' || !agent.tmux_target) return;
+
+  // Check previous event: only trigger on busy→idle transition
+  const db = getDb();
+  const prevEvent = db
+    .query(
+      'SELECT event_type FROM hook_events WHERE agent_name = ? AND id < ? ORDER BY id DESC LIMIT 1',
+    )
+    .get(agentName, currentEventId) as { event_type: string } | null;
+
+  // If previous was also a Stop, leader was already idle — skip
+  if (!prevEvent || prevEvent.event_type === 'Stop') return;
+
+  // Dynamic import to avoid circular deps, fire-and-forget
+  import('../delivery/pane-queue.ts')
+    .then(({ getQueue }) => {
+      getQueue(agent.tmux_target!, { role: agent.role }).enqueue({
+        type: 'crew-command',
+        text: 'status --self',
+      });
+    })
+    .catch(() => {});
 }
 
 /**
@@ -1241,7 +1278,7 @@ function truncateForNotification(text: string, maxLen: number): string {
     .join(' ');
 
   if (cleaned.length <= maxLen) return cleaned;
-  return cleaned.slice(0, maxLen - 3) + '...';
+  return `${cleaned.slice(0, maxLen - 3)}...`;
 }
 
 export function getLatestHookEvent(
