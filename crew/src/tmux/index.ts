@@ -594,3 +594,26 @@ export async function killSession(name: string): Promise<boolean> {
   const result = await run('kill-session', '-t', name);
   return result.success;
 }
+
+export async function sendKey(
+  target: string,
+  key: string,
+): Promise<{ delivered: boolean; error?: string }> {
+  try {
+    const result = await run('send-keys', '-t', target, key);
+    if (!result.success) {
+      return {
+        delivered: false,
+        error: result.stderr || `send-keys ${key} failed`,
+      };
+    }
+    await Bun.sleep(PASTE_SETTLE_MS);
+    return { delivered: true };
+  } catch (e) {
+    logServer(
+      'ERROR',
+      `Key ${key} delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return { delivered: false, error: `Key ${key} delivery failed` };
+  }
+}
