@@ -18,7 +18,8 @@ Multi-agent coordination for AI coding agents via tmux rooms. Works with **Claud
 9. Automatic dead agent cleanup — periodic liveness check every ~30s detects disconnected workers and cleans up their registration (debounced, leaders are never removed)
 11. Role-aware delivery — every push message includes a role reminder suffix so agents remember their responsibilities
 12. Leader idle notification control — leaders can mute/unmute sweep idle notifications from workers
-13. Polling flow control — pause/resume sweep delivery to leaders, or switch between auto/manual busy detection
+13. Auto-self on idle — leaders automatically see `crew status --self` dashboard when going idle (toggleable per-leader)
+14. Polling flow control — pause/resume sweep delivery to leaders, or switch between auto/manual busy detection
 
 ## Architecture
 
@@ -202,7 +203,7 @@ crew <command>
 | `members` | `crew members --room crew` | `[crew] topic\n  wk-01 worker idle` |
 | `send` | `crew send --room crew --text "done" --name wk-01 --kind completion` | `msg:42 delivered` |
 | `read` | `crew read --name wk-01 --room crew` | `[leader@crew→wk-01](task): do the thing` |
-| `status` | `crew status wk-01` or `crew status --session <id>` | `wk-01 idle %33 crew (/path/to/project)` |
+| `status` | `crew status wk-01` or `crew status --self` or `crew status --session <id>` | `wk-01 idle %33 crew (/path/to/project)` or rich dashboard with `--self` |
 | `check` | `crew check --name wk-01` | `messages:42 agents:8` |
 | `refresh` | `crew refresh --name wk-01` | `Refreshed wk-01 rooms:crew pane:%42` |
 | `topic` | `crew topic --room crew --text "Sprint 3" --name lead-01` | `Topic set: Sprint 3` |
@@ -215,6 +216,7 @@ crew <command>
 | `set-polling-busy` | `crew set-polling-busy --mode manual_busy` | `polling busy_mode=manual_busy paused=false` |
 | `mute-idle` | `crew mute-idle --name lead-01` | `lead-01 idle notifications muted` |
 | `unmute-idle` | `crew unmute-idle --name lead-01` | `lead-01 idle notifications unmuted` |
+| `auto-self` | `crew auto-self on --name lead-01` or `crew auto-self off --name lead-01` | `lead-01 auto-self-on-idle:on` / `off` |
 | `create-room` | `crew create-room --room proj --name lead-01 --topic "Sprint 1"` | `Created room: proj (Sprint 1)` |
 | `delete-room` | `crew delete-room --room proj --confirm --name lead-01` | `Deleted room: proj (3 members removed, 12 messages deleted)` |
 | `manage` | `crew manage --name lead-01` | Interactive TUI — pick rooms/members and apply actions |
@@ -449,6 +451,41 @@ The message is a positional argument after `set` — no flag needed. Use quotes 
 **`-c N`** (default 3) — how often the hint fires. `-c 1` fires every turn, `-c 5` fires on the 5th, 10th, 15th, etc.
 
 **Identity precedence:** The hook handler looks up hints by `session_id` first, falling back to `TMUX_PANE` bootstrap. When Claude Code first emits a `session_id`, the pane-bound hint is migrated to the session — survives tmux reattach, won't leak to a new session on the same pane.
+
+## Self Status Dashboard
+
+`crew status --self` shows a rich dashboard for the current agent (auto-detected from `TMUX_PANE`), including:
+
+- Agent name, role, status, and room
+- Active hint (if registered) with next reminder cadence
+- Pending unread messages (with `--json` for structured count by kind)
+- Worker summary (leaders only: how many workers busy/idle/dead)
+- Last activity timestamp
+
+```bash
+# Show your dashboard
+crew status --self
+
+# JSON output for scripting
+crew status --self --json
+```
+
+## Auto-Self on Idle
+
+Leaders automatically receive `crew status --self` when they transition from busy→idle, so they immediately see their dashboard after completing a task. This is on by default.
+
+```bash
+# Check current setting (default: on)
+crew auto-self on --name lead-01
+
+# Disable auto-self on idle
+crew auto-self off --name lead-01
+
+# Re-enable
+crew auto-self on --name lead-01
+```
+
+The toggle is per-leader agent. When `auto_self_on_idle` is off, the busy→idle transition still fires normally but no `crew status --self` command is sent.
 
 ## TUI Dashboard
 
