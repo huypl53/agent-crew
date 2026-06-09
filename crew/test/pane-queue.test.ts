@@ -73,9 +73,9 @@ describe('PaneQueue', () => {
     await q.enqueue({ type: 'clear' });
   });
 
-  test('enqueue key delivers Bslash to pane', async () => {
+  test('enqueue key delivers BSpace to pane', async () => {
     const q = getQueue(testPane);
-    await q.enqueue({ type: 'key', key: 'Bslash' });
+    await q.enqueue({ type: 'key', key: 'BSpace' });
   });
 
   test('escape and sigint items jump to front of queue', async () => {

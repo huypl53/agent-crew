@@ -67,6 +67,16 @@ export async function handleClearWorkerSession(
     return err(e instanceof Error ? e.message : String(e));
   }
 
+  // Step 4: Send backslash key to exit command mode
+  try {
+    await getQueue(worker.tmux_target).enqueue({
+      type: 'key',
+      key: 'BSpace',
+    });
+  } catch (e) {
+    return err(e instanceof Error ? e.message : String(e));
+  }
+
   return ok({
     cleared: true,
     worker_name,
