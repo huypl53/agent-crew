@@ -792,6 +792,35 @@ describe('MCP tools', () => {
       );
     });
 
+    test('leader sending message to worker includes room member statuses in output', async () => {
+      await handleJoinRoom({
+        room: 'status-test',
+        role: 'leader',
+        name: 'lead',
+        tmux_target: testPaneA,
+      });
+      await handleJoinRoom({
+        room: 'status-test',
+        role: 'worker',
+        name: 'w1',
+        tmux_target: testPaneB,
+      });
+
+      const result = await handleSendMessage({
+        room: 'status-test',
+        text: 'hello status test',
+        name: 'lead',
+        to: 'w1',
+        mode: 'push',
+      });
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.delivered).toBe(true);
+      expect(data.members).toBeDefined();
+      expect(data.members.length).toBe(2);
+      expect(data.members.some((m: any) => m.name === 'w1')).toBe(true);
+      expect(data.members.some((m: any) => m.name === 'lead')).toBe(true);
+    });
+
     test('concurrent crew CLI send messages to DB without locking', async () => {
       closeDb();
       const testDir = process.cwd();

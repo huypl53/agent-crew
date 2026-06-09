@@ -4,7 +4,8 @@ import { config } from '../config.ts';
 import { deliverMessage } from '../delivery/index.ts';
 import type { ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
-import { getAgent, getRoom } from '../state/index.ts';
+import { getAgent, getRoom, getRoomMembers } from '../state/index.ts';
+import { resolveAgentLiveStatus } from './get-status.ts';
 
 interface SendMessageParams {
   room: string;
@@ -137,11 +138,54 @@ export async function handleSendMessage(
     reply_to,
   );
 
+  const senderIsLeader = sender.role === 'leader';
+  let hasWorkerDelivered = false;
+
+  if (senderIsLeader) {
+    if (to) {
+      const target = getAgent(to);
+      if (target?.role === 'worker' && results[0]?.delivered) {
+        hasWorkerDelivered = true;
+      }
+    } else {
+      const members = getRoomMembers(r.id);
+      const targets = members.filter((m) => m.name !== name);
+      for (let i = 0; i < results.length; i++) {
+        const targetAgent = targets[i];
+        if (
+          targetAgent &&
+          targetAgent.role === 'worker' &&
+          results[i]?.delivered
+        ) {
+          hasWorkerDelivered = true;
+          break;
+        }
+      }
+    }
+  }
+
+  let membersStatus: any[] | undefined;
+  if (hasWorkerDelivered) {
+    membersStatus = await Promise.all(
+      getRoomMembers(r.id).map(async (agent) => {
+        const status = await resolveAgentLiveStatus(agent);
+        return {
+          agent_id: agent.agent_id,
+          name: agent.name,
+          role: agent.role,
+          status,
+          input_block_mode: agent.input_block_mode,
+        };
+      }),
+    );
+  }
+
   if (results.length === 1) {
     return ok({
       message_id: results[0]!.message_id,
       delivered: results[0]!.delivered,
       queued: results[0]!.queued,
+      ...(membersStatus ? { members: membersStatus } : {}),
     });
   }
 
@@ -153,5 +197,6 @@ export async function handleSendMessage(
     delivered,
     queued: results.length,
     message_ids: results.map((r) => r.message_id),
+    ...(membersStatus ? { members: membersStatus } : {}),
   });
 }

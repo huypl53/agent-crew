@@ -119,6 +119,33 @@ describe('CLI formatter', () => {
     expect(out).toContain('delivered');
   });
 
+  test('formats send result with members status when present', () => {
+    const data = {
+      message_id: '42',
+      delivered: true,
+      queued: true,
+      members: [
+        {
+          name: 'wk-01',
+          role: 'worker',
+          status: 'idle',
+          input_block_mode: 'persist',
+        },
+        {
+          name: 'lead',
+          role: 'leader',
+          status: 'idle',
+          input_block_mode: 'off',
+        },
+      ],
+    };
+    const out = formatResult('send', data);
+    expect(out).toContain('msg:42 delivered');
+    expect(out).toContain('Members:');
+    expect(out).toContain('  wk-01 worker idle input-block:persist');
+    expect(out).toContain('  lead leader idle input-block:off');
+  });
+
   test('formats members list', () => {
     const data = {
       room: 'crew',

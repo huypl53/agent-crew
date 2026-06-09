@@ -108,9 +108,23 @@ const FORMATTERS: Record<string, (data: any) => string> = {
   },
 
   send: (d) => {
-    if (d.broadcast)
-      return `broadcast to ${d.recipients} (${d.delivered} delivered)`;
-    return `msg:${d.message_id} ${d.delivered ? 'delivered' : 'queued'}`;
+    let base = '';
+    if (d.broadcast) {
+      base = `broadcast to ${d.recipients} (${d.delivered} delivered)`;
+    } else {
+      base = `msg:${d.message_id} ${d.delivered ? 'delivered' : 'queued'}`;
+    }
+
+    if (d.members && d.members.length > 0) {
+      const membersStr = d.members
+        .map(
+          (m: any) =>
+            `  ${m.name} ${m.role} ${m.status} input-block:${m.input_block_mode ?? 'off'}`,
+        )
+        .join('\n');
+      return `${base}\nMembers:\n${membersStr}`;
+    }
+    return base;
   },
 
   join: (d) =>

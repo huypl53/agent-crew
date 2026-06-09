@@ -105,7 +105,7 @@ export function randomSuffix(length = 4): string {
 }
 
 export function generateRandomName(): string {
-  return `agent-${randomSuffix()}`;
+  return `${randomSuffix()}`;
 }
 
 /* ── Token tracking ─────────────────────────────────────── */
