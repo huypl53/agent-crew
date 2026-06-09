@@ -13,6 +13,7 @@ export class PaneDeliveryError extends Error {
     this.name = 'PaneDeliveryError';
   }
 }
+
 import { logServer } from '../shared/server-log.ts';
 import type { AgentRole } from '../shared/types.ts';
 import { getAgentByPane, getLatestHookEvent } from '../state/index.ts';
@@ -21,8 +22,9 @@ import {
   sendClear,
   sendCommand,
   sendEscape,
-  sendSigint,
+  sendKey,
   sendKeys,
+  sendSigint,
 } from '../tmux/index.ts';
 
 export type QueueItem =
@@ -30,7 +32,8 @@ export type QueueItem =
   | { type: 'command'; text: string } // CLI command (/rename, crew join, etc.) — no suffix
   | { type: 'escape' }
   | { type: 'sigint' }
-  | { type: 'clear' };
+  | { type: 'clear' }
+  | { type: 'key'; key: string };
 
 interface QueueEntry {
   item: QueueItem;
@@ -44,7 +47,8 @@ const HEARTBEAT_STALE_MS = 30_000;
 const ROLE_SUFFIX: Record<string, string> = {
   leader:
     '--- Remember: You are a leader. Manage workers, assign work, track progress.',
-  worker: '--- Remember: You are a worker. Execute assignments, report results.',
+  worker:
+    '--- Remember: You are a worker. Execute assignments, report results.',
 };
 
 // Role-based intervals for 'reduced' profile (ms)
@@ -112,7 +116,8 @@ export class PaneQueue {
     if (options.role !== undefined) this.role = options.role;
     if (options.lastActivityMs !== undefined)
       this.lastActivityMs = options.lastActivityMs;
-    if (options.leaderPaceMs !== undefined) this.leaderPaceMs = options.leaderPaceMs;
+    if (options.leaderPaceMs !== undefined)
+      this.leaderPaceMs = options.leaderPaceMs;
   }
 
   enqueue(item: QueueItem): Promise<void> {
@@ -258,6 +263,15 @@ export class PaneQueue {
         if (!r.delivered)
           throw new PaneDeliveryError(
             r.error ?? 'clear delivery failed',
+            'DELIVERY_FAILED',
+          );
+        break;
+      }
+      case 'key': {
+        const r = await sendKey(this.target, item.key);
+        if (!r.delivered)
+          throw new PaneDeliveryError(
+            r.error ?? `key ${item.key} delivery failed`,
             'DELIVERY_FAILED',
           );
         break;

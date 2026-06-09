@@ -4,9 +4,16 @@ setDefaultTimeout(10000);
 
 describe('PaneQueue bootstrap delivery', () => {
   test('does not block first delivery on typingActive when no hook history exists', async () => {
-    const paneQueueUrl = new URL('../src/delivery/pane-queue.ts', import.meta.url).href;
-    const paneStatusUrl = new URL('../src/shared/pane-status.ts', import.meta.url).href;
-    const stateIndexUrl = new URL('../src/state/index.ts', import.meta.url).href;
+    const paneQueueUrl = new URL(
+      '../src/delivery/pane-queue.ts',
+      import.meta.url,
+    ).href;
+    const paneStatusUrl = new URL(
+      '../src/shared/pane-status.ts',
+      import.meta.url,
+    ).href;
+    const stateIndexUrl = new URL('../src/state/index.ts', import.meta.url)
+      .href;
     const tmuxUrl = new URL('../src/tmux/index.ts', import.meta.url).href;
     const script = `
       import { mock } from 'bun:test';
@@ -36,6 +43,7 @@ describe('PaneQueue bootstrap delivery', () => {
         sendEscape: async () => ({ delivered: true }),
         sendSigint: async () => ({ delivered: true }),
         sendClear: async () => ({ delivered: true }),
+        sendKey: async () => ({ delivered: true }),
       }));
 
       const { PaneQueue } = await import(${JSON.stringify(paneQueueUrl)});
