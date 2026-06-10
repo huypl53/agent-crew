@@ -1,31 +1,53 @@
 /**
  * Tests for hook-event hint reminder emission via formatter and hint CLI.
  *
- * The crew plugin's `crew hook-event` runs on UserPromptSubmit. When a hint
- * is registered and the cadence counter hits a multiple of the configured
- * cadence (default 3), the handler returns `{ ok: true, hint: { agent_name,
- * message } }` and the formatter emits the user-defined message to stdout.
- * Claude Code injects that stdout into the conversation as context.
+ * The crew plugin's `crew hook-event` runs on UserPromptSubmit. It has two
+ * hint paths:
+ *
+ * 1. **Hint injection** (model context): on every Nth turn (cadence), emit
+ *    the hint message to stdout. Claude Code injects this as <system-reminder>
+ *    context visible only to the model.
+ *
+ * 2. **Hint status display** (user-visible): on every turn where a hint exists,
+ *    emit a short status notice via `hintStatus`. The CLI writes this to stderr
+ *    and exits 1, making it appear as a non-blocking notice in the chat UI.
  *
  * Cadence logic is covered in state.test.ts. These tests verify the
- * formatter contract, hint CLI room scoping, and read-only lookup.
+ * formatter contract, hook-event dual-path output, hint CLI room scoping,
+ * and read-only lookup.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { COMMANDS } from '../src/cli/router.ts';
 import { formatResult } from '../src/cli/formatter.ts';
+import { COMMANDS } from '../src/cli/router.ts';
 import { closeDb, initDb } from '../src/state/db.ts';
-import { addAgent, clearState, getHint, getOrCreateRoom, setHint } from '../src/state/index.ts';
-import { handleHintLookup, handleHintSet, handleHintUnset } from '../src/tools/hint.ts';
+import {
+  addAgent,
+  clearState,
+  getHint,
+  getOrCreateRoom,
+  setHint,
+  tickHintCadence,
+} from '../src/state/index.ts';
+import {
+  handleHintLookup,
+  handleHintSet,
+  handleHintUnset,
+} from '../src/tools/hint.ts';
+import { processHookEventInput } from '../src/tools/hook-event.ts';
 
 function parseResult(
-  result: Awaited<ReturnType<typeof handleHintSet>> | Awaited<ReturnType<typeof handleHintUnset>> | Awaited<ReturnType<typeof handleHintLookup>>,
+  result:
+    | Awaited<ReturnType<typeof handleHintSet>>
+    | Awaited<ReturnType<typeof handleHintUnset>>
+    | Awaited<ReturnType<typeof handleHintLookup>>,
 ) {
-  return JSON.parse(result.content[0]!.text);
+  return JSON.parse(result.content[0]?.text);
 }
 
 describe('hook-event formatter (hint reminder emission)', () => {
   test('passes through user message verbatim', () => {
-    const message = 'You are worker-1 in project-x. Check inbox before responding.';
+    const message =
+      'You are worker-1 in project-x. Check inbox before responding.';
     const out = formatResult('hook-event', {
       ok: true,
       hint: { agent_name: 'worker-1', message },
@@ -44,6 +66,140 @@ describe('hook-event formatter (hint reminder emission)', () => {
       hint: { agent_name: 'alice' },
     });
     expect(out).toBe('');
+  });
+
+  test('includes hintStatus in formatter when present', () => {
+    const out = formatResult('hook-event', {
+      ok: true,
+      hint: { agent_name: 'worker-1', message: 'You are worker-1.' },
+      hintStatus: '💡 hint: "You are worker-1." (every 3t, firing)',
+    });
+    // Formatter only handles stdout (model context) — hintStatus goes to stderr via cli.ts
+    expect(out).toBe('You are worker-1.');
+  });
+});
+
+describe('hook-event dual-path (processHookEventInput)', () => {
+  beforeEach(() => {
+    process.env.CREW_STATE_DIR = `/tmp/crew-hook-test-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    initDb();
+    clearState();
+  });
+
+  afterEach(() => {
+    closeDb();
+    delete process.env.CREW_STATE_DIR;
+    delete process.env.TMUX_PANE;
+  });
+
+  test('cadence turn: returns hint for model context AND hintStatus for user visibility', async () => {
+    const room = getOrCreateRoom('/test/room', 'room');
+    addAgent('worker-1', 'worker', room.id, '%400');
+    setHint('worker-1', room.id, 'You are worker-1 in project-x.', {
+      pane: '%400',
+      cadence: 3,
+    });
+
+    // Advance to turn 3 (cadence fires)
+    tickHintCadence('%400', null, room.id); // turn 1
+    tickHintCadence('%400', null, room.id); // turn 2
+    // turn 3 will be the cadence turn
+
+    const input = JSON.stringify({
+      hook_event_name: 'UserPromptSubmit',
+      session_id: 'sess-1',
+    });
+    const result = await processHookEventInput(input, '%400');
+    const data = JSON.parse(result.content[0]?.text);
+
+    // Model context: full hint message
+    expect(data.hint).toBeDefined();
+    expect(data.hint.agent_name).toBe('worker-1');
+    expect(data.hint.message).toBe('You are worker-1 in project-x.');
+
+    // User-visible status: short notice about the hint
+    expect(data.hintStatus).toBeDefined();
+    expect(data.hintStatus).toContain('💡 hint:');
+    expect(data.hintStatus).toContain('firing');
+  });
+
+  test('non-cadence turn: returns hintStatus only (no model context injection)', async () => {
+    const room = getOrCreateRoom('/test/room', 'room');
+    addAgent('worker-1', 'worker', room.id, '%401');
+    setHint('worker-1', room.id, 'You are worker-1 in project-x.', {
+      pane: '%401',
+      cadence: 3,
+    });
+
+    // Turn 1: not a cadence turn
+    const input = JSON.stringify({
+      hook_event_name: 'UserPromptSubmit',
+      session_id: 'sess-2',
+    });
+    const result = await processHookEventInput(input, '%401');
+    const data = JSON.parse(result.content[0]?.text);
+
+    // No model context injection on non-cadence turn
+    expect(data.hint).toBeUndefined();
+
+    // But hintStatus is present — user can see the hint is active
+    expect(data.hintStatus).toBeDefined();
+    expect(data.hintStatus).toContain('💡 hint:');
+    expect(data.hintStatus).toContain('next in');
+  });
+
+  test('no hint: returns neither hint nor hintStatus', async () => {
+    const room = getOrCreateRoom('/test/room', 'room');
+    addAgent('worker-1', 'worker', room.id, '%402');
+    // No hint set
+
+    const input = JSON.stringify({
+      hook_event_name: 'UserPromptSubmit',
+      session_id: 'sess-3',
+    });
+    const result = await processHookEventInput(input, '%402');
+    const data = JSON.parse(result.content[0]?.text);
+
+    expect(data.ok).toBe(true);
+    expect(data.hint).toBeUndefined();
+    expect(data.hintStatus).toBeUndefined();
+  });
+
+  test('hintStatus truncates long messages', async () => {
+    const room = getOrCreateRoom('/test/room', 'room');
+    addAgent('worker-1', 'worker', room.id, '%403');
+    const longMessage = 'A'.repeat(50);
+    setHint('worker-1', room.id, longMessage, { pane: '%403', cadence: 3 });
+
+    const input = JSON.stringify({
+      hook_event_name: 'UserPromptSubmit',
+      session_id: 'sess-4',
+    });
+    const result = await processHookEventInput(input, '%403');
+    const data = JSON.parse(result.content[0]?.text);
+
+    expect(data.hintStatus).toBeDefined();
+    // 40-char truncation: 37 chars + '…'
+    expect(data.hintStatus).toContain('AAA…');
+    expect(data.hintStatus).not.toContain(longMessage);
+  });
+
+  test('hintStatus shows next-in countdown correctly', async () => {
+    const room = getOrCreateRoom('/test/room', 'room');
+    addAgent('worker-1', 'worker', room.id, '%404');
+    setHint('worker-1', room.id, 'Reminder.', { pane: '%404', cadence: 5 });
+
+    // After 1 tick (turn_count = 1), next reminder in 4 turns
+    tickHintCadence('%404', null, room.id);
+
+    const input = JSON.stringify({
+      hook_event_name: 'UserPromptSubmit',
+      session_id: 'sess-5',
+    });
+    const result = await processHookEventInput(input, '%404');
+    const data = JSON.parse(result.content[0]?.text);
+
+    expect(data.hintStatus).toContain('next in 3t'); // turn_count is now 2 after tickHintCadence, next in (5 - 2%5) = 3
   });
 });
 
@@ -73,7 +229,10 @@ describe('hint command room scoping', () => {
     addAgent('lead-1', 'leader', company.id, '%210');
     process.env.TMUX_PANE = '%210';
 
-    const result = await handleHintSet({ message: 'You are lead-1 in company.', cadence: 1 });
+    const result = await handleHintSet({
+      message: 'You are lead-1 in company.',
+      cadence: 1,
+    });
     const data = parseResult(result);
 
     expect(result.isError).toBeUndefined();
@@ -101,7 +260,11 @@ describe('hint command room scoping', () => {
     addAgent('lead-1', 'leader', company.id, '%201');
     addAgent('lead-1', 'leader', frontend.id, '%202');
 
-    const result = await handleHintSet({ agent: 'lead-1', room: 'company', message: 'You are lead in company.' });
+    const result = await handleHintSet({
+      agent: 'lead-1',
+      room: 'company',
+      message: 'You are lead in company.',
+    });
     const data = parseResult(result);
 
     expect(result.isError).toBeUndefined();
@@ -152,7 +315,11 @@ describe('hint command room scoping', () => {
   });
 
   test('handleHintSet errors when room not found', async () => {
-    const result = await handleHintSet({ agent: 'lead-1', room: 'nonexistent', message: 'Test' });
+    const result = await handleHintSet({
+      agent: 'lead-1',
+      room: 'nonexistent',
+      message: 'Test',
+    });
     const data = parseResult(result);
 
     expect(result.isError).toBe(true);
@@ -160,10 +327,14 @@ describe('hint command room scoping', () => {
   });
 
   test('handleHintSet errors when agent not in room', async () => {
-    const company = getOrCreateRoom('/test/company', 'company');
+    const _company = getOrCreateRoom('/test/company', 'company');
     // No agent registered in company room
 
-    const result = await handleHintSet({ agent: 'ghost', room: 'company', message: 'Test' });
+    const result = await handleHintSet({
+      agent: 'ghost',
+      room: 'company',
+      message: 'Test',
+    });
     const data = parseResult(result);
 
     expect(result.isError).toBe(true);
@@ -229,7 +400,7 @@ describe('hint subcommand routing', () => {
   test('returns isError=true for missing subcommand', async () => {
     const params = COMMANDS.hint.buildParams({}, []);
     const result = await COMMANDS.hint.handler(params);
-    const data = JSON.parse(result.content[0]!.text);
+    const data = JSON.parse(result.content[0]?.text);
 
     expect(result.isError).toBe(true);
     expect(data.error).toContain('Unknown hint subcommand');
@@ -239,7 +410,7 @@ describe('hint subcommand routing', () => {
   test('returns isError=true for invalid subcommand', async () => {
     const params = COMMANDS.hint.buildParams({}, ['bogus']);
     const result = await COMMANDS.hint.handler(params);
-    const data = JSON.parse(result.content[0]!.text);
+    const data = JSON.parse(result.content[0]?.text);
 
     expect(result.isError).toBe(true);
     expect(data.error).toContain("'bogus'");

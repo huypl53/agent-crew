@@ -123,7 +123,7 @@ if (!parsed.flags.name && parsed.command !== 'manage') {
         if (paneAgent) {
           parsed.flags.name = paneAgent.name;
         }
-      } catch (e) {
+      } catch (_e) {
         // ignore state import error
       }
     }
@@ -161,6 +161,17 @@ try {
     process.exit(1);
   }
 
+  // hook-event user-visible output: write hint status and/or status dashboard
+  // to stderr and exit 1 so Claude Code shows them as non-blocking notices.
+  // stdout (model context) is still emitted normally via formatResult.
+  const hasHookNotice =
+    parsed.command === 'hook-event' &&
+    (data.hintStatus || data.statusDashboard);
+  if (hasHookNotice) {
+    if (data.statusDashboard) process.stderr.write(`${data.statusDashboard}\n`);
+    if (data.hintStatus) process.stderr.write(`${data.hintStatus}\n`);
+  }
+
   if (parsed.flags.json) {
     console.log(JSON.stringify(data, null, 2));
   } else {
@@ -168,6 +179,12 @@ try {
     // Skip stdout emission for empty formatted output (e.g., silent hook events).
     // This avoids injecting blank lines into Claude Code hook stdout.
     if (out !== '') console.log(out);
+  }
+
+  // Exit 1 when hook notices were emitted to stderr — Claude Code shows
+  // stderr from non-zero exits as a non-blocking notice visible to the user.
+  if (hasHookNotice) {
+    process.exit(1);
   }
 } catch (e) {
   console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);

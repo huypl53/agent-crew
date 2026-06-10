@@ -26,11 +26,12 @@ interface GetStatusParams {
 
 // --- Dashboard formatting (--self mode) ---
 
-interface DashboardData {
+export interface DashboardData {
   name: string;
   role: string;
   room: string;
   status: string;
+  tmux_target: string | null;
   input_block_mode: string;
   hint: { message: string; cadence: number } | null;
   pending_messages: number;
@@ -43,7 +44,10 @@ interface DashboardData {
   message_counts?: { sent: number; received: number };
 }
 
-function getPendingMessageCount(agentName: string, agentId: number): number {
+export function getPendingMessageCount(
+  agentName: string,
+  agentId: number,
+): number {
   try {
     const db = getDb();
     const cursorRow = db
@@ -61,7 +65,7 @@ function getPendingMessageCount(agentName: string, agentId: number): number {
   }
 }
 
-function getLastActivity(agentName: string): string | null {
+export function getLastActivity(agentName: string): string | null {
   try {
     const db = getDb();
     const row = db
@@ -75,10 +79,15 @@ function getLastActivity(agentName: string): string | null {
   }
 }
 
-function formatAgo(isoString: string | null): string | null {
+export function formatAgo(isoString: string | null): string | null {
   if (!isoString) return null;
   try {
-    const ms = Date.now() - new Date(`${isoString}Z`).getTime();
+    // SQLite datetime() stores "YYYY-MM-DD HH:MM:SS" (space-separated, no TZ).
+    // Convert to ISO 8601 ("YYYY-MM-DDTHH:MM:SSZ") for correct Date parsing.
+    const iso = isoString.includes('T')
+      ? isoString
+      : isoString.replace(' ', 'T');
+    const ms = Date.now() - new Date(`${iso}Z`).getTime();
     if (ms < 1000) return 'just now';
     if (ms < 60_000) return `${Math.floor(ms / 1000)}s ago`;
     if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
@@ -88,11 +97,11 @@ function formatAgo(isoString: string | null): string | null {
   }
 }
 
-function formatDashboard(data: DashboardData): string {
+export function formatDashboard(data: DashboardData): string {
   const W = 42; // inner width (excluding │...│)
   const lines: string[] = [];
 
-  const header = `${data.name} @ ${data.room}`;
+  const header = `${data.name} @ ${data.room}${data.tmux_target ? ` pane:${data.tmux_target}` : ''}`;
   lines.push(`┌─ ${header} ${'─'.repeat(Math.max(1, W - header.length - 1))}┐`);
 
   const statusBlock = `Status: ${data.status} │ Block: ${data.input_block_mode}`;
@@ -270,6 +279,7 @@ async function handleSelfStatus(params: GetStatusParams): Promise<ToolResult> {
     role: agent.role,
     room: agent.room_name,
     status,
+    tmux_target: agent.tmux_target,
     input_block_mode: inputBlockMode,
     hint: hintData,
     pending_messages: pendingMessages,

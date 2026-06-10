@@ -1076,12 +1076,6 @@ export function addHookEvent(
     notifyLeadersOnWorkerStop(agentName, payload);
   }
 
-  // Auto-self on leader idle: when a leader transitions busy→idle,
-  // enqueue !crew status --self so the user sees their status dashboard
-  if (eventType === 'Stop') {
-    autoSelfOnLeaderIdle(agentName, eventId);
-  }
-
   return eventId;
 }
 
@@ -1158,19 +1152,12 @@ function notifyLeadersOnWorkerStop(agentName: string, payload: string): void {
   // their last UserPromptSubmit, crew send handled it — Stop hook should skip.
   if (alreadyNotifiedThisTurn(agent.room_id, agentName)) return;
 
-  // Find leaders in room
-  const leaders = getRoomMembers(agent.room_id).filter(
-    (m) => m.role === 'leader' && m.tmux_target,
-  );
-  if (leaders.length === 0) return;
-
   // Truncate response for notification
   const truncated = truncateForNotification(response, config.notifyMaxChars);
   const room = getRoom(agent.room_id);
   const roomName = room?.name ?? 'unknown';
-  const message = `[${agentName}@${roomName}] completed:\n${truncated}`;
 
-  // Record completion message in DB
+  // Record completion message in DB (always, even if leader has no pane)
   const msg = addMessage(
     roomName,
     agentName,
@@ -1181,7 +1168,11 @@ function notifyLeadersOnWorkerStop(agentName: string, payload: string): void {
     'completion',
   );
 
-  // Deliver to each leader with retry logic (fire-and-forget)
+  // Deliver to leaders with tmux panes via sendKeys (fire-and-forget)
+  const leaders = getRoomMembers(agent.room_id).filter(
+    (m) => m.role === 'leader' && m.tmux_target,
+  );
+  const message = `[${agentName}@${roomName}] completed:\n${truncated}`;
   for (const leader of leaders) {
     deliverWithRetry(leader, message, msg.sequence).catch(() => {});
   }
@@ -1230,40 +1221,6 @@ async function deliverWithRetry(
       await Bun.sleep(RETRY_DELAY_MS);
     }
   }
-}
-
-/**
- * Auto-trigger `!crew status --self` when a leader transitions from busy→idle.
- * Only fires if the previous event was NOT a Stop (i.e., genuine busy→idle).
- * Fire-and-forget: doesn't block hook processing.
- */
-function autoSelfOnLeaderIdle(agentName: string, currentEventId: number): void {
-  const agent = getAgent(agentName);
-  if (!agent || agent.role !== 'leader' || !agent.tmux_target) return;
-
-  // Respect per-leader toggle (default: on)
-  if (!isAgentAutoSelfOnIdle(agentName)) return;
-
-  // Check previous event: only trigger on busy→idle transition
-  const db = getDb();
-  const prevEvent = db
-    .query(
-      'SELECT event_type FROM hook_events WHERE agent_name = ? AND id < ? ORDER BY id DESC LIMIT 1',
-    )
-    .get(agentName, currentEventId) as { event_type: string } | null;
-
-  // If previous was also a Stop, leader was already idle — skip
-  if (!prevEvent || prevEvent.event_type === 'Stop') return;
-
-  // Dynamic import to avoid circular deps, fire-and-forget
-  import('../delivery/pane-queue.ts')
-    .then(({ getQueue }) => {
-      getQueue(agent.tmux_target!, { role: agent.role }).enqueue({
-        type: 'crew-command',
-        text: 'status --self',
-      });
-    })
-    .catch(() => {});
 }
 
 /**

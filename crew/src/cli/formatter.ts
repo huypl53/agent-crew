@@ -58,8 +58,13 @@ Flags:
   --help      Show this help message`;
 }
 
-const formatInputBlock = (d: any) =>
-  `${d.name} input-block:${d.input_block_mode}`;
+const formatInputBlock = (d: any) => {
+  let out = `${d.name} input-block:${d.input_block_mode}`;
+  if (d.flushed_messages !== undefined && d.flushed_messages > 0) {
+    out += ` flushed:${d.flushed_messages} msgs`;
+  }
+  return out;
+};
 
 const FORMATTERS: Record<string, (data: any) => string> = {
   check: (d) =>
@@ -72,7 +77,8 @@ const FORMATTERS: Record<string, (data: any) => string> = {
 
   status: (d) => {
     if (d.dashboard) return d.dashboard;
-    return `${d.name} ${d.status} ${d.tmux_target} ${d.room_name ?? d.room ?? ''}${d.room_path ? ` (${d.room_path})` : ''}`;
+    const pane = d.tmux_target ? ` pane:${d.tmux_target}` : ' pane:(none)';
+    return `${d.name} ${d.status}${pane} ${d.room_name ?? d.room ?? ''}${d.room_path ? ` (${d.room_path})` : ''}`;
   },
 
   rooms: (d) => {
@@ -92,7 +98,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
       d.members
         .map(
           (m: any) =>
-            `  ${m.name} ${m.role} ${m.status} input-block:${m.input_block_mode ?? 'off'}`,
+            `  ${m.name} ${m.role} ${m.status} pane:${m.tmux_target ?? '(none)'} input-block:${m.input_block_mode ?? 'off'}`,
         )
         .join('\n')
     );
@@ -121,7 +127,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
       const membersStr = d.members
         .map(
           (m: any) =>
-            `  ${m.name} ${m.role} ${m.status} input-block:${m.input_block_mode ?? 'off'}`,
+            `  ${m.name} ${m.role} ${m.status} pane:${m.tmux_target ?? '(none)'} input-block:${m.input_block_mode ?? 'off'}`,
         )
         .join('\n');
       return `${base}\nMembers:\n${membersStr}`;

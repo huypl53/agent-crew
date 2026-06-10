@@ -163,24 +163,6 @@ Workers automatically push notifications to your pane when they send `completion
 
 If the worker remains busy after the notification context stops being useful, switch to `crew inspect` instead of guessing from status alone.
 
-## Muting Idle Notifications
-
-When all work is done and workers can safely be idle, mute idle notifications to avoid unnecessary noise:
-
-```bash
-crew mute-idle --name your-name
-```
-
-This stops the sweep system from pushing "[worker] idle (Xm)" messages to your pane. Workers going idle is expected when there's no work — no need to be notified.
-
-**To resume idle notifications** (e.g., before assigning new batch of work):
-```bash
-crew unmute-idle --name your-name
-```
-
-Or simply assign a new task — workers will auto-notify on completion regardless of mute state. The mute only affects sweep-based idle notifications, not task completion/error/question messages.
-
-**Rule of thumb:** Mute after your last task assignment. Unmute is optional — completion notifications always come through.
 
 ## Verification (Edge Cases Only)
 

@@ -30,6 +30,7 @@ export async function handleListMembers(
         role: agent.role,
         status,
         input_block_mode: agent.input_block_mode,
+        tmux_target: agent.tmux_target,
       };
     }),
   );

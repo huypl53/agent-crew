@@ -1,14 +1,21 @@
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'bun';
-import type { ToolResult } from '../shared/types.ts';
+import type { Agent, ToolResult } from '../shared/types.ts';
+import { ok } from '../shared/types.ts';
 import { getDb, initDb } from '../state/db.ts';
+import type { HintRecord } from '../state/index.ts';
 import {
   addHookEvent,
   canonicalizeHintIdentity,
   clearArmedInputBlock,
   getAgentByPane,
+  getAgentInputBlockMode,
+  getHint,
+  getRoomMembers,
+  isAgentAutoSelfOnIdle,
   tickHintCadence,
 } from '../state/index.ts';
+import { getPendingMessageCount } from './get-status.ts';
 
 function okResult(
   payload: Record<string, unknown> = { ok: true, decision: 'allow' },
@@ -56,7 +63,7 @@ export async function processHookEventInput(
         ? payload.sessionId
         : null;
 
-  addHookEvent(agent.name, eventType, sessionId, input);
+  const hookEventId = addHookEvent(agent.name, eventType, sessionId, input);
 
   // Canonicalize hint identity when session_id is first available
   if (sessionId) {
@@ -73,37 +80,152 @@ export async function processHookEventInput(
   // Hint injection: on every Nth UserPromptSubmit (where N = cadence),
   // emit the user-defined message to stdout. Claude Code injects hook
   // stdout into the conversation, providing custom context reminders.
+  //
+  // Hint status: on every UserPromptSubmit where a hint exists, emit a
+  // short notice to stderr (via hintStatus). Claude Code shows stderr
+  // from exit-1 hooks as a non-blocking notice visible to the user in chat.
+  let hintStatus: string | undefined;
+
   if (eventType === 'UserPromptSubmit') {
     clearArmedInputBlock(agent.name);
+
+    // Cadence-gated hint injection for model context
+    let cadenceResult: { shouldShow: boolean; hint: HintRecord | null } | null =
+      null;
     try {
-      const { shouldShow, hint } = tickHintCadence(
-        pane,
-        sessionId,
-        agent.room_id,
-      );
-      if (shouldShow && hint) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                ok: true,
-                decision: 'allow',
-                hint: { agent_name: hint.agent_name, message: hint.message },
-              }),
-            },
-          ],
-        };
-      }
+      cadenceResult = tickHintCadence(pane, sessionId, agent.room_id);
     } catch (e) {
       // Fail-open: never block hook processing on hint errors
       console.error(
         `[crew hint] cadence error: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
+
+    // Build user-visible status from the hint (after tick so turn_count is current)
+    const hintForStatus =
+      cadenceResult?.hint ?? getHint(pane, sessionId, agent.room_id);
+    if (hintForStatus) {
+      const truncated =
+        hintForStatus.message.length > 40
+          ? `${hintForStatus.message.slice(0, 37)}…`
+          : hintForStatus.message;
+      const firing = cadenceResult?.shouldShow === true;
+      const nextIn = firing
+        ? 'now'
+        : `${hintForStatus.cadence - (hintForStatus.turn_count % hintForStatus.cadence)}t`;
+      hintStatus = `💡 hint: "${truncated}" (every ${hintForStatus.cadence}t, ${firing ? 'firing' : `next in ${nextIn}`})`;
+    }
+
+    if (cadenceResult?.shouldShow && cadenceResult.hint) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              ok: true,
+              decision: 'allow',
+              hint: {
+                agent_name: cadenceResult.hint.agent_name,
+                message: cadenceResult.hint.message,
+              },
+              hintStatus,
+            }),
+          },
+        ],
+      };
+    }
   }
 
-  return okResult();
+  // Status dashboard: on Stop event for leaders with auto-self enabled,
+  // emit a lightweight dashboard to stderr (non-blocking notice in chat UI).
+  // Replaces the old pane-queue injection that could break user input.
+  let statusDashboard: string | undefined;
+
+  if (eventType === 'Stop' && agent.role === 'leader') {
+    try {
+      const shouldShowDashboard = checkAutoSelfTransition(
+        agent.name,
+        hookEventId,
+      );
+      if (shouldShowDashboard) {
+        statusDashboard = buildLightweightDashboard(agent);
+      }
+    } catch (e) {
+      // Fail-open: don't block hook processing on dashboard errors
+      console.error(
+        `[crew status] dashboard error: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  return ok({
+    ok: true,
+    decision: 'allow',
+    ...(hintStatus ? { hintStatus } : {}),
+    ...(statusDashboard ? { statusDashboard } : {}),
+  });
+}
+
+/**
+ * Check if auto-self dashboard should be shown:
+ * leader with auto-self enabled, transitioning busy→idle.
+ */
+function checkAutoSelfTransition(
+  agentName: string,
+  currentEventId: number,
+): boolean {
+  if (!isAgentAutoSelfOnIdle(agentName)) return false;
+
+  // Check previous event: only trigger on genuine busy→idle transition
+  const db = getDb();
+  const prevEvent = db
+    .query(
+      'SELECT event_type FROM hook_events WHERE agent_name = ? AND id < ? ORDER BY id DESC LIMIT 1',
+    )
+    .get(agentName, currentEventId) as { event_type: string } | null;
+
+  // If previous was also a Stop, leader was already idle — skip
+  if (!prevEvent || prevEvent.event_type === 'Stop') return false;
+
+  return true;
+}
+
+/**
+ * Build a compact inline status bar for the leader.
+ * Format: [name@room] status ⬣ block ⋮ N msgs ⋮ Ni/Nb/Nd
+ */
+function buildLightweightDashboard(agent: Agent): string {
+  const inputBlockMode = getAgentInputBlockMode(agent.name);
+  const pendingMessages = getPendingMessageCount(agent.name, agent.agent_id);
+
+  const paneInfo = agent.tmux_target
+    ? `pane:${agent.tmux_target}`
+    : 'pane:(none)';
+  const parts = [
+    `[${agent.name}@${agent.room_name}]`,
+    'idle',
+    paneInfo,
+    `⬣ ${inputBlockMode}`,
+    `⋮ ${pendingMessages} msgs`,
+  ];
+
+  // Worker summary
+  const members = getRoomMembers(agent.room_id).filter(
+    (m) => m.name !== agent.name,
+  );
+  if (members.length > 0) {
+    let idle = 0;
+    let busy = 0;
+    let dead = 0;
+    for (const m of members) {
+      if (m.status === 'idle') idle++;
+      else if (m.status === 'busy') busy++;
+      else dead++;
+    }
+    parts.push(`⋮ ${idle}i/${busy}b/${dead}d`);
+  }
+
+  return parts.join(' ');
 }
 
 function getParentPid(pid: number): number | null {

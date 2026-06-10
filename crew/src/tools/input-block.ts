@@ -1,3 +1,4 @@
+import { flushPushQueueForAgent } from '../delivery/index.ts';
 import type { ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
 import {
@@ -55,7 +56,12 @@ export async function handleInputBlock(
     });
   }
 
-  if (subcommand === 'on' || subcommand === 'block' || subcommand === 'arm' || subcommand === 'enable') {
+  if (
+    subcommand === 'on' ||
+    subcommand === 'block' ||
+    subcommand === 'arm' ||
+    subcommand === 'enable'
+  ) {
     const mode = params.persist ? 'persist' : 'armed';
     return ok({
       name: target.name,
@@ -64,13 +70,35 @@ export async function handleInputBlock(
     });
   }
 
-  if (subcommand === 'off' || subcommand === 'unblock' || subcommand === 'disarm' || subcommand === 'disable') {
+  if (
+    subcommand === 'off' ||
+    subcommand === 'unblock' ||
+    subcommand === 'disarm' ||
+    subcommand === 'disable'
+  ) {
+    const result = setAgentInputBlockMode(target.name, 'off');
+
+    // Flush pending push messages that accumulated while blocked
+    const agent = getAgent(target.name);
+    if (agent?.tmux_target) {
+      const flushed = await flushPushQueueForAgent(agent);
+      return ok({
+        name: target.name,
+        room: target.room,
+        input_block_mode: result,
+        flushed_messages: flushed,
+      });
+    }
+
     return ok({
       name: target.name,
       room: target.room,
-      input_block_mode: setAgentInputBlockMode(target.name, 'off'),
+      input_block_mode: result,
+      flushed_messages: 0,
     });
   }
 
-  return err(`Unknown input-block subcommand: ${subcommand}. Use: on, off, status, block, unblock`);
+  return err(
+    `Unknown input-block subcommand: ${subcommand}. Use: on, off, status, block, unblock`,
+  );
 }

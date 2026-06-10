@@ -1,15 +1,24 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const CREW_HOOK_COMMAND = 'crew hook-event || true';
+const CREW_HOOK_COMMAND = 'crew hook-event';
 const HOOK_EVENTS = ['Stop', 'UserPromptSubmit', 'StopFailure'] as const;
 
-function makeHookEntry(): { matcher: string; hooks: Array<{ type: string; command: string }> } {
-  return { matcher: '', hooks: [{ type: 'command', command: CREW_HOOK_COMMAND }] };
+function makeHookEntry(): {
+  matcher: string;
+  hooks: Array<{ type: string; command: string }>;
+} {
+  return {
+    matcher: '',
+    hooks: [{ type: 'command', command: CREW_HOOK_COMMAND }],
+  };
 }
 
 export function buildHookSettings(): Record<string, unknown> {
-  const hooks: Record<string, Array<{ matcher: string; hooks: Array<{ type: string; command: string }> }>> = {};
+  const hooks: Record<
+    string,
+    Array<{ matcher: string; hooks: Array<{ type: string; command: string }> }>
+  > = {};
   for (const event of HOOK_EVENTS) {
     hooks[event] = [makeHookEntry()];
   }
@@ -53,6 +62,6 @@ export async function installHooks(cwd: string): Promise<void> {
   if (changed) {
     settings.hooks = hooks;
     if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+    writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
   }
 }
