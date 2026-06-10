@@ -230,6 +230,49 @@ export async function handleGetStatus(
 
   const status = await resolveAgentLiveStatus(agent);
 
+  // --inline without --self: compact bar for a named agent
+  if (params.inline) {
+    const inputBlockMode = getAgentInputBlockMode(agent.name);
+    const pendingMessages = getPendingMessageCount(agent.name, agent.agent_id);
+    const lastActivityAgo = formatAgo(getLastActivity(agent.name));
+
+    let workers: { idle: number; busy: number; dead: number } | null = null;
+    if (agent.role === 'leader') {
+      const members = getRoomMembers(agent.room_id).filter(
+        (m) => m.name !== agent.name,
+      );
+      const statusResults = await Promise.allSettled(
+        members.map((m) => resolveAgentLiveStatus(m)),
+      );
+      let idle = 0;
+      let busy = 0;
+      let dead = 0;
+      for (const r of statusResults) {
+        if (r.status === 'fulfilled') {
+          if (r.value === 'idle') idle++;
+          else if (r.value === 'busy') busy++;
+          else dead++;
+        }
+      }
+      workers = { idle, busy, dead };
+    }
+
+    const data: DashboardData = {
+      name: agent.name,
+      role: agent.role,
+      room: agent.room_name,
+      status,
+      tmux_target: agent.tmux_target,
+      input_block_mode: inputBlockMode,
+      hint: null,
+      pending_messages: pendingMessages,
+      workers,
+      last_activity_ago: lastActivityAgo,
+    };
+
+    return ok({ inline: formatInline(data) });
+  }
+
   return ok({
     agent_id: agent.agent_id,
     name: agent.name,
