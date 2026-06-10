@@ -15,7 +15,7 @@ import {
   isAgentAutoSelfOnIdle,
   tickHintCadence,
 } from '../state/index.ts';
-import { getPendingMessageCount } from './get-status.ts';
+import { formatInline, getPendingMessageCount } from './get-status.ts';
 
 function okResult(
   payload: Record<string, unknown> = { ok: true, decision: 'allow' },
@@ -148,7 +148,18 @@ export async function processHookEventInput(
         hookEventId,
       );
       if (shouldShowDashboard) {
-        statusDashboard = buildLightweightDashboard(agent);
+        statusDashboard = formatInline({
+          name: agent.name,
+          role: agent.role,
+          room: agent.room_name,
+          status: 'idle',
+          tmux_target: agent.tmux_target,
+          input_block_mode: getAgentInputBlockMode(agent.name),
+          hint: null,
+          pending_messages: getPendingMessageCount(agent.name, agent.agent_id),
+          workers: buildWorkerSummary(agent),
+          last_activity_ago: null, // skip async lookup in hook context
+        });
       }
     } catch (e) {
       // Fail-open: don't block hook processing on dashboard errors
@@ -191,41 +202,23 @@ function checkAutoSelfTransition(
 }
 
 /**
- * Build a compact inline status bar for the leader.
- * Format: [name@room] status ⬣ block ⋮ N msgs ⋮ Ni/Nb/Nd
+ * Build worker summary from DB status (sync, no async pane checks).
+ * Used by hook-event for the lightweight dashboard.
  */
-function buildLightweightDashboard(agent: Agent): string {
-  const inputBlockMode = getAgentInputBlockMode(agent.name);
-  const pendingMessages = getPendingMessageCount(agent.name, agent.agent_id);
-
-  const paneInfo = agent.tmux_target
-    ? `pane:${agent.tmux_target}`
-    : 'pane:(none)';
-  const parts = [
-    `[${agent.name}@${agent.room_name}]`,
-    'idle',
-    paneInfo,
-    `⬣ ${inputBlockMode}`,
-    `⋮ ${pendingMessages} msgs`,
-  ];
-
-  // Worker summary
+function buildWorkerSummary(agent: Agent): { idle: number; busy: number; dead: number } | null {
   const members = getRoomMembers(agent.room_id).filter(
     (m) => m.name !== agent.name,
   );
-  if (members.length > 0) {
-    let idle = 0;
-    let busy = 0;
-    let dead = 0;
-    for (const m of members) {
-      if (m.status === 'idle') idle++;
-      else if (m.status === 'busy') busy++;
-      else dead++;
-    }
-    parts.push(`⋮ ${idle}i/${busy}b/${dead}d`);
+  if (members.length === 0) return null;
+  let idle = 0;
+  let busy = 0;
+  let dead = 0;
+  for (const m of members) {
+    if (m.status === 'idle') idle++;
+    else if (m.status === 'busy') busy++;
+    else dead++;
   }
-
-  return parts.join(' ');
+  return { idle, busy, dead };
 }
 
 function getParentPid(pid: number): number | null {

@@ -20,6 +20,7 @@ interface GetStatusParams {
   agent_name?: string;
   name?: string; // calling agent's own identity
   self?: boolean; // auto-detect agent from TMUX_PANE, show dashboard
+  inline?: boolean; // compact inline bar (with --self)
   json?: boolean; // structured JSON output (with --self)
   session?: string; // Query agent by session ID
 }
@@ -130,6 +131,39 @@ export function formatDashboard(data: DashboardData): string {
 
   lines.push(`└${'─'.repeat(W + 2)}┘`);
   return lines.join('\n');
+}
+
+// --- Inline status bar (--self --inline) ---
+// Same compact format emitted by the Stop hook via buildLightweightDashboard.
+
+export function formatInline(data: DashboardData): string {
+  const paneInfo = data.tmux_target ? `pane:${data.tmux_target}` : 'pane:(none)';
+  const parts = [
+    `[${data.name}@${data.room}]`,
+    data.status,
+    paneInfo,
+    `⬣ ${data.input_block_mode}`,
+    `⋮ ${data.pending_messages} msgs`,
+  ];
+
+  if (data.hint) {
+    const truncated =
+      data.hint.message.length > 40
+        ? data.hint.message.slice(0, 37) + '…'
+        : data.hint.message;
+    parts.push(`💡 "${truncated}" (${data.hint.cadence}t)`);
+  }
+
+  if (data.workers) {
+    const w = data.workers;
+    parts.push(`⋮ ${w.idle}i/${w.busy}b/${w.dead}d`);
+  }
+
+  if (data.last_activity_ago !== null) {
+    parts.push(`⏱ ${data.last_activity_ago}`);
+  }
+
+  return parts.join(' ');
 }
 
 // --- Core status resolver (unchanged) ---
@@ -308,6 +342,10 @@ async function handleSelfStatus(params: GetStatusParams): Promise<ToolResult> {
 
   if (params.json) {
     return ok(data as Record<string, unknown>);
+  }
+
+  if (params.inline) {
+    return ok({ inline: formatInline(data) });
   }
 
   return ok({ dashboard: formatDashboard(data) });

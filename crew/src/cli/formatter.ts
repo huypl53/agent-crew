@@ -22,7 +22,7 @@ Commands:
               [--to <agent>] [--kind <kind>] [--mode <mode>] Send a message
   read        [--name <name>] [--room <name|id|path>] [--limit N]
               [--kinds task,completion]                    Read messages
-  status      [<agent_name>] [--self] [--json] [--session <id>] [--name <self>] Check agent status (--self for dashboard)
+  status      [<agent_name>] [--self] [--inline] [--json] [--session <id>] [--name <self>] Check agent status (--self for dashboard, --inline for compact bar)
   check       [--name <name>] [--scopes messages,agents]   Check for changes
   refresh     [--name <name>]                              Re-register agent
   topic       --room <name|id|path> --text <text> [--name <name>] Set room topic
@@ -76,6 +76,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
       .join(' '),
 
   status: (d) => {
+    if (d.inline) return d.inline;
     if (d.dashboard) return d.dashboard;
     const pane = d.tmux_target ? ` pane:${d.tmux_target}` : ' pane:(none)';
     return `${d.name} ${d.status}${pane} ${d.room_name ?? d.room ?? ''}${d.room_path ? ` (${d.room_path})` : ''}`;

@@ -93,6 +93,7 @@ export const COMMANDS: Record<
       agent_name: p[0] ?? f.agent,
       name: f.name,
       self: !!f.self,
+      inline: !!f.inline,
       json: !!f.json,
       session: typeof f.session === 'string' ? f.session : undefined,
     }),
