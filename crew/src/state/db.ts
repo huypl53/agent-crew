@@ -174,21 +174,34 @@ export function getDbPath(): string {
   return `${stateDir}/crew.db`;
 }
 
+// Track which DB path the current handle is connected to.
+let _dbPath: string | null = null;
+
 export function initDb(path?: string): void {
+  const dbPath = path ?? getDbPath();
+
+  // Reuse existing connection if it's already open on the same path.
+  // Avoids close+reopen race that causes SQLITE_BUSY_RECOVERY when
+  // another process holds the WAL lock.
+  if (_db && _dbPath === dbPath) return;
+
   if (_db) {
     _db.close();
     _db = null;
+    _dbPath = null;
   }
 
-  const dbPath = path ?? getDbPath();
   if (dbPath !== ':memory:') {
     const dir = dirname(dbPath);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   }
 
   _db = new Database(dbPath, { create: true });
-  _db.exec('PRAGMA journal_mode=WAL;');
+  // Set busy_timeout BEFORE any schema operations so concurrent
+  // writers are tolerated (WAL allows one writer + many readers).
   _db.exec('PRAGMA busy_timeout=5000;');
+  _db.exec('PRAGMA journal_mode=WAL;');
+  _dbPath = dbPath;
 
   const hasRoomsTable = Boolean(
     _db
@@ -429,4 +442,5 @@ export function getDb(): Database {
 export function closeDb(): void {
   _db?.close();
   _db = null;
+  _dbPath = null;
 }
