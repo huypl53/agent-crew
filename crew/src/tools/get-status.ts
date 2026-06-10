@@ -82,12 +82,14 @@ export function getLastActivity(agentName: string): string | null {
 export function formatAgo(isoString: string | null): string | null {
   if (!isoString) return null;
   try {
-    // SQLite datetime() stores "YYYY-MM-DD HH:MM:SS" (space-separated, no TZ).
-    // Convert to ISO 8601 ("YYYY-MM-DDTHH:MM:SSZ") for correct Date parsing.
-    const iso = isoString.includes('T')
-      ? isoString
-      : isoString.replace(' ', 'T');
-    const ms = Date.now() - new Date(`${iso}Z`).getTime();
+    // Normalize to parseable ISO 8601.
+    // Sources: SQLite datetime() → "YYYY-MM-DD HH:MM:SS" (space, no TZ)
+    //          JS toISOString()  → "YYYY-MM-DDTHH:MM:SS.sssZ" (already valid)
+    let normalized = isoString.replace(' ', 'T'); // SQLite → ISO separator
+    if (!normalized.endsWith('Z') && !normalized.includes('+')) {
+      normalized += 'Z'; // Add UTC suffix if missing
+    }
+    const ms = Date.now() - new Date(normalized).getTime();
     if (ms < 1000) return 'just now';
     if (ms < 60_000) return `${Math.floor(ms / 1000)}s ago`;
     if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
