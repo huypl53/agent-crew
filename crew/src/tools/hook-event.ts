@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'bun';
+import { flushPushQueueForAgent } from '../delivery/index.ts';
 import type { Agent, ToolResult } from '../shared/types.ts';
 import { ok } from '../shared/types.ts';
 import { getDb, initDb } from '../state/db.ts';
@@ -87,7 +88,16 @@ export async function processHookEventInput(
   let hintStatus: string | undefined;
 
   if (eventType === 'UserPromptSubmit') {
-    clearArmedInputBlock(agent.name);
+    const wasBlocked = clearArmedInputBlock(agent.name);
+
+    // Flush pending push messages that accumulated while blocked
+    if (wasBlocked && agent.tmux_target) {
+      flushPushQueueForAgent(agent).catch((e) => {
+        console.error(
+          `[crew block] flush after unblock failed for ${agent.name}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      });
+    }
 
     // Cadence-gated hint injection for model context
     let cadenceResult: { shouldShow: boolean; hint: HintRecord | null } | null =
@@ -205,7 +215,9 @@ function checkAutoSelfTransition(
  * Build worker summary from DB status (sync, no async pane checks).
  * Used by hook-event for the lightweight dashboard.
  */
-function buildWorkerSummary(agent: Agent): { idle: number; busy: number; dead: number } | null {
+function buildWorkerSummary(
+  agent: Agent,
+): { idle: number; busy: number; dead: number } | null {
   const members = getRoomMembers(agent.room_id).filter(
     (m) => m.name !== agent.name,
   );
