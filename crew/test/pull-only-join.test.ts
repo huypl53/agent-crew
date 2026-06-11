@@ -35,7 +35,7 @@ describe('pull-only join', () => {
     });
     expect(result.isError).toBeUndefined();
     const data = JSON.parse(result.content[0]!.text);
-    expect(data.name).toMatch(/^[a-z]+-[a-z]+$/);
+    expect(data.name).toMatch(/^worker-[a-z]+-[a-z]+$/);
   });
 
   test('agent row has null pane in state', async () => {
