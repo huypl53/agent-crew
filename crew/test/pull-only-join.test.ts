@@ -28,14 +28,14 @@ describe('pull-only join', () => {
     expect(data.tmux_target).toBeNull();
   });
 
-  test('prefixes role for auto-generated name', async () => {
+  test('generates adjective-noun name when not provided', async () => {
     const result = await handleJoinRoom({
       room: 'test-room',
       role: 'worker',
     });
     expect(result.isError).toBeUndefined();
     const data = JSON.parse(result.content[0]!.text);
-    expect(data.name).toMatch(/^worker-[a-z0-9]{4}$/);
+    expect(data.name).toMatch(/^[a-z]+-[a-z]+$/);
   });
 
   test('agent row has null pane in state', async () => {

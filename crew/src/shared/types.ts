@@ -155,17 +155,42 @@ export function err(error: string): ToolResult {
 
 /* ── Random name generation ─────────────────────────────── */
 
-const NAME_CHARSET = 'abcdefghijklmnopqrstuvwxyz0123456789';
+const ADJECTIVES = [
+  'swift', 'calm', 'bold', 'keen', 'warm',
+  'cool', 'bright', 'steady', 'quiet', 'deep',
+  'sharp', 'quick', 'still', 'wild', 'fair',
+  'firm', 'vivid', 'crisp', 'clear', 'solid',
+  'noble', 'gentle', 'fierce', 'stout', 'agile',
+  'rustic', 'sleek', 'sturdy', 'brave', 'brisk',
+  'dapper', 'eager', 'hardy', 'jovial', 'lithe',
+  'plucky', 'robust', 'savvy', 'trusty', 'zen',
+] as const;
 
+const NOUNS = [
+  'falcon', 'otter', 'panda', 'tiger', 'crane',
+  'raven', 'lynx', 'badger', 'heron', 'robin',
+  'coyote', 'marten', 'finch', 'lark', 'egret',
+  'mongoose', 'vole', 'puffin', 'ibis', 'bandicoot',
+  'dugong', 'pillbug', 'fennec', 'krill', 'albatross',
+  'mantis', 'narwhal', 'quail', 'shrike', 'wolverine',
+  'caracal', 'obsidian', 'garnet', 'basalt', 'cinder',
+  'ember', 'dusk', 'vale', 'pine', 'bloom',
+] as const;
+
+/** Short random suffix for collision resolution (alphanumeric, lowercase). */
 export function randomSuffix(length = 4): string {
+  const charset = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let s = '';
   for (let i = 0; i < length; i++)
-    s += NAME_CHARSET[Math.floor(Math.random() * NAME_CHARSET.length)];
+    s += charset[Math.floor(Math.random() * charset.length)];
   return s;
 }
 
+/** Generate a memorable adjective-noun name like swift-falcon, bold-tiger. */
 export function generateRandomName(): string {
-  return `${randomSuffix()}`;
+  const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
+  return `${adj}-${noun}`;
 }
 
 /* ── Token tracking ─────────────────────────────────────── */

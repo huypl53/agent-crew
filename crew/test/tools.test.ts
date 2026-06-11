@@ -101,7 +101,7 @@ describe('MCP tools', () => {
       });
       expect(result.isError).toBeUndefined();
       const data = JSON.parse(result.content[0]?.text);
-      expect(data.name).toMatch(/^worker-[a-z0-9]{4}$/);
+      expect(data.name).toMatch(/^[a-z]+-[a-z]+$/);
     });
 
     test.serial('generates random name when empty string', async () => {
@@ -113,7 +113,7 @@ describe('MCP tools', () => {
       });
       expect(result.isError).toBeUndefined();
       const data = JSON.parse(result.content[0]?.text);
-      expect(data.name).toMatch(/^worker-[a-z0-9]{4}$/);
+      expect(data.name).toMatch(/^[a-z]+-[a-z]+$/);
     });
 
     test.serial('rejoin same name same pane updates in place', async () => {
