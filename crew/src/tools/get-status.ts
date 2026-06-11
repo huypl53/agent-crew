@@ -137,30 +137,20 @@ export function formatDashboard(data: DashboardData): string {
 // Same compact format emitted by the Stop hook via buildLightweightDashboard.
 
 export function formatInline(data: DashboardData): string {
-  const paneInfo = data.tmux_target ? `pane:${data.tmux_target}` : 'pane:(none)';
-  const parts = [
-    `[${data.name}@${data.room}]`,
-    data.status,
-    paneInfo,
-    `⬣ ${data.input_block_mode}`,
-    `⋮ ${data.pending_messages} msgs`,
-  ];
+  const parts: string[] = [];
+
+  if (data.tmux_target) {
+    parts.push(`⬡ ${data.tmux_target}`);
+  }
+
+  parts.push(`⬣ ${data.input_block_mode}`);
 
   if (data.hint) {
     const truncated =
       data.hint.message.length > 40
         ? data.hint.message.slice(0, 37) + '…'
         : data.hint.message;
-    parts.push(`💡 "${truncated}" (${data.hint.cadence}t)`);
-  }
-
-  if (data.workers) {
-    const w = data.workers;
-    parts.push(`⋮ ${w.idle}i/${w.busy}b/${w.dead}d`);
-  }
-
-  if (data.last_activity_ago !== null) {
-    parts.push(`⏱ ${data.last_activity_ago}`);
+    parts.push(`💡 "${truncated}"`);
   }
 
   return parts.join(' ');

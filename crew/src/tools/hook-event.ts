@@ -15,7 +15,6 @@ import {
   isAgentAutoSelfOnIdle,
   tickHintCadence,
 } from '../state/index.ts';
-import { formatInline, getPendingMessageCount } from './get-status.ts';
 
 function okResult(
   payload: Record<string, unknown> = { ok: true, decision: 'allow' },
