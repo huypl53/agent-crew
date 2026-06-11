@@ -203,7 +203,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
   },
   'hook-event': (d) => {
     // Hook stdout is injected into Claude Code conversations.
-    // Emit reminder text only when a hint is due; otherwise stay silent.
+    // Emit hint text only when cadence fires; otherwise stay silent.
     if (d.hint?.message) return d.hint.message;
     return '';
   },

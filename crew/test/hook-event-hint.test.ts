@@ -4,13 +4,12 @@
  * The crew plugin's `crew hook-event` runs on UserPromptSubmit. It has two
  * hint paths:
  *
- * 1. **Hint injection** (model context): on every Nth turn (cadence), emit
- *    the hint message to stdout. Claude Code injects this as <system-reminder>
- *    context visible only to the model.
+ * 1. **Hint injection** (model context): on cadence turns, emit the hint
+ *    message to stdout. Claude Code injects this as <system-reminder> context
+ *    visible only to the model.
  *
- * 2. **Hint status display** (user-visible): on every turn where a hint exists,
- *    emit a short status notice via `hintStatus`. The CLI writes this to stderr
- *    and exits 1, making it appear as a non-blocking notice in the chat UI.
+ * 2. **User output stays quiet**: `hook-event` should not write hint text to
+ *    stderr or show a user-visible notice.
  *
  * Cadence logic is covered in state.test.ts. These tests verify the
  * formatter contract, hook-event dual-path output, hint CLI room scoping,
@@ -44,8 +43,28 @@ function parseResult(
   return JSON.parse(result.content[0]?.text);
 }
 
+async function runHookEventCli(input: string, pane: string) {
+  const proc = Bun.spawn(['bun', 'src/cli.ts', 'hook-event'], {
+    stdin: new Response(input),
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: {
+      ...process.env,
+      CREW_STATE_DIR: process.env.CREW_STATE_DIR ?? '',
+      TMUX_PANE: pane,
+    },
+  });
+
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  const exitCode = await proc.exited;
+  return { stdout, stderr, exitCode };
+}
+
 describe('hook-event formatter (hint reminder emission)', () => {
-  test('passes through user message verbatim', () => {
+  test('passes through hint message when present', () => {
     const message =
       'You are worker-1 in project-x. Check inbox before responding.';
     const out = formatResult('hook-event', {
@@ -55,7 +74,7 @@ describe('hook-event formatter (hint reminder emission)', () => {
     expect(out).toBe(message);
   });
 
-  test('stays silent (empty string) when no hint is due', () => {
+  test('stays silent when no hint is due', () => {
     const out = formatResult('hook-event', { ok: true });
     expect(out).toBe('');
   });
@@ -66,16 +85,6 @@ describe('hook-event formatter (hint reminder emission)', () => {
       hint: { agent_name: 'alice' },
     });
     expect(out).toBe('');
-  });
-
-  test('includes hintStatus in formatter when present', () => {
-    const out = formatResult('hook-event', {
-      ok: true,
-      hint: { agent_name: 'worker-1', message: 'You are worker-1.' },
-      hintStatus: '💡 hint: "You are worker-1." (every 3t, firing)',
-    });
-    // Formatter only handles stdout (model context) — hintStatus goes to stderr via cli.ts
-    expect(out).toBe('You are worker-1.');
   });
 });
 
@@ -92,7 +101,7 @@ describe('hook-event dual-path (processHookEventInput)', () => {
     delete process.env.TMUX_PANE;
   });
 
-  test('cadence turn: returns hint for model context AND hintStatus for user visibility', async () => {
+  test('cadence turn: returns hint for model context', async () => {
     const room = getOrCreateRoom('/test/room', 'room');
     addAgent('worker-1', 'worker', room.id, '%400');
     setHint('worker-1', room.id, 'You are worker-1 in project-x.', {
@@ -116,14 +125,10 @@ describe('hook-event dual-path (processHookEventInput)', () => {
     expect(data.hint).toBeDefined();
     expect(data.hint.agent_name).toBe('worker-1');
     expect(data.hint.message).toBe('You are worker-1 in project-x.');
-
-    // User-visible status: short notice about the hint
-    expect(data.hintStatus).toBeDefined();
-    expect(data.hintStatus).toContain('💡 hint:');
-    expect(data.hintStatus).toContain('firing');
+    expect(data.hintStatus).toBeUndefined();
   });
 
-  test('non-cadence turn: returns hintStatus only (no model context injection)', async () => {
+  test('non-cadence turn: no model context injection', async () => {
     const room = getOrCreateRoom('/test/room', 'room');
     addAgent('worker-1', 'worker', room.id, '%401');
     setHint('worker-1', room.id, 'You are worker-1 in project-x.', {
@@ -139,13 +144,8 @@ describe('hook-event dual-path (processHookEventInput)', () => {
     const result = await processHookEventInput(input, '%401');
     const data = JSON.parse(result.content[0]?.text);
 
-    // No model context injection on non-cadence turn
     expect(data.hint).toBeUndefined();
-
-    // But hintStatus is present — user can see the hint is active
-    expect(data.hintStatus).toBeDefined();
-    expect(data.hintStatus).toContain('💡 hint:');
-    expect(data.hintStatus).toContain('next in');
+    expect(data.hintStatus).toBeUndefined();
   });
 
   test('no hint: returns neither hint nor hintStatus', async () => {
@@ -165,7 +165,7 @@ describe('hook-event dual-path (processHookEventInput)', () => {
     expect(data.hintStatus).toBeUndefined();
   });
 
-  test('hintStatus truncates long messages', async () => {
+  test('hint message stays out of user-visible status fields', async () => {
     const room = getOrCreateRoom('/test/room', 'room');
     addAgent('worker-1', 'worker', room.id, '%403');
     const longMessage = 'A'.repeat(50);
@@ -178,28 +178,30 @@ describe('hook-event dual-path (processHookEventInput)', () => {
     const result = await processHookEventInput(input, '%403');
     const data = JSON.parse(result.content[0]?.text);
 
-    expect(data.hintStatus).toBeDefined();
-    // 40-char truncation: 37 chars + '…'
-    expect(data.hintStatus).toContain('AAA…');
-    expect(data.hintStatus).not.toContain(longMessage);
+    expect(data.hint).toBeUndefined();
+    expect(data.hintStatus).toBeUndefined();
   });
 
-  test('hintStatus shows next-in countdown correctly', async () => {
+  test('CLI writes hint message to stdout and keeps stderr silent', async () => {
     const room = getOrCreateRoom('/test/room', 'room');
-    addAgent('worker-1', 'worker', room.id, '%404');
-    setHint('worker-1', room.id, 'Reminder.', { pane: '%404', cadence: 5 });
+    addAgent('worker-1', 'worker', room.id, '%405');
+    setHint('worker-1', room.id, 'You are worker-1 in project-x.', {
+      pane: '%405',
+      cadence: 3,
+    });
 
-    // After 1 tick (turn_count = 1), next reminder in 4 turns
-    tickHintCadence('%404', null, room.id);
+    tickHintCadence('%405', null, room.id);
+    tickHintCadence('%405', null, room.id);
 
     const input = JSON.stringify({
       hook_event_name: 'UserPromptSubmit',
-      session_id: 'sess-5',
+      session_id: 'sess-6',
     });
-    const result = await processHookEventInput(input, '%404');
-    const data = JSON.parse(result.content[0]?.text);
+    const { stdout, stderr, exitCode } = await runHookEventCli(input, '%405');
 
-    expect(data.hintStatus).toContain('next in 3t'); // turn_count is now 2 after tickHintCadence, next in (5 - 2%5) = 3
+    expect(stdout.trim()).toBe('You are worker-1 in project-x.');
+    expect(stderr).toBe('');
+    expect(exitCode).toBe(0);
   });
 });
 

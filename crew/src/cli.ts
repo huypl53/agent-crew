@@ -161,15 +161,17 @@ try {
     process.exit(1);
   }
 
-  // hook-event user-visible output: write hint status and/or status dashboard
-  // to stderr and exit 1 so Claude Code shows them as non-blocking notices.
+  // hook-event user-visible output: write the status dashboard to stderr
+  // and exit 1 so Claude Code shows it as a non-blocking notice.
   // stdout (model context) is still emitted normally via formatResult.
-  const hasHookNotice =
-    parsed.command === 'hook-event' &&
-    (data.hintStatus || data.statusDashboard);
-  if (hasHookNotice) {
-    if (data.statusDashboard) process.stderr.write(`${data.statusDashboard}\n`);
-    if (data.hintStatus) process.stderr.write(`${data.hintStatus}\n`);
+  const hookNotices =
+    parsed.command === 'hook-event' && typeof data.statusDashboard === 'string'
+      ? [data.statusDashboard]
+      : [];
+  if (hookNotices.length > 0) {
+    for (const notice of hookNotices) {
+      process.stderr.write(`${notice}\n`);
+    }
   }
 
   if (parsed.flags.json) {
@@ -183,8 +185,8 @@ try {
 
   // Exit 1 when hook notices were emitted to stderr — Claude Code shows
   // stderr from non-zero exits as a non-blocking notice visible to the user.
-  if (hasHookNotice) {
-    process.exit(1);
+  if (hookNotices.length > 0) {
+    process.exitCode = 1;
   }
 } catch (e) {
   console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);

@@ -11,7 +11,6 @@ import {
   clearArmedInputBlock,
   getAgentByPane,
   getAgentInputBlockMode,
-  getHint,
   getRoomMembers,
   isAgentAutoSelfOnIdle,
   tickHintCadence,
@@ -81,12 +80,6 @@ export async function processHookEventInput(
   // Hint injection: on every Nth UserPromptSubmit (where N = cadence),
   // emit the user-defined message to stdout. Claude Code injects hook
   // stdout into the conversation, providing custom context reminders.
-  //
-  // Hint status: on every UserPromptSubmit where a hint exists, emit a
-  // short notice to stderr (via hintStatus). Claude Code shows stderr
-  // from exit-1 hooks as a non-blocking notice visible to the user in chat.
-  let hintStatus: string | undefined;
-
   if (eventType === 'UserPromptSubmit') {
     const wasBlocked = clearArmedInputBlock(agent.name);
 
@@ -111,21 +104,6 @@ export async function processHookEventInput(
       );
     }
 
-    // Build user-visible status from the hint (after tick so turn_count is current)
-    const hintForStatus =
-      cadenceResult?.hint ?? getHint(pane, sessionId, agent.room_id);
-    if (hintForStatus) {
-      const truncated =
-        hintForStatus.message.length > 40
-          ? `${hintForStatus.message.slice(0, 37)}…`
-          : hintForStatus.message;
-      const firing = cadenceResult?.shouldShow === true;
-      const nextIn = firing
-        ? 'now'
-        : `${hintForStatus.cadence - (hintForStatus.turn_count % hintForStatus.cadence)}t`;
-      hintStatus = `💡 hint: "${truncated}" (every ${hintForStatus.cadence}t, ${firing ? 'firing' : `next in ${nextIn}`})`;
-    }
-
     if (cadenceResult?.shouldShow && cadenceResult.hint) {
       return {
         content: [
@@ -138,7 +116,6 @@ export async function processHookEventInput(
                 agent_name: cadenceResult.hint.agent_name,
                 message: cadenceResult.hint.message,
               },
-              hintStatus,
             }),
           },
         ],
@@ -151,38 +128,37 @@ export async function processHookEventInput(
   // Replaces the old pane-queue injection that could break user input.
   let statusDashboard: string | undefined;
 
-  if (eventType === 'Stop' && agent.role === 'leader') {
-    try {
-      const shouldShowDashboard = checkAutoSelfTransition(
-        agent.name,
-        hookEventId,
-      );
-      if (shouldShowDashboard) {
-        statusDashboard = formatInline({
-          name: agent.name,
-          role: agent.role,
-          room: agent.room_name,
-          status: 'idle',
-          tmux_target: agent.tmux_target,
-          input_block_mode: getAgentInputBlockMode(agent.name),
-          hint: null,
-          pending_messages: getPendingMessageCount(agent.name, agent.agent_id),
-          workers: buildWorkerSummary(agent),
-          last_activity_ago: null, // skip async lookup in hook context
-        });
-      }
-    } catch (e) {
-      // Fail-open: don't block hook processing on dashboard errors
-      console.error(
-        `[crew status] dashboard error: ${e instanceof Error ? e.message : String(e)}`,
-      );
-    }
-  }
+  // if (eventType === 'Stop' && agent.role === 'leader') {
+  //   try {
+  //     const shouldShowDashboard = checkAutoSelfTransition(
+  //       agent.name,
+  //       hookEventId,
+  //     );
+  //     if (shouldShowDashboard) {
+  //       statusDashboard = formatInline({
+  //         name: agent.name,
+  //         role: agent.role,
+  //         room: agent.room_name,
+  //         status: 'idle',
+  //         tmux_target: agent.tmux_target,
+  //         input_block_mode: getAgentInputBlockMode(agent.name),
+  //         hint: null,
+  //         pending_messages: getPendingMessageCount(agent.name, agent.agent_id),
+  //         workers: buildWorkerSummary(agent),
+  //         last_activity_ago: null, // skip async lookup in hook context
+  //       });
+  //     }
+  //   } catch (e) {
+  //     // Fail-open: don't block hook processing on dashboard errors
+  //     console.error(
+  //       `[crew status] dashboard error: ${e instanceof Error ? e.message : String(e)}`,
+  //     );
+  //   }
+  // }
 
   return ok({
     ok: true,
     decision: 'allow',
-    ...(hintStatus ? { hintStatus } : {}),
     ...(statusDashboard ? { statusDashboard } : {}),
   });
 }
