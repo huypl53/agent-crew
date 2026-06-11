@@ -22,7 +22,7 @@ Commands:
               [--to <agent>] [--kind <kind>] [--mode <mode>] Send a message
   read        [--name <name>] [--room <name|id|path>] [--limit N]
               [--kinds task,completion]                    Read messages
-  status      [<agent_name>] [--self] [--inline] [--json] [--session <id>] [--name <self>] Check agent status (--self for dashboard, --inline for compact bar)
+  status      [<agent_name>] [--self] [--inline] [--json] [--session <id>] [--name <self>] Check agent status (--self for rich view, --inline for compact bar)
   check       [--name <name>] [--scopes messages,agents]   Check for changes
   refresh     [--name <name>]                              Re-register agent
   topic       --room <name|id|path> --text <text> [--name <name>] Set room topic
@@ -51,7 +51,6 @@ Commands:
   auto-self   on|off [--name <leader>]                     Toggle auto crew status --self on leader idle
   wait-idle   --target <pane> [--timeout <ms>]             Wait until pane is idle (stable content)
               [--stable-count N] [--idle-seconds N]
-  serve       [--port N] [--host H] [--summary-interval N] Start browser dashboard server (default port 3456)
 
 Flags:
   --json      Output raw JSON instead of text
@@ -218,17 +217,17 @@ const FORMATTERS: Record<string, (data: any) => string> = {
       return `Advanced to round ${d.round} on topic: "${d.topic}"\nWorkers: ${d.workers.join(', ')}`;
     }
     if (d.skipped) {
-      return `Skipped worker ${d.skipped}. Pending: ${d.pending.join(', ') || '(none)'}`;
+      return `Skipped worker: ${d.skipped}\nPending: ${d.pending.join(', ')}`;
     }
-    if (d.active === false) {
-      return 'No active party mode in this room';
-    }
-    if (d.active === true) {
-      return `Active party round ${d.round} on topic: "${d.topic}"\nResponded: ${d.responded.join(', ') || '(none)'}\nPending: ${d.pending.join(', ') || '(none)'}`;
+    if (d.active) {
+      return `Party round ${d.round} on topic: "${d.topic}"\nResponded: ${d.responded.join(', ')}\nPending: ${d.pending.join(', ')}`;
     }
     return JSON.stringify(d);
   },
-  manage: () => 'Management console exited',
-  'auto-self': (d) =>
-    `${d.name} auto-self-on-idle:${d.auto_self_on_idle ? 'on' : 'off'} ${d.note ?? ''}`,
+  'create-task': (d) =>
+    `Created task ${d.task.id} for ${d.task.assigned_to}`,
+  'update-task': (d) =>
+    `Updated task ${d.task.id} (${d.task.status})`,
+  'get-task-details': (d) =>
+    `Task ${d.task.id}: ${d.task.summary}`,
 };

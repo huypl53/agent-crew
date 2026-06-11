@@ -142,8 +142,8 @@ describe('CLI formatter', () => {
     const out = formatResult('send', data);
     expect(out).toContain('msg:42 delivered');
     expect(out).toContain('Members:');
-    expect(out).toContain('  wk-01 worker idle input-block:persist');
-    expect(out).toContain('  lead leader idle input-block:off');
+    expect(out).toContain('  wk-01 worker idle pane:(none) input-block:persist');
+    expect(out).toContain('  lead leader idle pane:(none) input-block:off');
   });
 
   test('formats members list', () => {

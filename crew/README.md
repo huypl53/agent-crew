@@ -12,14 +12,12 @@ Multi-agent coordination for AI coding agents via tmux rooms. Works with **Claud
 4. Leaders coordinate workers, workers execute assignments, everyone communicates through rooms
 5. Assignment delivery via pushed messages — leaders can interrupt or replace worker assignments
 6. **Interactive management TUI** — `crew manage` gives leaders a zero-dependency terminal UI to select rooms and members, then apply actions (interrupt, clear session, reassign task, set topic, leave, delete) on one or many targets at once
-6. Dashboard visualization — dashboard plus room/template management views
-8. Automatic token/cost tracking — collects usage from Claude Code and Codex CLI, displays in dashboard
-9. Worker session management — leaders can clear a worker's Claude Code context and auto-refresh their registration between assignment sequences
-9. Automatic dead agent cleanup — periodic liveness check every ~30s detects disconnected workers and cleans up their registration (debounced, leaders are never removed)
-11. Role-aware delivery — every push message includes a role reminder suffix so agents remember their responsibilities
-12. Leader idle notification control — leaders can mute/unmute sweep idle notifications from workers
-13. Auto-self on idle — leaders automatically see `crew status --self` dashboard when going idle (toggleable per-leader)
-14. Polling flow control — pause/resume sweep delivery to leaders, or switch between auto/manual busy detection
+7. Worker session management — leaders can clear a worker's Claude Code context and auto-refresh their registration between assignment sequences
+8. Automatic dead agent cleanup — periodic liveness check every ~30s detects disconnected workers and cleans up their registration (debounced, leaders are never removed)
+9. Role-aware delivery — every push message includes a role reminder suffix so agents remember their responsibilities
+10. Leader idle notification control — leaders can mute/unmute sweep idle notifications from workers
+11. Auto-self on idle — leaders automatically see `crew status --self` dashboard when going idle (toggleable per-leader)
+12. Polling flow control — pause/resume sweep delivery to leaders, or switch between auto/manual busy detection
 
 ## Architecture
 
@@ -69,7 +67,7 @@ cd ~/.crew/crew && bun link
 git clone https://github.com/huypl53/agent-crew.git ~/.crew
 cd ~/.crew/crew && bun install && bun link
 
-# Personal Codex plugin root (recommended)
+# Personal Codex plugin root (created by the installer if missing)
 mkdir -p ~/.codex/plugins ~/.agents/plugins
 
 # Expose the plugin at a stable local path
@@ -174,9 +172,6 @@ rm -f ~/.codex/plugins/crew
 ## Usage
 
 ```bash
-# TUI dashboard (separate terminal/pane)
-bun run --cwd ~/.crew/crew dashboard
-
 # Run tests
 bun test --cwd ~/.crew/crew
 
@@ -229,7 +224,6 @@ crew <command>
 | `hint set` | `crew hint set "You are builder-1 in project-x." -c 3` | `Hint set for builder-1 in crew. Will inject your message every 3 turn(s).` |
 | `hint unset` | `crew hint unset --agent builder-1 --room crew` | `Hint removed for builder-1 in crew` |
 | `hint lookup` | `crew hint lookup --pane %42` | `agent_name: builder-1, cadence: 3, next_reminder_at: 2` |
-| `serve` | `crew serve --port 3456` | `Browser dashboard at http://127.0.0.1:3456` |
 
 ### Interactive Management TUI (`crew manage`)
 
@@ -287,7 +281,6 @@ crew <command>
 
 - `--json` — output raw JSON instead of compact text (machine-readable)
 - `--help` — show usage
-- `--summary-interval N` — with `crew serve`, print periodic state summary every N seconds (default behavior is state-change events only)
 
 ### send flags
 
@@ -487,42 +480,6 @@ crew auto-self on --name lead-01
 
 The toggle is per-leader agent. When `auto_self_on_idle` is off, the busy→idle transition still fires normally but no `crew status --self` command is sent.
 
-## TUI Dashboard
-
-Read-only terminal observer built with React+Ink. Shows rooms, agents with roles and live status, message feed, and cost analytics in a 3-panel layout.
-
-```
-┌─ Rooms & Agents ───────────┐┌─ Messages ─────────────────────────┐
-│ ▼ company (2)              ││ 14:32:01 [TASK] lead-2 → lead-1    │
-│   ● lead-2 (leader) idle   ││   Build the auth system            │
-│   ● lead-1 (leader) busy   ││ 14:33:00 [DONE] builder-1 → lead-1 │
-│ ▼ frontend (3)             │├─ Details ──────────────────────────┤
-│   ◦ lead-1 (leader) busy   ││ lead-1  leader | busy              │
-│   ● builder-1 (worker) idle││ Rooms: company, frontend           │
-└────────────────────────────┘│ Cost: $12.50 | Tokens: 245k       │
-  Cost: $12.50 (245k tok)    └────────────────────────────────────┘
-```
-
-**Header:** Summary of agent status (busy/idle/dead), task progress, errors, uptime, and **total crew cost + token count**.
-
-**Tree panel:** agents show `● name (role) $cost` with status color. Secondary agents (in multiple rooms) show dim `◦`. Rooms collapse with `▶`/`▼`. Per-agent cost updated every 30s from collected token usage.
-
-**Details panel:** agent view shows live tmux pane output and cost/token stats; room view shows task summary (open tasks / completed / errors from message kinds).
-
-### Keyboard shortcuts
-
-| Key | Action |
-|-----|--------|
-| `↑` / `k` | Move up |
-| `↓` / `j` | Move down |
-| `gg` | Jump to top |
-| `G` | Jump to bottom |
-| `Enter` / `Space` | Collapse/expand room |
-| `?` | Toggle help overlay |
-| `q` / `Ctrl-C` | Quit |
-
-Shortcuts are always visible in the bottom status bar.
-
 ## Token & Cost Tracking
 
 Crew automatically collects token usage from Claude Code and Codex CLI agents:
@@ -559,10 +516,9 @@ crew/                 # Crew plugin
   .claude-plugin/
     plugin.json       # Plugin manifest
   src/
-    index.ts          # MCP server entrypoint
     cli.ts            # CLI entrypoint (#!/usr/bin/env bun)
     cli/              # CLI modules
-    tools/            # Tool handlers (shared by MCP + CLI)
+    tools/            # Tool handlers
     ...
   commands/           # 2 slash commands — /crew:{join-room,refresh}
   skills/             # agent skills — leader, worker (model-invoked after join)

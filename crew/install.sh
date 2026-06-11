@@ -12,8 +12,9 @@ set -euo pipefail
 INSTALL_DIR="$HOME/.crew"
 REPO_URL="https://github.com/huypl53/agent-crew.git"
 CODEX_CONFIG="$HOME/.codex/config.toml"
-CODEX_PLUGINS_DIR="$HOME/.codex/.tmp/plugins/plugins"
-CODEX_MARKETPLACE="$HOME/.codex/.tmp/plugins/.agents/plugins/marketplace.json"
+CODEX_PLUGINS_DIR="$HOME/.codex/plugins"
+CODEX_MARKETPLACE_DIR="$HOME/.agents/plugins"
+CODEX_MARKETPLACE="$CODEX_MARKETPLACE_DIR/marketplace.json"
 ANTIGRAVITY_PLUGINS_DIR="$HOME/.gemini/config/plugins"
 
 CREW_TOOLS=(get_status join_room leave_room list_members list_rooms read_messages refresh send_message set_room_topic)
@@ -78,7 +79,6 @@ cmd_claude() {
   echo "  Skills: /crew:join-room  /crew:leader  /crew:worker  /crew:refresh"
   echo "  MCP tools: join_room, send_message, read_messages, list_rooms, ..."
   echo ""
-  echo "  Dashboard: bun run --cwd $INSTALL_DIR/crew dashboard"
   echo ""
 }
 
@@ -90,66 +90,53 @@ cmd_codex() {
 
   ensure_repo
 
-  # 1. Add MCP server
-  info "Adding crew MCP server..."
-  codex mcp remove crew 2>/dev/null || true
-  codex mcp add crew -- bun run "$INSTALL_DIR/crew/src/index.ts" 2>/dev/null
-  ok "MCP server registered"
+  mkdir -p "$CODEX_PLUGINS_DIR" "$CODEX_MARKETPLACE_DIR"
 
-  # 2. Add tool approval modes (required for --full-auto)
-  info "Configuring tool approvals..."
-  if [ -f "$CODEX_CONFIG" ]; then
-    for tool in "${CREW_TOOLS[@]}"; do
-      if ! grep -q "mcp_servers.crew.tools.${tool}" "$CODEX_CONFIG" 2>/dev/null; then
-        cat >> "$CODEX_CONFIG" <<EOF
+  info "Installing crew plugin..."
+  rm -f "$CODEX_PLUGINS_DIR/crew"
+  ln -s "$INSTALL_DIR/crew" "$CODEX_PLUGINS_DIR/crew"
+  ok "Plugin symlinked"
 
-[mcp_servers.crew.tools.${tool}]
-approval_mode = "approve"
-EOF
-      fi
-    done
-    ok "Tool approval modes configured"
-  else
-    warn "Could not find $CODEX_CONFIG — tool approvals not set"
-  fi
-
-  # 3. Symlink into plugin directory
-  if [ -d "$CODEX_PLUGINS_DIR" ]; then
-    info "Installing crew plugin..."
-    rm -f "$CODEX_PLUGINS_DIR/crew"
-    ln -s "$INSTALL_DIR/crew" "$CODEX_PLUGINS_DIR/crew"
-
-    # 4. Add to marketplace.json if not already there
-    if [ -f "$CODEX_MARKETPLACE" ] && ! grep -q '"crew"' "$CODEX_MARKETPLACE" 2>/dev/null; then
-      python3 -c "
+  info "Updating Codex marketplace..."
+  python3 -c "
 import json
-with open('$CODEX_MARKETPLACE', 'r') as f:
-    data = json.load(f)
-data['plugins'].append({
+import os
+path = '$CODEX_MARKETPLACE'
+plugin = {
     'name': 'crew',
-    'source': {'source': 'local', 'path': './plugins/crew'},
-    'policy': {'installation': 'INSTALLED_BY_DEFAULT', 'authentication': 'ON_INSTALL'},
-    'category': 'Productivity'
-})
-with open('$CODEX_MARKETPLACE', 'w') as f:
+    'source': {'source': 'local', 'path': './.codex/plugins/crew'},
+    'policy': {'installation': 'AVAILABLE', 'authentication': 'ON_INSTALL'},
+    'category': 'Productivity',
+}
+data = {
+    'name': 'local-crew-plugins',
+    'interface': {'displayName': 'Local Crew Plugins'},
+    'plugins': [],
+}
+if os.path.exists(path):
+    try:
+        with open(path, 'r') as f:
+            loaded = json.load(f)
+        if isinstance(loaded, dict):
+            if isinstance(loaded.get('interface'), dict):
+                data['interface'].update(loaded['interface'])
+            if isinstance(loaded.get('plugins'), list):
+                data['plugins'] = loaded['plugins']
+    except Exception:
+        pass
+if not any(p.get('name') == 'crew' for p in data['plugins']):
+    data['plugins'].append(plugin)
+with open(path, 'w') as f:
     json.dump(data, f, indent=2)
     f.write('\n')
-" 2>/dev/null && ok "Plugin added to marketplace" || warn "Could not update marketplace.json — add manually"
-    else
-      ok "Plugin already in marketplace"
-    fi
-  else
-    warn "Codex plugins directory not found — plugin not symlinked (MCP tools still work)"
-  fi
+" 2>/dev/null && ok "Marketplace updated" || warn "Could not update marketplace.json — add manually"
 
   echo ""
   ok "crew installed for Codex CLI!"
   echo ""
   echo "  Skills: crew:join-room  crew:leader  crew:worker  crew:refresh"
-  echo "  MCP tools: join_room, send_message, read_messages, list_rooms, ..."
   echo ""
   echo "  Verify: codex → /plugins → crew should show 'Installed'"
-  echo "  Dashboard: bun run --cwd $INSTALL_DIR/crew dashboard"
   echo ""
 }
 
@@ -292,10 +279,6 @@ cmd_uninstall_claude() {
 cmd_uninstall_codex() {
   info "Removing crew from Codex CLI..."
 
-  if command -v codex >/dev/null 2>&1; then
-    codex mcp remove crew 2>/dev/null && ok "MCP server removed" || warn "MCP server may not be registered"
-  fi
-
   # Remove plugin symlink
   if [ -L "$CODEX_PLUGINS_DIR/crew" ]; then
     rm -f "$CODEX_PLUGINS_DIR/crew"
@@ -303,26 +286,21 @@ cmd_uninstall_codex() {
   fi
 
   # Remove from marketplace.json
-  if [ -f "$CODEX_MARKETPLACE" ] && grep -q '"crew"' "$CODEX_MARKETPLACE" 2>/dev/null; then
+  if [ -f "$CODEX_MARKETPLACE" ]; then
     python3 -c "
 import json
-with open('$CODEX_MARKETPLACE', 'r') as f:
-    data = json.load(f)
-data['plugins'] = [p for p in data['plugins'] if p.get('name') != 'crew']
-with open('$CODEX_MARKETPLACE', 'w') as f:
-    json.dump(data, f, indent=2)
-    f.write('\n')
+path = '$CODEX_MARKETPLACE'
+try:
+    with open(path, 'r') as f:
+        data = json.load(f)
+except Exception:
+    raise SystemExit(0)
+if isinstance(data, dict) and isinstance(data.get('plugins'), list):
+    data['plugins'] = [p for p in data['plugins'] if p.get('name') != 'crew']
+    with open(path, 'w') as f:
+        json.dump(data, f, indent=2)
+        f.write('\n')
 " 2>/dev/null && ok "Removed from marketplace" || warn "Could not update marketplace.json"
-  fi
-
-  # Remove tool approval entries from config.toml
-  if [ -f "$CODEX_CONFIG" ]; then
-    for tool in "${CREW_TOOLS[@]}"; do
-      sed -i "/\[mcp_servers\.crew\.tools\.${tool}\]/,/approval_mode/d" "$CODEX_CONFIG" 2>/dev/null
-    done
-    # Remove empty crew plugin entry
-    sed -i '/\[plugins\."crew@openai-curated"\]/,/enabled/d' "$CODEX_CONFIG" 2>/dev/null
-    ok "Cleaned config.toml"
   fi
 
   echo ""
@@ -400,7 +378,7 @@ case "${1:-}" in
     echo "  install.sh --codex            Install for Codex CLI"
     echo "  install.sh --agy              Install for Antigravity (global)"
     echo "  install.sh --agy-project [dir] Install for Antigravity (project scope)"
-    echo "  install.sh --all              Install for all platforms"
+    echo "  install.sh --all              Install for all supported platforms"
     echo "  install.sh --uninstall        Remove from Claude Code"
     echo "  install.sh --uninstall-codex  Remove from Codex CLI"
     echo "  install.sh --uninstall-agy    Remove from Antigravity (global)"

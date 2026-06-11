@@ -10,7 +10,6 @@ const BOOLEAN_FLAGS = new Set([
   'version',
   'confirm',
   'dev',
-  'headless',
   'persist',
   'self',
   'inline',
