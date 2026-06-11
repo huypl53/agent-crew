@@ -6,6 +6,7 @@ import type {
   HookEvent,
   InputBlockMode,
   Message,
+  MessageDeliveryMetadata,
   MessageKind,
   PartyResponse,
   PartyState,
@@ -19,9 +20,49 @@ import type {
 } from '../shared/types.ts';
 import { isPaneDead, paneCommandLooksAlive, sendKeys } from '../tmux/index.ts';
 import { closeDb, getDb, initDb } from './db.ts';
+import {
+  areAllBatchWorkersTerminal,
+  completeBatchWorker,
+  createMessageBatch,
+  getBatchWorkers,
+  getLatestBatchAssociationForWorker,
+  getLatestBatchForWorker,
+  getMessageBatch,
+  getOpenBatchForWorker,
+  getRenderableBatchWorkers,
+  listHintableBatches,
+  listIncompleteBatches,
+  markBatchCompleted,
+  markBatchHintSent,
+  markBatchWorkerDispatchFailed,
+  markBatchWorkerSent,
+  recordBatchWorkerTerminalMessage,
+  renderBatchPendingHint,
+} from './batch-state.ts';
+import { renderBatchFinalMessage } from './batch-render.ts';
 
 // Re-export for callers
-export { closeDb, initDb };
+export {
+  areAllBatchWorkersTerminal,
+  closeDb,
+  completeBatchWorker,
+  createMessageBatch,
+  getBatchWorkers,
+  getLatestBatchAssociationForWorker,
+  getLatestBatchForWorker,
+  getMessageBatch,
+  getOpenBatchForWorker,
+  getRenderableBatchWorkers,
+  initDb,
+  listHintableBatches,
+  listIncompleteBatches,
+  markBatchCompleted,
+  markBatchHintSent,
+  markBatchWorkerDispatchFailed,
+  markBatchWorkerSent,
+  recordBatchWorkerTerminalMessage,
+  renderBatchPendingHint,
+};
 
 // --- Helpers ---
 
@@ -95,6 +136,10 @@ function rowToMessage(row: Record<string, unknown>): Message {
     sequence: row.id as number,
     mode: row.mode as 'push' | 'pull',
     reply_to: (row.reply_to as number | null) ?? null,
+    batch_id: (row.batch_id as string | null) ?? null,
+    worker_name: (row.worker_name as string | null) ?? null,
+    prompt_file: (row.prompt_file as string | null) ?? null,
+    manifest_order: (row.manifest_order as number | null) ?? null,
   };
 }
 
@@ -652,6 +697,7 @@ export function addMessage(
   targetName: string | null,
   kind: MessageKind = 'chat',
   replyTo?: number | null,
+  _metadata?: MessageDeliveryMetadata,
 ): Message {
   const db = getDb();
   const ts = now();
@@ -662,8 +708,21 @@ export function addMessage(
 
   const insert = db.transaction(() => {
     const stmt = db.run(
-      'INSERT INTO messages (room_id, sender, recipient, text, kind, mode, timestamp, reply_to) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [roomObj.id, from, targetName, text, kind, mode, ts, replyTo ?? null],
+      'INSERT INTO messages (room_id, sender, recipient, text, kind, mode, timestamp, reply_to, batch_id, worker_name, prompt_file, manifest_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        roomObj.id,
+        from,
+        targetName,
+        text,
+        kind,
+        mode,
+        ts,
+        replyTo ?? null,
+        _metadata?.batch_id ?? null,
+        _metadata?.worker_name ?? null,
+        _metadata?.prompt_file ?? null,
+        _metadata?.manifest_order ?? null,
+      ],
     );
 
     if (kind === 'task' && targetName) {
@@ -1051,6 +1110,7 @@ export function addHookEvent(
   eventType: string,
   sessionId: string | null,
   payload: string,
+  roomId?: number,
 ): number {
   const db = getDb();
   if (isDuplicateEvent(agentName, eventType, sessionId, payload)) {
@@ -1067,13 +1127,22 @@ export function addHookEvent(
   );
   const eventId = Number(stmt.lastInsertRowid);
   const newStatus: 'idle' | 'busy' = eventType === 'Stop' ? 'idle' : 'busy';
-  setAgentStatus(agentName, newStatus);
+  const resolvedAgent =
+    roomId !== undefined
+      ? getAgentByRoomAndName(roomId, agentName) ?? getAgent(agentName)
+      : getAgent(agentName);
+  if (resolvedAgent) {
+    db.run('UPDATE agents SET status = ? WHERE id = ?', [
+      newStatus,
+      resolvedAgent.agent_id,
+    ]);
+  }
 
   // Party mode integration: capture response on Stop
   if (eventType === 'Stop') {
-    capturePartyResponseIfActive(agentName, payload, eventId);
+    capturePartyResponseIfActive(agentName, payload, eventId, roomId);
     // Room mode: auto-notify leaders (skips if party mode active)
-    notifyLeadersOnWorkerStop(agentName, payload);
+    notifyLeadersOnWorkerStop(agentName, payload, roomId);
   }
 
   return eventId;
@@ -1083,8 +1152,12 @@ function capturePartyResponseIfActive(
   agentName: string,
   payload: string,
   hookEventId: number,
+  roomId?: number,
 ): void {
-  const agent = getAgent(agentName);
+  const agent =
+    roomId !== undefined
+      ? getAgentByRoomAndName(roomId, agentName) ?? getAgent(agentName)
+      : getAgent(agentName);
   if (!agent || agent.role !== 'worker') return;
 
   const partyState = getPartyState(agent.room_id);
@@ -1125,12 +1198,44 @@ function checkAndNotifyRoundComplete(roomId: number, round: number): void {
 }
 
 /**
+ * Queue a final batch delivery using the existing push/deferred path.
+ */
+export async function queueBatchFinalDelivery(
+  batchId: string,
+  leaderName: string,
+  roomId: number,
+  rendered: string,
+): Promise<void> {
+  const room = getRoom(roomId);
+  if (!room) return;
+
+  const { deliverMessage } = await import('../delivery/index.ts');
+  await deliverMessage(
+    'system',
+    room.name,
+    rendered,
+    leaderName,
+    'push',
+    'completion',
+    undefined,
+    { batch_id: batchId },
+  );
+}
+
+/**
  * Auto-notify leaders when worker completes (room mode, not party mode).
  * Fire-and-forget: doesn't block hook processing.
  * Includes retry logic to handle race with leader prompt submissions.
  */
-function notifyLeadersOnWorkerStop(agentName: string, payload: string): void {
-  const agent = getAgent(agentName);
+function notifyLeadersOnWorkerStop(
+  agentName: string,
+  payload: string,
+  roomId?: number,
+): void {
+  const agent =
+    roomId !== undefined
+      ? getAgentByRoomAndName(roomId, agentName) ?? getAgent(agentName)
+      : getAgent(agentName);
   if (!agent || agent.role !== 'worker') return;
 
   // Skip if party mode is active — party has its own notification flow
@@ -1143,6 +1248,52 @@ function notifyLeadersOnWorkerStop(agentName: string, payload: string): void {
     const parsed = JSON.parse(payload) as { last_assistant_message?: string };
     response = parsed.last_assistant_message ?? '';
   } catch {
+    return;
+  }
+
+  const batchTerminal = recordBatchWorkerTerminalMessage({
+    workerName: agentName,
+    roomId: agent.room_id,
+    terminalStatus: 'success',
+    finalMessage: response,
+  });
+  if (batchTerminal) {
+    if (batchTerminal.shouldFinalize) {
+      const rendered = renderBatchFinalMessage(
+        getRenderableBatchWorkers(batchTerminal.batchId),
+      );
+      void queueBatchFinalDelivery(
+        batchTerminal.batchId,
+        batchTerminal.leaderName,
+        batchTerminal.roomId,
+        rendered,
+      ).catch((e) => {
+        console.error(
+          `[crew batch] final delivery failed for ${batchTerminal.batchId}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      });
+    }
+    return;
+  }
+
+  const batchAssociation = getLatestBatchAssociationForWorker(
+    agentName,
+    agent.room_id,
+  );
+  if (batchAssociation) return;
+
+  const latestBatch = getLatestBatchForWorker(agentName, agent.room_id);
+  const latestSubmit = getLatestHookEvent(agentName, 'UserPromptSubmit');
+  const hasNewerTurnThanLatestBatch =
+    Boolean(latestSubmit && latestBatch?.finished_at) &&
+    new Date(`${latestSubmit!.created_at}Z`).getTime() >
+      new Date(latestBatch!.finished_at!).getTime();
+  if (
+    latestBatch &&
+    latestBatch.terminal_status !== 'running' &&
+    latestBatch.final_message === response &&
+    !hasNewerTurnThanLatestBatch
+  ) {
     return;
   }
 
@@ -1790,6 +1941,6 @@ function rowToHint(row: Record<string, unknown>): HintRecord {
 export function clearState(): void {
   const db = getDb();
   db.exec(
-    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM party_responses; DELETE FROM hook_events; DELETE FROM agent_hints; DELETE FROM messages; DELETE FROM cursors; DELETE FROM push_cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
+    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM party_responses; DELETE FROM hook_events; DELETE FROM agent_hints; DELETE FROM messages; DELETE FROM message_batch_workers; DELETE FROM message_batches; DELETE FROM cursors; DELETE FROM push_cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
   );
 }

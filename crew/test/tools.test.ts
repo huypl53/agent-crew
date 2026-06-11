@@ -10,7 +10,6 @@ import { config } from '../src/config.ts';
 import { closeDb, initDb } from '../src/state/db.ts';
 import {
   addAgent,
-  clearState,
   getOrCreateRoom,
   getRoom,
   getSweepControlState,
@@ -80,7 +79,7 @@ describe('MCP tools', () => {
   });
 
   describe('join_room', () => {
-    test('registers agent with valid params', async () => {
+    test.serial('registers agent with valid params', async () => {
       const result = await handleJoinRoom({
         room: 'company',
         role: 'leader',
@@ -94,7 +93,7 @@ describe('MCP tools', () => {
       expect(data.room).toBe('company');
     });
 
-    test('generates random name when not provided', async () => {
+    test.serial('generates random name when not provided', async () => {
       const result = await handleJoinRoom({
         room: 'company',
         role: 'worker',
@@ -105,7 +104,7 @@ describe('MCP tools', () => {
       expect(data.name).toMatch(/^worker-[a-z0-9]{4}$/);
     });
 
-    test('generates random name when empty string', async () => {
+    test.serial('generates random name when empty string', async () => {
       const result = await handleJoinRoom({
         room: 'company',
         role: 'worker',
@@ -117,7 +116,7 @@ describe('MCP tools', () => {
       expect(data.name).toMatch(/^worker-[a-z0-9]{4}$/);
     });
 
-    test('rejoin same name same pane updates in place', async () => {
+    test.serial('rejoin same name same pane updates in place', async () => {
       await handleJoinRoom({
         room: 'company',
         role: 'worker',
@@ -136,7 +135,7 @@ describe('MCP tools', () => {
       expect(data.role).toBe('leader');
     });
 
-    test('adds suffix for duplicate name in same room with different pane', async () => {
+    test.serial('adds suffix for duplicate name in same room with different pane', async () => {
       await handleJoinRoom({
         room: 'company',
         role: 'leader',
@@ -154,7 +153,7 @@ describe('MCP tools', () => {
       expect(data.name).toMatch(/^leader-1-[a-z0-9]{4}$/);
     });
 
-    test('allows same agent in multiple rooms', async () => {
+    test.serial('allows same agent in multiple rooms', async () => {
       await handleJoinRoom({
         room: 'company',
         role: 'leader',
@@ -170,7 +169,7 @@ describe('MCP tools', () => {
       expect(result.isError).toBeUndefined();
     });
 
-    test('rejects invalid role', async () => {
+    test.serial('rejects invalid role', async () => {
       const result = await handleJoinRoom({
         room: 'r',
         role: 'admin',
@@ -180,7 +179,7 @@ describe('MCP tools', () => {
       expect(result.isError).toBe(true);
     });
 
-    test('rejects non-existent pane', async () => {
+    test.serial('rejects non-existent pane', async () => {
       const result = await handleJoinRoom({
         room: 'r',
         role: 'worker',
@@ -192,7 +191,7 @@ describe('MCP tools', () => {
   });
 
   describe('leave_room', () => {
-    test('removes agent from room', async () => {
+    test.serial('removes agent from room', async () => {
       await handleJoinRoom({
         room: 'company',
         role: 'leader',
@@ -207,7 +206,7 @@ describe('MCP tools', () => {
       expect(data.success).toBe(true);
     });
 
-    test('errors when not in room', async () => {
+    test.serial('errors when not in room', async () => {
       await handleJoinRoom({
         room: 'company',
         role: 'leader',
@@ -223,7 +222,7 @@ describe('MCP tools', () => {
   });
 
   describe('list_rooms', () => {
-    test('lists all rooms with counts', async () => {
+    test.serial('lists all rooms with counts', async () => {
       await handleJoinRoom({
         room: 'company',
         role: 'leader',
@@ -246,7 +245,7 @@ describe('MCP tools', () => {
   });
 
   describe('list_members', () => {
-    test('lists members of a room', async () => {
+    test.serial('lists members of a room', async () => {
       await handleJoinRoom({
         room: 'company',
         role: 'leader',
@@ -260,12 +259,12 @@ describe('MCP tools', () => {
       expect(data.members[0].input_block_mode).toBe('off');
     });
 
-    test('errors for non-existent room', async () => {
+    test.serial('errors for non-existent room', async () => {
       const result = await handleListMembers({ room: 'nope' });
       expect(result.isError).toBe(true);
     });
 
-    test('reports current status and input block mode', async () => {
+    test.serial('reports current status and input block mode', async () => {
       await handleJoinRoom({
         room: 'company',
         role: 'worker',
@@ -292,7 +291,7 @@ describe('MCP tools', () => {
   });
 
   describe('input_block', () => {
-    test('auto-detects current pane and clears armed mode on next submit', async () => {
+    test.serial('auto-detects current pane and clears armed mode on next submit', async () => {
       await handleJoinRoom({
         room: 'company',
         role: 'worker',
@@ -318,7 +317,7 @@ describe('MCP tools', () => {
       expect(statusData.input_block_mode).toBe('off');
     });
 
-    test('persistent mode survives submit until manual off', async () => {
+    test.serial('persistent mode survives submit until manual off', async () => {
       await handleJoinRoom({
         room: 'company',
         role: 'worker',
@@ -353,7 +352,7 @@ describe('MCP tools', () => {
   });
 
   describe('messaging', () => {
-    test('send and read directed push message', async () => {
+    test.serial('send and read directed push message', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -384,7 +383,7 @@ describe('MCP tools', () => {
       expect(readData.messages[0].from).toBe('lead-1');
     });
 
-    test('read_messages returns no messages when input block is active', async () => {
+    test.serial('read_messages returns no messages when input block is active', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -432,7 +431,7 @@ describe('MCP tools', () => {
       expect(readData2.messages[0].text).toBe('Hello builder');
     });
 
-    test('pull message is queued but not delivered', async () => {
+    test.serial('pull message is queued but not delivered', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -458,7 +457,7 @@ describe('MCP tools', () => {
       expect(data.delivered).toBe(false);
     });
 
-    test('broadcast message reaches all members except sender', async () => {
+    test.serial('broadcast message reaches all members except sender', async () => {
       await handleJoinRoom({
         room: 'team',
         role: 'leader',
@@ -488,7 +487,7 @@ describe('MCP tools', () => {
       );
     });
 
-    test('cursor-based read_messages', async () => {
+    test.serial('cursor-based read_messages', async () => {
       await handleJoinRoom({
         room: 'r',
         role: 'worker',
@@ -535,7 +534,7 @@ describe('MCP tools', () => {
       expect(secondData.messages[0].text).toBe('msg3');
     }, 15000);
 
-    test('room-filtered read_messages', async () => {
+    test.serial('room-filtered read_messages', async () => {
       await handleJoinRoom({
         room: 'r1',
         role: 'worker',
@@ -562,7 +561,7 @@ describe('MCP tools', () => {
       expect(data.messages[0].room_id).toBeDefined();
     });
 
-    test('read_messages with room reads inbox for that room only', async () => {
+    test.serial('read_messages with room reads inbox for that room only', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -601,7 +600,7 @@ describe('MCP tools', () => {
       expect(workerData.messages[0].text).toBe('build login');
     });
 
-    test('read_messages with kinds filter', async () => {
+    test.serial('read_messages with kinds filter', async () => {
       await handleJoinRoom({
         room: 'r',
         role: 'leader',
@@ -644,7 +643,7 @@ describe('MCP tools', () => {
       );
     });
 
-    test('worker completion auto-notifies leader via push', async () => {
+    test.serial('worker completion auto-notifies leader via push', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -676,7 +675,7 @@ describe('MCP tools', () => {
       expect(typeof captured).toBe('string');
     }, 15000);
 
-    test('send_message with kind=task sends an assignment without task metadata', async () => {
+    test.serial('send_message with kind=task sends an assignment without task metadata', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -702,7 +701,7 @@ describe('MCP tools', () => {
       expect(data.task_id).toBeUndefined();
     });
 
-    test('send_message with kind=task requires to param', async () => {
+    test.serial('send_message with kind=task requires to param', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -725,7 +724,7 @@ describe('MCP tools', () => {
       expect(result.isError).toBe(true);
     });
 
-    test('parallel broadcast delivers to all members', async () => {
+    test.serial('parallel broadcast delivers to all members', async () => {
       // Use pull mode so delivery is DB-only (no pane queue timing issues).
       // Verifies that Promise.allSettled parallel delivery produces correct results
       // for every recipient, not just the first.
@@ -792,7 +791,7 @@ describe('MCP tools', () => {
       );
     });
 
-    test('leader sending message to worker includes room member statuses in output', async () => {
+    test.serial('leader sending message to worker includes room member statuses in output', async () => {
       await handleJoinRoom({
         room: 'status-test',
         role: 'leader',
@@ -821,7 +820,7 @@ describe('MCP tools', () => {
       expect(data.members.some((m: any) => m.name === 'lead')).toBe(true);
     });
 
-    test('concurrent crew CLI send messages to DB without locking', async () => {
+    test.serial('concurrent crew CLI send messages to DB without locking', async () => {
       closeDb();
       const testDir = process.cwd();
       const testDbPath = `${testDir}/crew.db`;
@@ -924,7 +923,7 @@ describe('MCP tools', () => {
   });
 
   describe('set_room_topic', () => {
-    test('sets and retrieves room topic', async () => {
+    test.serial('sets and retrieves room topic', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -946,7 +945,7 @@ describe('MCP tools', () => {
       expect(membersData.topic).toBe('Build auth system');
     });
 
-    test('rejects non-member setting topic', async () => {
+    test.serial('rejects non-member setting topic', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -963,7 +962,7 @@ describe('MCP tools', () => {
   });
 
   describe('duplicate room names across paths', () => {
-    test('list_members prefers the latest matching room row', async () => {
+    test.serial('list_members prefers the latest matching room row', async () => {
       const firstRoom = getOrCreateRoom(
         '/test/worktree-a/better-logging',
         'better-logging',
@@ -986,7 +985,7 @@ describe('MCP tools', () => {
       ]);
     });
 
-    test('inspect requires --room when worker is visible in multiple room ids with the same name', async () => {
+    test.serial('inspect requires --room when worker is visible in multiple room ids with the same name', async () => {
       const firstRoom = getOrCreateRoom(
         '/test/worktree-a/better-logging',
         'better-logging',
@@ -1013,7 +1012,7 @@ describe('MCP tools', () => {
   });
 
   describe('refresh', () => {
-    test('refreshes agent pane', async () => {
+    test.serial('refreshes agent pane', async () => {
       await handleJoinRoom({
         room: 'r',
         role: 'worker',
@@ -1040,7 +1039,7 @@ describe('MCP tools', () => {
       expect(oldPaneOutput).toContain('w1-stale-');
     });
 
-    test('refresh keeps current room identity', async () => {
+    test.serial('refresh keeps current room identity', async () => {
       await handleJoinRoom({
         room: 'r1',
         role: 'leader',
@@ -1055,7 +1054,7 @@ describe('MCP tools', () => {
       expect(data.room).toBe('r1');
     });
 
-    test('errors for unknown agent', async () => {
+    test.serial('errors for unknown agent', async () => {
       const result = await handleRefresh({
         name: 'nobody',
         tmux_target: testPaneA,
@@ -1063,7 +1062,7 @@ describe('MCP tools', () => {
       expect(result.isError).toBe(true);
     });
 
-    test('errors for invalid pane', async () => {
+    test.serial('errors for invalid pane', async () => {
       await handleJoinRoom({
         room: 'r',
         role: 'worker',
@@ -1076,7 +1075,7 @@ describe('MCP tools', () => {
   });
 
   describe('interrupt_worker', () => {
-    test('leader can interrupt worker with current assignment', async () => {
+    test.serial('leader can interrupt worker with current assignment', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -1109,7 +1108,7 @@ describe('MCP tools', () => {
       expect(data.interrupted).toBe(true);
     });
 
-    test('worker cannot interrupt', async () => {
+    test.serial('worker cannot interrupt', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -1131,7 +1130,7 @@ describe('MCP tools', () => {
       expect(result.isError).toBe(true);
     });
 
-    test('can interrupt a worker even without persisted task state', async () => {
+    test.serial('can interrupt a worker even without persisted task state', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -1155,7 +1154,7 @@ describe('MCP tools', () => {
   });
 
   describe('clear_worker_session', () => {
-    test('leader can clear worker session', async () => {
+    test.serial('leader can clear worker session', async () => {
       await handleJoinRoom({
         room: 'test-room',
         role: 'leader',
@@ -1183,7 +1182,7 @@ describe('MCP tools', () => {
       expect(data.worker_name).toBe('wk-01');
     }, 15000);
 
-    test('worker cannot clear sessions', async () => {
+    test.serial('worker cannot clear sessions', async () => {
       await handleJoinRoom({
         room: 'test-room',
         role: 'leader',
@@ -1205,7 +1204,7 @@ describe('MCP tools', () => {
       expect(result.isError).toBe(true);
     });
 
-    test('errors when worker not found', async () => {
+    test.serial('errors when worker not found', async () => {
       await handleJoinRoom({
         room: 'test-room',
         role: 'leader',
@@ -1223,7 +1222,7 @@ describe('MCP tools', () => {
   });
 
   describe('polling control', () => {
-    test('pause and resume polling updates shared state', () => {
+    test.serial('pause and resume polling updates shared state', () => {
       const paused = handlePausePolling({ reason: 'manual chat' });
       expect(paused.isError).toBeUndefined();
       const pausedData = JSON.parse(paused.content[0]!.text);
@@ -1245,7 +1244,7 @@ describe('MCP tools', () => {
       expect(finalState.pause_reason).toBeNull();
     });
 
-    test('set polling busy mode validates input', () => {
+    test.serial('set polling busy mode validates input', () => {
       const bad = handleSetPollingBusy({ mode: 'wrong' });
       expect(bad.isError).toBe(true);
 
@@ -1258,7 +1257,7 @@ describe('MCP tools', () => {
       expect(state.busy_mode).toBe('manual_busy');
     });
 
-    test('direct state api keeps defaults and supports mode switch', () => {
+    test.serial('direct state api keeps defaults and supports mode switch', () => {
       const initial = getSweepControlState();
       expect(initial.busy_mode).toBe('auto');
 
@@ -1273,7 +1272,7 @@ describe('MCP tools', () => {
   });
 
   describe('reassign_task', () => {
-    test('leader can replace a current assignment', async () => {
+    test.serial('leader can replace a current assignment', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -1306,7 +1305,7 @@ describe('MCP tools', () => {
       expect(data.reassigned).toBe(true);
     }, 15000);
 
-    test('leader can replace an assignment without task ids', async () => {
+    test.serial('leader can replace an assignment without task ids', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -1330,7 +1329,7 @@ describe('MCP tools', () => {
       expect(data.reassigned).toBe(true);
     }, 15000);
 
-    test('leader can reassign to idle worker', async () => {
+    test.serial('leader can reassign to idle worker', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -1354,7 +1353,7 @@ describe('MCP tools', () => {
       expect(data.reassigned).toBe(true);
     });
 
-    test('worker cannot reassign', async () => {
+    test.serial('worker cannot reassign', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -1379,7 +1378,7 @@ describe('MCP tools', () => {
   });
 
   describe('manage', () => {
-    test('allows caller name to be missing (operator mode)', async () => {
+    test.serial('allows caller name to be missing (operator mode)', async () => {
       const { handleManage } = await import('../src/tools/manage.ts');
       const { Readable, Writable } = await import('node:stream');
 
@@ -1404,7 +1403,7 @@ describe('MCP tools', () => {
       expect(stdout.output.join('')).toContain('No active rooms found');
     });
 
-    test('exits early if no rooms are found', async () => {
+    test.serial('exits early if no rooms are found', async () => {
       const { handleManage } = await import('../src/tools/manage.ts');
       const { Readable, Writable } = await import('node:stream');
 
@@ -1431,7 +1430,7 @@ describe('MCP tools', () => {
       );
     });
 
-    test('manages a room and sets topic', async () => {
+    test.serial('manages a room and sets topic', async () => {
       const room = getOrCreateRoom('/test/manage-room', 'manage-room');
       const { handleManage } = await import('../src/tools/manage.ts');
       const { Readable, Writable } = await import('node:stream');
@@ -1500,7 +1499,7 @@ describe('MCP tools', () => {
       expect(updatedRoom?.topic).toBe('New cool topic');
     });
 
-    test('manages room in operator mode (no name)', async () => {
+    test.serial('manages room in operator mode (no name)', async () => {
       const room = getOrCreateRoom(
         '/test/manage-room-operator',
         'manage-room-operator',
@@ -1569,7 +1568,7 @@ describe('MCP tools', () => {
       expect(updatedRoom?.topic).toBe('Operator topic');
     });
 
-    test('manages a member and interrupts worker', async () => {
+    test.serial('manages a member and interrupts worker', async () => {
       const room = getOrCreateRoom('/test/manage-room-2', 'manage-room-2');
       const { handleManage } = await import('../src/tools/manage.ts');
       const { Readable, Writable } = await import('node:stream');
@@ -1643,7 +1642,7 @@ describe('MCP tools', () => {
       );
     });
 
-    test('bulk removes workers and leaders from room', async () => {
+    test.serial('bulk removes workers and leaders from room', async () => {
       const room = getOrCreateRoom(
         '/test/manage-room-bulk-remove',
         'manage-room-bulk-remove',
@@ -1751,7 +1750,7 @@ describe('MCP tools', () => {
   });
 
   describe('get_status by session', () => {
-    test('resolves agent status by session ID', async () => {
+    test.serial('resolves agent status by session ID', async () => {
       await handleJoinRoom({
         room: 'session-room',
         role: 'worker',
@@ -1779,7 +1778,7 @@ describe('MCP tools', () => {
       expect(data.status).toBe('busy');
     });
 
-    test('returns error for non-existent session ID', async () => {
+    test.serial('returns error for non-existent session ID', async () => {
       const result = await handleGetStatus({
         session: 'non-existent-session-uuid',
       });

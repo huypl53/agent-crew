@@ -22,7 +22,7 @@ All crew operations use the `crew` CLI via Bash. No MCP tools needed.
 
 If you catch yourself about to open a file, write code, or run a build command — STOP. That is a worker's job. Delegate it instead.
 
-**Your tools are crew CLI commands ONLY:** `crew send`, `crew read`, `crew status`, `crew inspect`, `crew members`, `crew rooms`, `crew topic`. You should NOT be using Read, Write, Edit, Bash (for code), or any code tools.
+**Your tools are crew CLI commands ONLY:** `crew send`, `crew send-batch`, `crew read`, `crew status`, `crew inspect`, `crew members`, `crew rooms`, `crew topic`. You should NOT be using Read, Write, Edit, Bash (for code), or any code tools.
 
 ## Your Work Loop
 
@@ -59,9 +59,45 @@ crew send --room your-room --to builder-1 --file /tmp/task-brief.txt --name your
 
 `--file` reads UTF-8 text exactly as written and preserves newlines.
 
+### Batch Assignment
+
+When you need to dispatch multiple worker tasks together and receive one merged final result, use `crew send-batch` with a manifest file instead of sending N separate `crew send` commands.
+
+```bash
+crew send-batch --room your-room --name your-name --manifest /tmp/batch.json --mode push
+```
+
+Manifest shape:
+
+```json
+{
+  "leader": "your-name",
+  "hintAfterSeconds": 900,
+  "workers": [
+    { "name": "builder-1", "file": "/tmp/task-builder-1.txt" },
+    { "name": "builder-2", "file": "/tmp/task-builder-2.txt" }
+  ]
+}
+```
+
+Use `crew send-batch` when:
+- several workers can execute in parallel
+- each worker needs a different task brief
+- you want one combined final message back in manifest order
+- you want optional stale-batch hinting via `hintAfterSeconds`
+
+Batch behavior:
+- each worker receives its own task file
+- intermediate worker completion/error notifications are suppressed for the leader
+- worker final messages are collected and merged
+- once all workers are terminal, the leader receives one Markdown completion message with one section per worker
+- if `hintAfterSeconds` is set and the batch stalls, the leader may receive one hint telling them which workers are still pending
+
+`crew send-batch` is for coordinated fan-out. Use plain `crew send` when you only need one worker or want immediate per-message handling.
+
 **Rules:**
 - One task at a time per worker
-- Wait until worker is idle before sending the next task
+- Wait until worker is idle before sending the next task, unless you intentionally use `crew send-batch`
 - Be specific — include file paths, requirements, and acceptance criteria
 - Check status after assigning to confirm the worker started (busy)
 - NEVER implement the task yourself — always delegate
@@ -153,7 +189,14 @@ If the brief is long enough that quoting becomes awkward, prefer `crew send --fi
 
 ## Push Notifications (Primary)
 
-Workers automatically push notifications to your pane when they send `completion`, `error`, or `question` messages:
+Workers automatically push notifications to your pane when they send `completion`, `error`, or `question` messages.
+
+For `crew send-batch`, this changes slightly:
+- normal per-worker completion/error pushes are suppressed while the batch is in progress
+- you receive one final merged completion when the whole batch finishes
+- you may receive one stale-batch hint if `hintAfterSeconds` was configured
+
+Normal non-batch notifications still look like:
 
 ```
 [system@frontend]: builder-1 completed: "Login component done"
@@ -198,6 +241,12 @@ When a worker reports completion:
 2. Ask them to verify (run tests, check behavior) if needed — via `crew send`
 3. If rework is needed, send a follow-up task with specific feedback
 4. If accepted, move to the next task or report milestone to the human
+
+When a batch reports completion:
+1. Read the merged final message
+2. Review each worker section in manifest order
+3. If only one worker needs rework, send that worker a new direct task with `crew send`
+4. If the whole parallel split needs to be rerun, prepare a new manifest and use `crew send-batch` again
 
 **You review by reading worker reports, NOT by opening files yourself.**
 

@@ -1,21 +1,31 @@
 import { config } from '../config.ts';
 import { parsePaneInputSection } from '../shared/pane-status.ts';
-import type { Agent, MessageKind } from '../shared/types.ts';
+import type {
+  Agent,
+  MessageDeliveryMetadata,
+  MessageKind,
+} from '../shared/types.ts';
 import { getDb } from '../state/db.ts';
 import { dbClearAgentPane } from '../state/db-write.ts';
 import {
   addMessage,
   advancePushCursor,
   getAgent,
+  getAgentByRoomAndName,
   getAgentInputBlockMode,
+  getMessageBatch,
   getAllAgents,
   getPushCursor,
+  getRenderableBatchWorkers,
   getRoom,
   getRoomMembers,
   getRoomReminderDispatchCount,
   incrementRoomReminderDispatchCount,
   markAgentStale,
+  queueBatchFinalDelivery,
+  recordBatchWorkerTerminalMessage,
 } from '../state/index.ts';
+import { renderBatchFinalMessage } from '../state/batch-render.ts';
 import {
   capturePaneTail,
   paneCommandLooksAlive,
@@ -42,6 +52,7 @@ interface DeliveryContext {
   mode: 'push' | 'pull';
   kind: MessageKind;
   replyTo?: number | null;
+  metadata?: MessageDeliveryMetadata;
   agent?: Agent;
 }
 
@@ -90,6 +101,7 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
     targetName ?? to,
     kind,
     replyTo,
+    ctx.metadata,
   );
 
   if (mode === 'push') {
@@ -168,8 +180,63 @@ export async function deliverMessage(
   mode: 'push' | 'pull',
   kind: MessageKind = 'chat',
   replyTo?: number | null,
+  metadata?: MessageDeliveryMetadata,
 ): Promise<DeliveryResult[]> {
   const roomObj = getRoom(room);
+  const sender = roomObj
+    ? getAgentByRoomAndName(roomObj.id, senderName) ?? getAgent(senderName)
+    : getAgent(senderName);
+
+  if (
+    metadata?.batch_id &&
+    sender?.role === 'worker' &&
+    (kind === 'completion' || kind === 'error')
+  ) {
+    const batchTerminal = recordBatchWorkerTerminalMessage({
+      batchId: metadata.batch_id,
+      workerName: senderName,
+      roomId: roomObj?.id,
+      terminalStatus: kind === 'error' ? 'error' : 'success',
+      finalMessage: text,
+    });
+
+    if (batchTerminal) {
+      if (batchTerminal.shouldFinalize) {
+        const rendered = renderBatchFinalMessage(
+          getRenderableBatchWorkers(batchTerminal.batchId),
+        );
+        void queueBatchFinalDelivery(
+          batchTerminal.batchId,
+          batchTerminal.leaderName,
+          batchTerminal.roomId,
+          rendered,
+        ).catch((e) => {
+          console.error(
+            `[crew batch] final delivery failed for ${batchTerminal.batchId}: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        });
+      }
+
+      return [
+        {
+          message_id: '-1',
+          delivered: false,
+          queued: true,
+        },
+      ];
+    }
+
+    const knownBatch = getMessageBatch(metadata.batch_id);
+    if (knownBatch && (!roomObj || knownBatch.room_id === roomObj.id)) {
+      return [
+        {
+          message_id: '-1',
+          delivered: false,
+          queued: true,
+        },
+      ];
+    }
+  }
 
   // Build target list with pre-fetched agents for broadcasts
   const members = roomObj ? getRoomMembers(roomObj.id) : [];
@@ -187,10 +254,10 @@ export async function deliverMessage(
         mode,
         kind,
         replyTo,
+        metadata,
       },
     ];
   } else {
-    const sender = getAgent(senderName);
     targets = members
       .filter((m) => m.name !== senderName)
       // Workers should not broadcast to peers — messages flow up the hierarchy
@@ -205,6 +272,7 @@ export async function deliverMessage(
         mode,
         kind,
         replyTo,
+        metadata,
         agent: m,
       }));
   }
@@ -227,8 +295,7 @@ export async function deliverMessage(
   );
 
   // Auto-notify: if sender is worker and kind is notifiable, push summary to leaders
-  if (NOTIFY_KINDS.includes(kind)) {
-    const sender = getAgent(senderName);
+  if (NOTIFY_KINDS.includes(kind) && !metadata?.batch_id) {
     if (sender?.role === 'worker') {
       const leaders = members.filter(
         (m) => m.role === 'leader' && m.name !== senderName && m.tmux_target,

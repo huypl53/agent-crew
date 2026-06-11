@@ -31,6 +31,7 @@ import {
 import { handleReadMessages } from '../tools/read-messages.ts';
 import { handleReassignTask } from '../tools/reassign-task.ts';
 import { handleRefresh } from '../tools/refresh.ts';
+import { handleSendBatch } from '../tools/send-batch.ts';
 import { handleSendMessage } from '../tools/send-message.ts';
 import { handleSetRoomTopic } from '../tools/set-room-topic.ts';
 
@@ -76,6 +77,15 @@ export const COMMANDS: Record<
       reply_to:
         f['reply-to'] != null ? parseInt(String(f['reply-to']), 10) : undefined,
       sender_pane: f['sender-pane'],
+    }),
+  },
+  'send-batch': {
+    handler: handleSendBatch,
+    buildParams: (f) => ({
+      room: f.room,
+      manifest: f.manifest,
+      name: f.name,
+      mode: f.mode ?? 'push',
     }),
   },
   read: {

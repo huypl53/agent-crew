@@ -75,6 +75,66 @@ export interface Message {
   sequence: number;
   mode: 'push' | 'pull';
   reply_to?: number | null;
+  batch_id?: string | null;
+  worker_name?: string | null;
+  prompt_file?: string | null;
+  manifest_order?: number | null;
+}
+
+export interface MessageDeliveryMetadata {
+  batch_id?: string;
+  worker_name?: string;
+  prompt_file?: string;
+  manifest_order?: number;
+}
+
+export interface SendBatchManifestWorker {
+  name: string;
+  file: string;
+}
+
+export interface SendBatchManifest {
+  leader?: string;
+  workers: SendBatchManifestWorker[];
+  hintAfterSeconds?: number;
+}
+
+export type MessageBatchStatus = 'running' | 'completed';
+export type MessageBatchWorkerDispatchStatus = 'pending' | 'sent' | 'failed';
+export type MessageBatchWorkerTerminalStatus =
+  | 'running'
+  | 'success'
+  | 'error'
+  | 'interrupted';
+export type MessageBatchWorkerTerminalOutcome = Exclude<
+  MessageBatchWorkerTerminalStatus,
+  'running'
+>;
+
+export interface MessageBatch {
+  id: number;
+  batch_id: string;
+  room_id: number;
+  leader_name: string;
+  status: MessageBatchStatus;
+  hint_after_seconds: number | null;
+  hint_sent_at: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface MessageBatchWorker {
+  id: number;
+  batch_id: string;
+  worker_name: string;
+  manifest_order: number;
+  prompt_file: string;
+  dispatch_status: MessageBatchWorkerDispatchStatus;
+  terminal_status: MessageBatchWorkerTerminalStatus;
+  final_message: string | null;
+  error_text: string | null;
+  started_at: string | null;
+  finished_at: string | null;
 }
 
 export interface ToolResult {

@@ -63,7 +63,13 @@ export async function processHookEventInput(
         ? payload.sessionId
         : null;
 
-  const hookEventId = addHookEvent(agent.name, eventType, sessionId, input);
+  const hookEventId = addHookEvent(
+    agent.name,
+    eventType,
+    sessionId,
+    input,
+    agent.room_id,
+  );
 
   // Canonicalize hint identity when session_id is first available
   if (sessionId) {

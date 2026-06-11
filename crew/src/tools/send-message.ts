@@ -2,7 +2,11 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { config } from '../config.ts';
 import { deliverMessage } from '../delivery/index.ts';
-import type { ToolResult } from '../shared/types.ts';
+import type {
+  MessageDeliveryMetadata,
+  MessageKind,
+  ToolResult,
+} from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
 import { getAgent, getRoom, getRoomMembers } from '../state/index.ts';
 import { resolveAgentLiveStatus } from './get-status.ts';
@@ -14,11 +18,93 @@ interface SendMessageParams {
   to?: string;
   mode?: 'push' | 'pull';
   name: string; // sender identity
-  kind?: string; // MessageKind — defaults to 'chat'
+  kind?: MessageKind;
   reply_to?: number;
+  metadata?: MessageDeliveryMetadata;
 }
 
 const MAX_MESSAGE_FILE_BYTES = 256 * 1024;
+
+export interface Utf8TextFileResult {
+  text?: string;
+  resolvedPath?: string;
+  error?: string;
+}
+
+export async function readUtf8TextFile(
+  filePath: string,
+  label: string,
+): Promise<Utf8TextFileResult> {
+  const trimmedPath = filePath.trim();
+  if (!trimmedPath) {
+    return { error: `${label} file path must not be empty` };
+  }
+
+  const resolvedPath = resolve(trimmedPath);
+  let bytes: Uint8Array;
+  try {
+    bytes = await readFile(resolvedPath);
+  } catch (error) {
+    return {
+      error: `Unable to read ${label.toLowerCase()} file "${trimmedPath}": ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
+  if (bytes.byteLength === 0) {
+    return { error: `${label} file "${trimmedPath}" is empty` };
+  }
+
+  if (bytes.byteLength > MAX_MESSAGE_FILE_BYTES) {
+    return {
+      error: `${label} file "${trimmedPath}" exceeds ${MAX_MESSAGE_FILE_BYTES} bytes`,
+    };
+  }
+
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return { text, resolvedPath };
+  } catch {
+    return { error: `${label} file is not valid UTF-8: "${trimmedPath}"` };
+  }
+}
+
+export function validateSenderAndRoom(
+  room: string,
+  name: string,
+): { value?: { sender: ReturnType<typeof getAgent>; room: ReturnType<typeof getRoom> }; error?: string } {
+  if (!room || !name) {
+    return { error: 'Missing required params: room, name' };
+  }
+
+  const sender = getAgent(name);
+  if (!sender) {
+    return { error: `Sender "${name}" is not registered` };
+  }
+
+  const roomObj = getRoom(room);
+  if (!roomObj) {
+    return { error: `Room "${room}" does not exist` };
+  }
+
+  if (sender.room_id !== roomObj.id) {
+    return { error: `Sender "${name}" is not a member of room "${room}"` };
+  }
+
+  // Sender verification: compare claimed sender's registered pane against the
+  // tmux pane that originated this call (available via $TMUX_PANE in the process env).
+  if (config.senderVerification !== 'off') {
+    const callerPane = process.env.TMUX_PANE ?? null;
+    if (callerPane && sender.tmux_target && callerPane !== sender.tmux_target) {
+      const msg = `Sender mismatch: claimed "${name}" (pane ${sender.tmux_target}) but caller is pane ${callerPane}`;
+      if (config.senderVerification === 'enforce') {
+        return { error: msg };
+      }
+      console.warn(`[sender-verification] ${msg}`);
+    }
+  }
+
+  return { value: { sender, room: roomObj } };
+}
 
 async function resolveMessageText(
   params: SendMessageParams,
@@ -36,37 +122,12 @@ async function resolveMessageText(
       : { error: 'Missing required params: room, text, name' };
   }
 
-  const filePath = params.file?.trim();
+  const filePath = params.file;
   if (!filePath) {
     return { error: 'Message file path must not be empty' };
   }
 
-  const resolvedPath = resolve(filePath);
-  let bytes: Uint8Array;
-  try {
-    bytes = await readFile(resolvedPath);
-  } catch (error) {
-    return {
-      error: `Unable to read message file "${filePath}": ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
-
-  if (bytes.byteLength === 0) {
-    return { error: `Message file "${filePath}" is empty` };
-  }
-
-  if (bytes.byteLength > MAX_MESSAGE_FILE_BYTES) {
-    return {
-      error: `Message file "${filePath}" exceeds ${MAX_MESSAGE_FILE_BYTES} bytes`,
-    };
-  }
-
-  try {
-    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    return { text };
-  } catch {
-    return { error: `Message file is not valid UTF-8: "${filePath}"` };
-  }
+  return readUtf8TextFile(filePath, 'Message');
 }
 
 export async function handleSendMessage(
@@ -84,32 +145,12 @@ export async function handleSendMessage(
   }
   const text = resolved.text!;
 
-  const sender = getAgent(name);
-  if (!sender) {
-    return err(`Sender "${name}" is not registered`);
+  const senderContext = validateSenderAndRoom(room, name);
+  if (senderContext.error) {
+    return err(senderContext.error);
   }
 
-  const r = getRoom(room);
-  if (!r) {
-    return err(`Room "${room}" does not exist`);
-  }
-
-  if (sender.room_id !== r.id) {
-    return err(`Sender "${name}" is not a member of room "${room}"`);
-  }
-
-  // Sender verification: compare claimed sender's registered pane against the
-  // tmux pane that originated this call (available via $TMUX_PANE in the process env).
-  if (config.senderVerification !== 'off') {
-    const callerPane = process.env.TMUX_PANE ?? null;
-    if (callerPane && sender.tmux_target && callerPane !== sender.tmux_target) {
-      const msg = `Sender mismatch: claimed "${name}" (pane ${sender.tmux_target}) but caller is pane ${callerPane}`;
-      if (config.senderVerification === 'enforce') {
-        return err(msg);
-      }
-      console.warn(`[sender-verification] ${msg}`);
-    }
-  }
+  const { sender, room: r } = senderContext.value!;
 
   if (kind === 'task' && !to) {
     return err(
@@ -134,8 +175,9 @@ export async function handleSendMessage(
     text,
     to ?? null,
     mode,
-    kind as any,
+    kind,
     reply_to,
+    params.metadata,
   );
 
   const senderIsLeader = sender.role === 'leader';

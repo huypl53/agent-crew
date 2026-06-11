@@ -1,3 +1,5 @@
+import { resetQueues } from '../src/delivery/pane-queue.ts';
+
 const TEST_SESSION_PREFIX = `cc-test-${process.pid}-`;
 const TEST_TMUX_SOCKET = `crew-test-${process.pid}`;
 
@@ -128,6 +130,7 @@ async function runTmux(...args: string[]): Promise<string> {
 
 export async function cleanupAllTestSessions(tag?: string): Promise<void> {
   ensureTestTmuxSocketEnv();
+  resetQueues();
   try {
     const proc = Bun.spawn(
       ['tmux', ...getSocketArgs(), 'list-sessions', '-F', '#{session_name}'],

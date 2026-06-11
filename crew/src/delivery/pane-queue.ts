@@ -329,6 +329,10 @@ export function removeQueue(target: string): void {
   queues.delete(target);
 }
 
+export function resetQueues(): void {
+  queues.clear();
+}
+
 export function getQueue(
   target: string,
   options?: PaneQueueOptions,

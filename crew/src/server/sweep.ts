@@ -15,7 +15,10 @@ import {
   getRoomMembers,
   getSweepControlState,
   isAgentIdleMuted,
+  listHintableBatches,
   markAgentStale,
+  markBatchHintSent,
+  renderBatchPendingHint,
   setAgentStatus,
 } from '../state/index.ts';
 import { paneCommandLooksAlive } from '../tmux/index.ts';
@@ -271,6 +274,10 @@ async function runSweep(): Promise<void> {
   }
 }
 
+export async function runSweepOnce(): Promise<void> {
+  await runSweep();
+}
+
 async function runPartyTimeoutCheck(): Promise<void> {
   const activeParties = getActivePartyRooms();
   const now = Date.now();
@@ -322,15 +329,38 @@ Use "crew party skip --worker <name>" to skip, or wait for responses.`;
   );
 }
 
+async function runBatchHintCheck(
+  notificationsByLeader: Map<string, Map<string, string>>,
+): Promise<void> {
+  const batches = listHintableBatches(new Date().toISOString());
+  if (batches.length === 0) return;
+
+  const hintedAt = new Date().toISOString();
+
+  for (const batch of batches) {
+    const leader = getRoomMembers(batch.room_id).find(
+      (member) =>
+        member.role === 'leader' &&
+        member.name === batch.leader_name &&
+        member.tmux_target,
+    );
+    if (!leader?.tmux_target) continue;
+
+    const target = leader.tmux_target;
+    const messages = notificationsByLeader.get(target) ?? new Map<string, string>();
+    const key = `batch:${batch.batch_id}`;
+    if (messages.has(key)) continue;
+
+    messages.set(key, renderBatchPendingHint(batch.worker_names));
+    notificationsByLeader.set(target, messages);
+    markBatchHintSent(batch.batch_id, hintedAt);
+  }
+}
+
 async function runIdleDetection(): Promise<void> {
+  const notificationsByLeader = new Map<string, Map<string, string>>();
   const agents = getAllAgents();
   const workers = agents.filter((a) => a.role === 'worker' && a.tmux_target);
-  if (workers.length === 0) {
-    await processDelivery(new Map());
-    return;
-  }
-
-  const notificationsByLeader = new Map<string, Map<string, string>>();
   const now = Date.now();
 
   for (const w of workers) {
@@ -366,6 +396,7 @@ async function runIdleDetection(): Promise<void> {
     }
   }
 
+  await runBatchHintCheck(notificationsByLeader);
   await processDelivery(notificationsByLeader);
 }
 
@@ -476,6 +507,23 @@ async function maybeNotify(
 
 export function resetSweepIdleTracking(): void {
   idleEpochNotified.clear();
+}
+
+export function resetSweepRuntimeState(): void {
+  sweeping = false;
+  tickCount = 0;
+  startedAt = 0;
+  lastNotified.clear();
+  idleEpochNotified.clear();
+  deadCounts.clear();
+  deferredByLeader.clear();
+  leaderBusyUntil.clear();
+  partyTimeoutNotified.clear();
+  coalescedUpdates = 0;
+  lastFlushCount = 0;
+  lastControlKey = '';
+  lastEventAt = null;
+  sweepEventListener = null;
 }
 
 export function resetPartyTimeoutTracking(roomId: number): void {

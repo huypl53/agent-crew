@@ -47,8 +47,43 @@ const SCHEMA = `
     kind TEXT NOT NULL DEFAULT 'chat',
     mode TEXT,
     timestamp TEXT NOT NULL,
-    reply_to INTEGER REFERENCES messages(id)
+    reply_to INTEGER REFERENCES messages(id),
+    batch_id TEXT,
+    worker_name TEXT,
+    prompt_file TEXT,
+    manifest_order INTEGER
   );
+
+  CREATE TABLE IF NOT EXISTS message_batches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id TEXT NOT NULL UNIQUE,
+    room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+    leader_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'running',
+    hint_after_seconds INTEGER,
+    hint_sent_at TEXT,
+    created_at TEXT NOT NULL,
+    completed_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS message_batch_workers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id TEXT NOT NULL REFERENCES message_batches(batch_id) ON DELETE CASCADE,
+    worker_name TEXT NOT NULL,
+    manifest_order INTEGER NOT NULL,
+    prompt_file TEXT NOT NULL,
+    dispatch_status TEXT NOT NULL DEFAULT 'pending',
+    terminal_status TEXT NOT NULL DEFAULT 'running',
+    final_message TEXT,
+    error_text TEXT,
+    started_at TEXT,
+    finished_at TEXT,
+    UNIQUE(batch_id, worker_name)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_message_batches_room ON message_batches(room_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_message_batch_workers_batch_order ON message_batch_workers(batch_id, manifest_order);
+  CREATE INDEX IF NOT EXISTS idx_message_batch_workers_terminal ON message_batch_workers(batch_id, terminal_status);
 
   CREATE TABLE IF NOT EXISTS cursors (
     agent_id INTEGER PRIMARY KEY REFERENCES agents(id) ON DELETE CASCADE,
@@ -180,11 +215,8 @@ let _dbPath: string | null = null;
 export function initDb(path?: string): void {
   const dbPath = path ?? getDbPath();
 
-  // Reuse existing connection if it's already open on the same path.
-  // Avoids close+reopen race that causes SQLITE_BUSY_RECOVERY when
-  // another process holds the WAL lock.
-  if (_db && _dbPath === dbPath) return;
-
+  // Always reset the connection so test setup can start from a clean state.
+  // This still closes the previous handle before reopening the same path.
   if (_db) {
     _db.close();
     _db = null;
@@ -241,6 +273,23 @@ export function initDb(path?: string): void {
   }
 
   _db.exec(SCHEMA);
+
+  const messageCols = _db.query('PRAGMA table_info(messages)').all() as Array<{
+    name: string;
+  }>;
+  if (!messageCols.some((c) => c.name === 'batch_id')) {
+    _db.exec('ALTER TABLE messages ADD COLUMN batch_id TEXT');
+  }
+  if (!messageCols.some((c) => c.name === 'worker_name')) {
+    _db.exec('ALTER TABLE messages ADD COLUMN worker_name TEXT');
+  }
+  if (!messageCols.some((c) => c.name === 'prompt_file')) {
+    _db.exec('ALTER TABLE messages ADD COLUMN prompt_file TEXT');
+  }
+  if (!messageCols.some((c) => c.name === 'manifest_order')) {
+    _db.exec('ALTER TABLE messages ADD COLUMN manifest_order INTEGER');
+  }
+
   _db.exec(`
     DROP TRIGGER IF EXISTS trg_tasks_change;
     DROP TRIGGER IF EXISTS trg_tasks_insert;
