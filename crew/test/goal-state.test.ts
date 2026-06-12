@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { closeDb, initDb } from '../src/state/db.ts';
 import {
   addAgent,
+  armLeaderGoalReminder,
   canonicalizeGoalIdentity,
   clearState,
   completeGoal,
+  consumeLeaderGoalReminder,
   getGoal,
   getGoalByAgent,
   getOrCreateRoom,
@@ -373,6 +375,36 @@ describe('goal tracking', () => {
       const g = tickGoalTurnCount('%404', 'unknown-session', room.id);
       expect(g).not.toBeNull();
       expect(g!.turn_count).toBe(1);
+    });
+  });
+
+  describe('leader reminder arming', () => {
+    test('arms and consumes leader reminder once', () => {
+      clearState();
+      const room = mkRoom('room-1');
+      addAgent('lead-1', 'leader', room.id, '%450');
+      setGoal('lead-1', room.id, 'Review worker results', { pane: '%450' });
+      canonicalizeGoalIdentity('lead-1', '%450', 'sess-450');
+
+      expect(armLeaderGoalReminder('lead-1', room.id)).toBe(true);
+      expect(getGoalByAgent('lead-1', room.id)?.leader_reminder_armed).toBe(1);
+
+      const consumed = consumeLeaderGoalReminder('%450', 'sess-450', room.id);
+      expect(consumed).not.toBeNull();
+      expect(consumed?.turn_count).toBe(1);
+      expect(consumed?.leader_reminder_armed).toBe(0);
+
+      expect(consumeLeaderGoalReminder('%450', 'sess-450', room.id)).toBeNull();
+    });
+
+    test('does not consume when leader reminder is not armed', () => {
+      clearState();
+      const room = mkRoom('room-1');
+      addAgent('lead-1', 'leader', room.id, '%451');
+      setGoal('lead-1', room.id, 'Triage inbox', { pane: '%451' });
+
+      expect(consumeLeaderGoalReminder('%451', null, room.id)).toBeNull();
+      expect(getGoalByAgent('lead-1', room.id)?.turn_count).toBe(0);
     });
   });
 

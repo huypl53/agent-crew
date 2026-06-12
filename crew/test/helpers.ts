@@ -100,6 +100,15 @@ export async function sendToPane(target: string, text: string): Promise<void> {
   await runTmux('send-keys', '-t', target, 'Enter');
 }
 
+function escapeSingleQuotedShell(value: string): string {
+  return value.replace(/'/g, `'"'"'`);
+}
+
+export async function sendPaneMarker(target: string, marker: string): Promise<void> {
+  const escaped = escapeSingleQuotedShell(marker);
+  await sendToPane(target, `printf '%s\\n' '${escaped}'`);
+}
+
 export async function captureFromPane(target: string): Promise<string> {
   ensureTestTmuxSocketEnv();
   const proc = Bun.spawn(
@@ -111,6 +120,117 @@ export async function captureFromPane(target: string): Promise<string> {
   );
   await proc.exited;
   return (await new Response(proc.stdout).text()).trimEnd();
+}
+
+export async function capturePaneAfterMarker(
+  target: string,
+  marker: string,
+): Promise<string> {
+  const output = await captureFromPane(target);
+  const idx = output.lastIndexOf(marker);
+  if (idx === -1) {
+    throw new Error(`Marker not found in pane ${target}: ${marker}`);
+  }
+  return output.slice(idx + marker.length);
+}
+
+export async function waitForPaneToContain(
+  target: string,
+  expected: string,
+  opts?: { timeoutMs?: number; intervalMs?: number },
+): Promise<string> {
+  const timeoutMs = opts?.timeoutMs ?? 5000;
+  const intervalMs = opts?.intervalMs ?? 100;
+  const start = Date.now();
+
+  let last = '';
+  while (Date.now() - start < timeoutMs) {
+    last = await captureFromPane(target);
+    if (last.includes(expected)) return last;
+    await Bun.sleep(intervalMs);
+  }
+
+  throw new Error(
+    [
+      `Timed out waiting for pane ${target} to contain:`,
+      expected,
+      '--- last capture ---',
+      last,
+    ].join('\n'),
+  );
+}
+
+export async function waitForPaneAfterMarkerToContain(
+  target: string,
+  marker: string,
+  expected: string,
+  opts?: { timeoutMs?: number; intervalMs?: number },
+): Promise<string> {
+  const timeoutMs = opts?.timeoutMs ?? 5000;
+  const intervalMs = opts?.intervalMs ?? 100;
+  const start = Date.now();
+
+  let last = '';
+  while (Date.now() - start < timeoutMs) {
+    last = await capturePaneAfterMarker(target, marker);
+    if (last.includes(expected)) return last;
+    await Bun.sleep(intervalMs);
+  }
+
+  throw new Error(
+    [
+      `Timed out waiting for pane ${target} after marker to contain:`,
+      expected,
+      `marker: ${marker}`,
+      '--- last capture ---',
+      last,
+    ].join('\n'),
+  );
+}
+
+export async function assertPaneAfterMarkerLacks(
+  target: string,
+  marker: string,
+  unexpected: string,
+  opts?: { settleMs?: number; intervalMs?: number },
+): Promise<string> {
+  const settleMs = opts?.settleMs ?? 800;
+  const intervalMs = opts?.intervalMs ?? 100;
+  const start = Date.now();
+
+  let last = '';
+  while (Date.now() - start < settleMs) {
+    last = await capturePaneAfterMarker(target, marker);
+    if (last.includes(unexpected)) {
+      throw new Error(
+        [
+          `Pane ${target} unexpectedly contained text after marker:`,
+          unexpected,
+          `marker: ${marker}`,
+          '--- capture ---',
+          last,
+        ].join('\n'),
+      );
+    }
+    await Bun.sleep(intervalMs);
+  }
+
+  return last;
+}
+
+export function expectTextInOrder(haystack: string, parts: string[]): void {
+  let cursor = -1;
+  for (const part of parts) {
+    const idx = haystack.indexOf(part, cursor + 1);
+    if (idx === -1) {
+      throw new Error(
+        [`Expected text not found in order: ${part}`, '--- haystack ---', haystack].join(
+          '\n',
+        ),
+      );
+    }
+    cursor = idx;
+  }
 }
 
 async function runTmux(...args: string[]): Promise<string> {

@@ -18,6 +18,7 @@ export interface GoalRecord {
   session_id: string | null;
   set_by: string;
   turn_count: number;
+  leader_reminder_armed: number;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -40,6 +41,7 @@ function rowToGoal(row: Record<string, unknown>): GoalRecord {
     session_id: (row.session_id as string | null) ?? null,
     set_by: (row.set_by as string) ?? 'self',
     turn_count: (row.turn_count as number) ?? 0,
+    leader_reminder_armed: (row.leader_reminder_armed as number) ?? 0,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
     completed_at: (row.completed_at as string | null) ?? null,
@@ -234,6 +236,75 @@ export function tickGoalTurnCount(
 }
 
 /** Canonicalize goal identity: migrate pane-bootstrap to session-bound. */
+export function armLeaderGoalReminder(
+  agentName: string,
+  roomId: number,
+): boolean {
+  const db = getDb();
+  const ts = now();
+  const result = db.run(
+    `UPDATE agent_goals
+     SET leader_reminder_armed = 1, updated_at = ?
+     WHERE agent_name = ? AND room_id = ? AND status = 'active'`,
+    [ts, agentName, roomId],
+  );
+  if (result.changes > 0) {
+    bumpChangeLog('goals');
+    logServer('DEBUG', `[goal] arm-leader-reminder: ${agentName} room=${roomId}`);
+  }
+  return result.changes > 0;
+}
+
+export function consumeLeaderGoalReminder(
+  pane: string,
+  sessionId: string | null,
+  roomId?: number,
+): GoalRecord | null {
+  const db = getDb();
+  const ts = now();
+  const roomFilter = roomId ? ' AND room_id = ?' : '';
+  const roomArgs: (string | number)[] = roomId ? [roomId] : [];
+  const activeFilter = " AND status = 'active' AND leader_reminder_armed = 1";
+
+  if (sessionId) {
+    const row = db
+      .query(
+        `UPDATE agent_goals
+         SET leader_reminder_armed = 0, turn_count = turn_count + 1, updated_at = ?
+         WHERE id = COALESCE(
+           (SELECT id FROM agent_goals WHERE session_id = ?${roomFilter}${activeFilter}),
+           (SELECT id FROM agent_goals WHERE pane_bootstrap = ?${roomFilter}${activeFilter})
+         )
+         RETURNING *`,
+      )
+      .get(ts, sessionId, ...roomArgs, pane, ...roomArgs) as Record<
+      string,
+      unknown
+    > | null;
+    if (row) {
+      const goal = rowToGoal(row);
+      logServer('DEBUG', `[goal] consume-leader-reminder: ${goal.agent_name} turn=${goal.turn_count} session=${sessionId}`);
+      return goal;
+    }
+    return null;
+  }
+
+  const row = db
+    .query(
+      `UPDATE agent_goals
+       SET leader_reminder_armed = 0, turn_count = turn_count + 1, updated_at = ?
+       WHERE pane_bootstrap = ?${roomFilter}${activeFilter}
+       RETURNING *`,
+    )
+    .get(ts, pane, ...roomArgs) as Record<string, unknown> | null;
+  if (row) {
+    const goal = rowToGoal(row);
+    logServer('DEBUG', `[goal] consume-leader-reminder: ${goal.agent_name} turn=${goal.turn_count} pane=${pane}`);
+    return goal;
+  }
+  return null;
+}
+
 export function canonicalizeGoalIdentity(
   agentName: string,
   pane: string,
