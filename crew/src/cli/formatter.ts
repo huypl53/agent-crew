@@ -213,7 +213,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     if (d.hint?.message) return d.hint.message;
     if (d.message) return d.message;
     if (d.hint?.agent_name) return `Registered agent: ${d.hint.agent_name}`;
-    return '(no hint)';
+    return '';
   },
   goal: (d) => {
     if (d.error) return `Error: ${d.error}`;
