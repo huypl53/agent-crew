@@ -56,10 +56,14 @@ export function getPendingMessageCount(
 ): number {
   try {
     const db = getDb();
-    const cursorRow = db
+    // Use the higher of pull cursor and push cursor — agents may consume via either mode
+    const pullRow = db
       .query("SELECT last_seq FROM cursors WHERE agent_id = ?")
       .get(agentId) as { last_seq: number } | null;
-    const cursor = cursorRow?.last_seq ?? 0;
+    const pushRow = db
+      .query("SELECT last_seq FROM push_cursors WHERE agent_id = ?")
+      .get(agentId) as { last_seq: number } | null;
+    const cursor = Math.max(pullRow?.last_seq ?? 0, pushRow?.last_seq ?? 0);
     const row = db
       .query(
         "SELECT COUNT(*) as cnt FROM messages WHERE recipient = ? AND id > ?",
