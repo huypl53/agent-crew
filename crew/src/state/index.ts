@@ -43,7 +43,6 @@ import { renderBatchFinalMessage } from './batch-render.ts';
 import {
   canonicalizeGoalIdentity,
   completeGoal,
-  getActiveWorkerGoals,
   getGoal,
   getGoalByAgent,
   setGoal,
@@ -55,7 +54,6 @@ export type { GoalRecord } from './goal-state.ts';
 export {
   canonicalizeGoalIdentity,
   completeGoal,
-  getActiveWorkerGoals,
   getGoal,
   getGoalByAgent,
   setGoal,
@@ -1975,6 +1973,6 @@ function rowToHint(row: Record<string, unknown>): HintRecord {
 export function clearState(): void {
   const db = getDb();
   db.exec(
-    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM party_responses; DELETE FROM hook_events; DELETE FROM agent_hints; DELETE FROM messages; DELETE FROM message_batch_workers; DELETE FROM message_batches; DELETE FROM cursors; DELETE FROM push_cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
+    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM party_responses; DELETE FROM hook_events; DELETE FROM agent_hints; DELETE FROM agent_goals; DELETE FROM messages; DELETE FROM message_batch_workers; DELETE FROM message_batches; DELETE FROM cursors; DELETE FROM push_cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
   );
 }

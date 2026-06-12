@@ -3,7 +3,6 @@ import {
   bumpChangeLog,
   getAgentByPane,
   getAgentByRoomAndName,
-  getRoomMembers,
 } from './index.ts';
 
 // --- Types ---
@@ -38,7 +37,7 @@ function rowToGoal(row: Record<string, unknown>): GoalRecord {
     status: row.status as string,
     pane_bootstrap: (row.pane_bootstrap as string | null) ?? null,
     session_id: (row.session_id as string | null) ?? null,
-    set_by: (row.set_by as string) ?? 'leader',
+    set_by: (row.set_by as string) ?? 'self',
     turn_count: (row.turn_count as number) ?? 0,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
@@ -182,14 +181,16 @@ export function tickGoalTurnCount(
   const roomFilter = roomId ? ' AND room_id = ?' : '';
   const roomArgs: (string | number)[] = roomId ? [roomId] : [];
 
+  const activeFilter = " AND status = 'active'";
+
   if (sessionId) {
     const row = db
       .query(
         `UPDATE agent_goals
          SET turn_count = turn_count + 1, updated_at = ?
          WHERE id = COALESCE(
-           (SELECT id FROM agent_goals WHERE session_id = ?${roomFilter}),
-           (SELECT id FROM agent_goals WHERE pane_bootstrap = ?${roomFilter})
+           (SELECT id FROM agent_goals WHERE session_id = ?${roomFilter}${activeFilter}),
+           (SELECT id FROM agent_goals WHERE pane_bootstrap = ?${roomFilter}${activeFilter})
          )
          RETURNING *`,
       )
@@ -204,7 +205,7 @@ export function tickGoalTurnCount(
     .query(
       `UPDATE agent_goals
        SET turn_count = turn_count + 1, updated_at = ?
-       WHERE pane_bootstrap = ?${roomFilter}
+       WHERE pane_bootstrap = ?${roomFilter}${activeFilter}
        RETURNING *`,
     )
     .get(ts, pane, ...roomArgs) as Record<string, unknown> | null;
@@ -253,32 +254,4 @@ export function canonicalizeGoalIdentity(
     prior.id,
   ]);
   bumpChangeLog('goals');
-}
-
-/** Get all active goals for workers in a leader's room. */
-export function getActiveWorkerGoals(
-  leaderName: string,
-  roomId: number,
-): GoalRecord[] {
-  const db = getDb();
-
-  const leader = getAgentByRoomAndName(roomId, leaderName);
-  if (!leader) return [];
-
-  const workers = getRoomMembers(leader.room_id).filter(
-    (m) => m.role === 'worker',
-  );
-  if (workers.length === 0) return [];
-
-  const workerNames = workers.map((w) => w.name);
-  const placeholders = workerNames.map(() => '?').join(',');
-
-  const rows = db
-    .query(
-      `SELECT * FROM agent_goals
-       WHERE agent_name IN (${placeholders}) AND room_id = ? AND status = 'active'`,
-    )
-    .all(...workerNames, roomId) as Record<string, unknown>[];
-
-  return rows.map(rowToGoal);
 }

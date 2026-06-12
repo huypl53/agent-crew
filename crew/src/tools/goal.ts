@@ -18,7 +18,7 @@ type GoalTarget =
   | { error: string };
 
 /** Resolve target agent/room for goal operations. Auto-detects from TMUX_PANE. */
-function resolveGoalTarget(params: { agent?: string; room?: string }): GoalTarget {
+function resolveGoalTarget(params: { agent?: string; room?: string }): GoalTarget & { callerName?: string } {
   const explicitAgentName = params.agent;
   const explicitRoomName = params.room;
   const pane = process.env.TMUX_PANE ?? null;
@@ -29,7 +29,7 @@ function resolveGoalTarget(params: { agent?: string; room?: string }): GoalTarge
     if (!room) return { error: `Room not found: ${explicitRoomName}` };
     const agent = getAgentByRoomAndName(room.id, explicitAgentName);
     if (!agent) return { error: `Agent ${explicitAgentName} is not in room ${explicitRoomName}` };
-    return { agentName: explicitAgentName, roomName: explicitRoomName, roomId: room.id, agent, pane };
+    return { agentName: explicitAgentName, roomName: explicitRoomName, roomId: room.id, agent, pane, callerName: paneAgent?.name };
   }
 
   if (paneAgent) {
@@ -49,6 +49,7 @@ function resolveGoalTarget(params: { agent?: string; room?: string }): GoalTarge
       roomId: paneAgent.room_id,
       agent: paneAgent,
       pane: paneAgent.tmux_target,
+      callerName: paneAgent.name,
     };
   }
 
@@ -79,9 +80,14 @@ export async function handleGoalSet(params: {
   const target = resolveGoalTarget(params);
   if ('error' in target) return err(target.error);
 
+  // If caller differs from target agent, setBy = caller name; otherwise 'self'
+  const setBy = target.callerName && target.callerName !== target.agentName
+    ? target.callerName
+    : 'self';
+
   const goal = setGoal(target.agentName, target.roomId, params.message.trim(), {
     pane: target.agent.tmux_target ?? target.pane ?? undefined,
-    setBy: 'self',
+    setBy,
   });
 
   return ok({
