@@ -3,10 +3,6 @@ import { extractRecentClaudeTurns } from '../src/observation/claude-transcript.t
 import { parseJsonlUsage, sumUsageEntries } from '../src/tokens/claude-code.ts';
 import { readCodexThreads } from '../src/tokens/codex.ts';
 import {
-  startTokenCollection,
-  stopTokenCollection,
-} from '../src/tokens/collector.ts';
-import {
   getClaudePidFromPane,
   getSessionForPid,
   resolveSessionPath,
@@ -308,18 +304,5 @@ describe('agent type detection', () => {
     const { detectAgentType } = await import('../src/tools/join-room.ts');
     const result = await detectAgentType('%99999');
     expect(result).toBe('unknown');
-  });
-});
-
-describe('token collection lifecycle', () => {
-  test('startTokenCollection and stopTokenCollection do not throw', () => {
-    startTokenCollection();
-    stopTokenCollection();
-  });
-
-  test('double start is safe', () => {
-    startTokenCollection();
-    startTokenCollection(); // should not throw or double-start
-    stopTokenCollection();
   });
 });

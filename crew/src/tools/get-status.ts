@@ -15,6 +15,8 @@ import {
   getRoomMembers,
   touchAgentActivity,
 } from "../state/index.ts";
+import { getContextWindowForPane } from "../tokens/claude-code.ts";
+import type { ContextWindowInfo } from "../tokens/claude-code.ts";
 import { isPaneDead } from "../tmux/index.ts";
 
 interface GetStatusParams {
@@ -40,6 +42,7 @@ export interface DashboardData {
   pending_messages: number;
   workers: { idle: number; busy: number; dead: number } | null;
   last_activity_ago: string | null;
+  context_window?: ContextWindowInfo | null;
   // --json only
   typing_active?: boolean;
   session_id?: string | null;
@@ -129,6 +132,12 @@ export function formatDashboard(data: DashboardData): string {
   const pendingLine = `Pending: ${data.pending_messages} msgs`;
   lines.push(`│ ${pendingLine.padEnd(W)}│`);
 
+  if (data.context_window) {
+    const cw = data.context_window;
+    const ctxLine = `Ctx: ${cw.context_used.toLocaleString()} / ${cw.context_limit.toLocaleString()} (${cw.context_pct}%)`;
+    lines.push(`│ ${ctxLine.padEnd(W)}│`);
+  }
+
   if (data.workers) {
     const w = data.workers;
     const workerLine = `Workers: ${w.idle} idle · ${w.busy} busy · ${w.dead} dead`;
@@ -157,7 +166,7 @@ export function formatInline(data: DashboardData): string {
   parts.push(paneStatus);
 
   let blockPart = `⬣ block:${data.input_block_mode || "None"}`;
-  if (data.input_block_mode !== "off" && data.pending_messages > 0) {
+  if (data.pending_messages > 0) {
     blockPart += ` (${data.pending_messages}q)`;
   }
   parts.push(blockPart);
@@ -280,6 +289,16 @@ export async function handleGetStatus(
       workers = { idle, busy, dead };
     }
 
+    // Context window: read from JSONL on-demand
+    let contextWindow: ContextWindowInfo | null = null;
+    if (agent.tmux_target) {
+      try {
+        contextWindow = await getContextWindowForPane(agent.tmux_target);
+      } catch {
+        // fail-open
+      }
+    }
+
     const data: DashboardData = {
       name: agent.name,
       role: agent.role,
@@ -292,6 +311,7 @@ export async function handleGetStatus(
       pending_messages: pendingMessages,
       workers,
       last_activity_ago: lastActivityAgo,
+      context_window: contextWindow,
     };
 
     return ok({ inline: formatInline(data) });
@@ -388,6 +408,16 @@ async function handleSelfStatus(params: GetStatusParams): Promise<ToolResult> {
     // fail-open
   }
 
+  // Context window: read from JSONL on-demand
+  let contextWindow: ContextWindowInfo | null = null;
+  if (agent.tmux_target) {
+    try {
+      contextWindow = await getContextWindowForPane(agent.tmux_target);
+    } catch {
+      // fail-open — don't block status display
+    }
+  }
+
   const data: DashboardData = {
     name: agent.name,
     role: agent.role,
@@ -400,6 +430,7 @@ async function handleSelfStatus(params: GetStatusParams): Promise<ToolResult> {
     pending_messages: pendingMessages,
     workers,
     last_activity_ago: lastActivityAgo,
+    context_window: contextWindow,
   };
 
   // Extended fields for --json

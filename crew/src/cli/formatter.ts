@@ -199,7 +199,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
       d.members
         .map(
           (m: any) =>
-            `  ${m.name} ${m.role} ${m.status} pane:${m.tmux_target ?? '(none)'} input-block:${m.input_block_mode ?? 'off'}`,
+            `  ${m.name} ${m.role} ${m.status} pane:${m.tmux_target ?? '(none)'} input-block:${m.input_block_mode ?? 'off'}${m.ctx_pct != null ? ` ctx:${m.ctx_pct}%` : ''}`,
         )
         .join('\n')
     );

@@ -1,10 +1,10 @@
-import { readFileSync } from 'node:fs';
-import { spawnSync } from 'bun';
-import { flushPushQueueForAgent } from '../delivery/index.ts';
-import type { Agent, ToolResult } from '../shared/types.ts';
-import { ok } from '../shared/types.ts';
-import { getDb, initDb } from '../state/db.ts';
-import type { HintRecord } from '../state/index.ts';
+import { readFileSync } from "node:fs";
+import { spawnSync } from "bun";
+import { flushPushQueueForAgent } from "../delivery/index.ts";
+import type { Agent, ToolResult } from "../shared/types.ts";
+import { ok } from "../shared/types.ts";
+import { getDb, initDb } from "../state/db.ts";
+import type { HintRecord } from "../state/index.ts";
 import {
   addHookEvent,
   canonicalizeGoalIdentity,
@@ -17,16 +17,16 @@ import {
   isAgentAutoSelfOnIdle,
   tickGoalTurnCount,
   tickHintCadence,
-} from '../state/index.ts';
-import { sendKeys } from '../tmux/index.ts';
+} from "../state/index.ts";
+import { sendKeys } from "../tmux/index.ts";
 
 function okResult(
-  payload: Record<string, unknown> = { ok: true, decision: 'allow' },
+  payload: Record<string, unknown> = { ok: true, decision: "allow" },
 ): ToolResult {
   if (payload.decision === undefined) {
-    payload.decision = 'allow';
+    payload.decision = "allow";
   }
-  return { content: [{ type: 'text', text: JSON.stringify(payload) }] };
+  return { content: [{ type: "text", text: JSON.stringify(payload) }] };
 }
 
 export async function processHookEventInput(
@@ -57,12 +57,12 @@ export async function processHookEventInput(
   }
 
   const eventType = String(
-    payload.hook_event_name ?? payload.event ?? payload.eventName ?? 'Unknown',
+    payload.hook_event_name ?? payload.event ?? payload.eventName ?? "Unknown",
   );
   const sessionId =
-    typeof payload.session_id === 'string'
+    typeof payload.session_id === "string"
       ? payload.session_id
-      : typeof payload.sessionId === 'string'
+      : typeof payload.sessionId === "string"
         ? payload.sessionId
         : null;
 
@@ -96,7 +96,7 @@ export async function processHookEventInput(
   // Hint injection: on every Nth UserPromptSubmit (where N = cadence),
   // emit the user-defined message to stdout. Claude Code injects hook
   // stdout into the conversation, providing custom context reminders.
-  if (eventType === 'UserPromptSubmit') {
+  if (eventType === "UserPromptSubmit") {
     const wasBlocked = clearArmedInputBlock(agent.name);
 
     // Flush pending push messages that accumulated while blocked
@@ -124,10 +124,10 @@ export async function processHookEventInput(
       return {
         content: [
           {
-            type: 'text',
+            type: "text",
             text: JSON.stringify({
               ok: true,
-              decision: 'allow',
+              decision: "allow",
               hint: {
                 agent_name: cadenceResult.hint.agent_name,
                 message: cadenceResult.hint.message,
@@ -173,15 +173,17 @@ export async function processHookEventInput(
   // }
 
   // Goal reminder: push goal message to agent on Stop
-  if (eventType === 'Stop') {
+  if (eventType === "Stop") {
     try {
       const goal = tickGoalTurnCount(pane, sessionId, agent.room_id);
-      if (goal && goal.status === 'active' && agent.tmux_target) {
-        const desc = goal.description.length > 100
-          ? goal.description.slice(0, 97) + '…'
-          : goal.description;
-        const reminder = `🎯 Goal: ${desc} (turn ${goal.turn_count})\n📝 Update: crew goal update "new description"`;
-        sendKeys(agent.tmux_target, reminder).catch(() => {});
+      if (goal && goal.status === "active" && agent.tmux_target) {
+        const desc =
+          goal.description.length > 100
+            ? goal.description.slice(0, 97) + "…"
+            : goal.description;
+        const reminder = `🎯 Goal: ${desc} (turn ${goal.turn_count})\n✅ If done, run: crew goal done\n❌ If unreachable, run: crew goal unset\n📝 Edit: crew goal update "new description"`;
+        // Delay 1.5s so agent finishes idle transition before reminder arrives
+        setTimeout(() => sendKeys(agent.tmux_target!, reminder).catch(() => {}), 1500);
       }
     } catch (e) {
       console.error(
@@ -192,7 +194,7 @@ export async function processHookEventInput(
 
   return ok({
     ok: true,
-    decision: 'allow',
+    decision: "allow",
     ...(statusDashboard ? { statusDashboard } : {}),
   });
 }
@@ -211,12 +213,12 @@ function checkAutoSelfTransition(
   const db = getDb();
   const prevEvent = db
     .query(
-      'SELECT event_type FROM hook_events WHERE agent_name = ? AND id < ? ORDER BY id DESC LIMIT 1',
+      "SELECT event_type FROM hook_events WHERE agent_name = ? AND id < ? ORDER BY id DESC LIMIT 1",
     )
     .get(agentName, currentEventId) as { event_type: string } | null;
 
   // If previous was also a Stop, leader was already idle — skip
-  if (!prevEvent || prevEvent.event_type === 'Stop') return false;
+  if (!prevEvent || prevEvent.event_type === "Stop") return false;
 
   return true;
 }
@@ -236,8 +238,8 @@ function buildWorkerSummary(
   let busy = 0;
   let dead = 0;
   for (const m of members) {
-    if (m.status === 'idle') idle++;
-    else if (m.status === 'busy') busy++;
+    if (m.status === "idle") idle++;
+    else if (m.status === "busy") busy++;
     else dead++;
   }
   return { idle, busy, dead };
@@ -245,8 +247,8 @@ function buildWorkerSummary(
 
 function getParentPid(pid: number): number | null {
   try {
-    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
-    const parts = stat.split(' ');
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const parts = stat.split(" ");
     return parseInt(parts[3], 10);
   } catch {
     return null;
@@ -267,18 +269,18 @@ function getTmuxPanes(): Map<number, string> {
   const map = new Map<number, string>();
   try {
     const socket = process.env.CREW_TMUX_SOCKET;
-    const args = socket ? ['-L', socket] : [];
+    const args = socket ? ["-L", socket] : [];
     const res = spawnSync([
-      'tmux',
+      "tmux",
       ...args,
-      'list-panes',
-      '-a',
-      '-F',
-      '#{pane_pid} #{pane_id}',
+      "list-panes",
+      "-a",
+      "-F",
+      "#{pane_pid} #{pane_id}",
     ]);
     if (res.success) {
       const output = res.stdout.toString().trim();
-      for (const line of output.split('\n')) {
+      for (const line of output.split("\n")) {
         const [pidStr, paneId] = line.trim().split(/\s+/);
         if (pidStr && paneId) {
           const pid = parseInt(pidStr, 10);
