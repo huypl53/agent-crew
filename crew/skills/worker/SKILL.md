@@ -23,13 +23,9 @@ Your leader sends you assignments via push messages that appear as user input in
 [leader-name@room]: Create the login component in src/components/Login.tsx
 ```
 
-<<<<<<< HEAD
 Leaders may compose these briefs with `crew send --file ...`, so multiline task messages with exact formatting are expected.
 
 When you see a `[name@room]:` message, this is an assignment from your leader. Execute it.
-=======
-When you see a `[name@room]:` message, this is an assignment from your leader. Execute it.
->>>>>>> remove-task-flow
 
 ## CRITICAL: Always Report Completion
 
@@ -90,3 +86,22 @@ crew members --room your-room
 4. Use `--kind completion/error/question` — triggers push notification to leader
 5. One assignment at a time — finish what you have before asking for more
 6. Stay in your lane — work within your assigned room and scope
+
+## Goal Tracking
+
+You can set a goal for yourself to track what you're working on. Goals are displayed in your status dashboard and remind you on every Stop hook cycle.
+
+```bash
+# Set your current goal
+crew goal set "Implement auth module with OAuth2"
+
+# Update the description if scope changes
+crew goal update "Implement auth module — OAuth2 + JWT"
+
+# Mark done when finished
+crew goal done
+```
+
+Your leader can also set a goal for you (`crew goal set --agent your-name --room your-room "description"`). Either way, you'll see a 🎯 reminder on each turn.
+
+Goals auto-tick a turn counter on every Stop event, visible in `crew status --self`.

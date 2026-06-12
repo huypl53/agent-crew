@@ -10,6 +10,7 @@ import {
   unsetGoal,
   updateGoalDescription,
 } from '../state/index.ts';
+import { logServer } from '../shared/server-log.ts';
 import type { Agent, ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
 
@@ -78,12 +79,17 @@ export async function handleGoalSet(params: {
   }
 
   const target = resolveGoalTarget(params);
-  if ('error' in target) return err(target.error);
+  if ('error' in target) {
+    logServer('WARN', `[goal:handleGoalSet] resolve failed: ${target.error}`);
+    return err(target.error);
+  }
 
   // If caller differs from target agent, setBy = caller name; otherwise 'self'
   const setBy = target.callerName && target.callerName !== target.agentName
     ? target.callerName
     : 'self';
+
+  logServer('INFO', `[goal:handleGoalSet] caller=${target.callerName ?? '?'} target=${target.agentName} setBy=${setBy}`);
 
   const goal = setGoal(target.agentName, target.roomId, params.message.trim(), {
     pane: target.agent.tmux_target ?? target.pane ?? undefined,
@@ -110,10 +116,16 @@ export async function handleGoalDone(params: {
   initDb();
 
   const target = resolveGoalTarget(params);
-  if ('error' in target) return err(target.error);
+  if ('error' in target) {
+    logServer('WARN', `[goal:handleGoalDone] resolve failed: ${target.error}`);
+    return err(target.error);
+  }
 
   const done = completeGoal(target.agentName, target.roomId);
-  if (!done) return err(`No active goal found for ${target.agentName} in ${target.roomName}`);
+  if (!done) {
+    logServer('DEBUG', `[goal:handleGoalDone] no active goal for ${target.agentName} in ${target.roomName}`);
+    return err(`No active goal found for ${target.agentName} in ${target.roomName}`);
+  }
 
   return ok({
     ok: true,
@@ -135,10 +147,16 @@ export async function handleGoalUpdate(params: {
   }
 
   const target = resolveGoalTarget(params);
-  if ('error' in target) return err(target.error);
+  if ('error' in target) {
+    logServer('WARN', `[goal:handleGoalUpdate] resolve failed: ${target.error}`);
+    return err(target.error);
+  }
 
   const updated = updateGoalDescription(target.agentName, target.roomId, params.message.trim());
-  if (!updated) return err(`No active goal found for ${target.agentName} in ${target.roomName}`);
+  if (!updated) {
+    logServer('DEBUG', `[goal:handleGoalUpdate] no active goal for ${target.agentName} in ${target.roomName}`);
+    return err(`No active goal found for ${target.agentName} in ${target.roomName}`);
+  }
 
   return ok({
     ok: true,
@@ -155,10 +173,16 @@ export async function handleGoalUnset(params: {
   initDb();
 
   const target = resolveGoalTarget(params);
-  if ('error' in target) return err(target.error);
+  if ('error' in target) {
+    logServer('WARN', `[goal:handleGoalUnset] resolve failed: ${target.error}`);
+    return err(target.error);
+  }
 
   const removed = unsetGoal(target.agentName, target.roomId);
-  if (!removed) return err(`No goal found for ${target.agentName} in ${target.roomName}`);
+  if (!removed) {
+    logServer('DEBUG', `[goal:handleGoalUnset] no goal for ${target.agentName} in ${target.roomName}`);
+    return err(`No goal found for ${target.agentName} in ${target.roomName}`);
+  }
 
   return ok({
     ok: true,
@@ -182,12 +206,16 @@ export async function handleGoalLookup(params: {
   // Explicit session/pane lookup (hook context)
   if (sessionId || pane) {
     const goal = getGoal(pane, sessionId);
+    logServer('DEBUG', `[goal:handleGoalLookup] session=${sessionId} pane=${pane} → ${goal ? goal.agent_name : 'null'}`);
     return ok({ ok: true, goal: goal ?? null });
   }
 
   // Agent-based lookup
   const target = resolveGoalTarget(params);
-  if ('error' in target) return err(target.error);
+  if ('error' in target) {
+    logServer('WARN', `[goal:handleGoalLookup] resolve failed: ${target.error}`);
+    return err(target.error);
+  }
 
   const goal = getGoalByAgent(target.agentName, target.roomId);
   return ok({ ok: true, goal: goal ?? null });

@@ -90,7 +90,7 @@ describe('goal feature e2e — CLI', () => {
   // 1. Worker sets own goal
   test('goal set creates active goal', async () => {
     const { out, exitCode } = await runCli(
-      ['goal', 'set', 'Implement auth module', '--agent', 'wk-1', '--room', 'goal-room'],
+      ['goal', 'set', 'Implement auth module', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
       env(),
     );
     expect(exitCode).toBe(0);
@@ -103,7 +103,7 @@ describe('goal feature e2e — CLI', () => {
   // 2. Lookup by agent
   test('goal lookup finds goal by agent name', async () => {
     const { out, exitCode } = await runCli(
-      ['goal', 'lookup', '--agent', 'wk-1', '--room', 'goal-room'],
+      ['goal', 'lookup', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
       env(),
     );
     expect(exitCode).toBe(0);
@@ -116,7 +116,7 @@ describe('goal feature e2e — CLI', () => {
   test('goal set by leader detects setBy', async () => {
     // Leader pane sets goal for worker — TMUX_PANE=leader pane → resolves to lead-1
     const { out, exitCode } = await runCli(
-      ['goal', 'set', 'Fix bug #42', '--agent', 'wk-1', '--room', 'goal-room'],
+      ['goal', 'set', 'Fix bug #42', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
       { ...env(), TMUX_PANE: leaderSession.pane },
     );
     expect(exitCode).toBe(0);
@@ -135,7 +135,7 @@ describe('goal feature e2e — CLI', () => {
   // 4. Update goal description
   test('goal update changes description', async () => {
     const { out, exitCode } = await runCli(
-      ['goal', 'update', 'Fix bug #42 in auth.ts', '--agent', 'wk-1', '--room', 'goal-room'],
+      ['goal', 'update', 'Fix bug #42 in auth.ts', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
       env(),
     );
     expect(exitCode).toBe(0);
@@ -198,7 +198,7 @@ describe('goal feature e2e — CLI', () => {
   // 9. Complete goal
   test('goal done marks as done', async () => {
     const { out, exitCode } = await runCli(
-      ['goal', 'done', '--agent', 'wk-1', '--room', 'goal-room'],
+      ['goal', 'done', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
       env(),
     );
     expect(exitCode).toBe(0);
@@ -247,7 +247,7 @@ describe('goal feature e2e — CLI', () => {
 
     // Unset it
     const { out, exitCode } = await runCli(
-      ['goal', 'unset', '--agent', 'wk-1', '--room', 'goal-room'],
+      ['goal', 'unset', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
       env(),
     );
     expect(exitCode).toBe(0);

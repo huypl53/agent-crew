@@ -4,6 +4,7 @@ import {
   getAgentByPane,
   getAgentByRoomAndName,
 } from './index.ts';
+import { logServer } from '../shared/server-log.ts';
 
 // --- Types ---
 
@@ -79,6 +80,7 @@ export function setGoal(
     .query('SELECT * FROM agent_goals WHERE id = ?')
     .get(id) as Record<string, unknown>;
   bumpChangeLog('goals');
+  logServer('INFO', `[goal] set: ${agentName} room=${roomId} setBy=${setBy} desc="${description.slice(0, 60)}"`);
   return rowToGoal(row);
 }
 
@@ -89,7 +91,10 @@ export function unsetGoal(agentName: string, roomId: number): boolean {
     'DELETE FROM agent_goals WHERE agent_name = ? AND room_id = ?',
     [agentName, roomId],
   );
-  if (result.changes > 0) bumpChangeLog('goals');
+  if (result.changes > 0) {
+    bumpChangeLog('goals');
+    logServer('INFO', `[goal] unset: ${agentName} room=${roomId}`);
+  }
   return result.changes > 0;
 }
 
@@ -149,7 +154,10 @@ export function completeGoal(agentName: string, roomId: number): boolean {
      WHERE agent_name = ? AND room_id = ? AND status = 'active'`,
     [ts, ts, agentName, roomId],
   );
-  if (result.changes > 0) bumpChangeLog('goals');
+  if (result.changes > 0) {
+    bumpChangeLog('goals');
+    logServer('INFO', `[goal] done: ${agentName} room=${roomId}`);
+  }
   return result.changes > 0;
 }
 
@@ -166,7 +174,10 @@ export function updateGoalDescription(
      WHERE agent_name = ? AND room_id = ? AND status = 'active'`,
     [newDescription, ts, agentName, roomId],
   );
-  if (result.changes > 0) bumpChangeLog('goals');
+  if (result.changes > 0) {
+    bumpChangeLog('goals');
+    logServer('INFO', `[goal] update: ${agentName} room=${roomId} desc="${newDescription.slice(0, 60)}"`);
+  }
   return result.changes > 0;
 }
 
@@ -198,7 +209,12 @@ export function tickGoalTurnCount(
       string,
       unknown
     > | null;
-    return row ? rowToGoal(row) : null;
+    if (row) {
+      const goal = rowToGoal(row);
+      logServer('DEBUG', `[goal] tick: ${goal.agent_name} turn=${goal.turn_count} session=${sessionId}`);
+      return goal;
+    }
+    return null;
   }
 
   const row = db
@@ -209,7 +225,12 @@ export function tickGoalTurnCount(
        RETURNING *`,
     )
     .get(ts, pane, ...roomArgs) as Record<string, unknown> | null;
-  return row ? rowToGoal(row) : null;
+  if (row) {
+    const goal = rowToGoal(row);
+    logServer('DEBUG', `[goal] tick: ${goal.agent_name} turn=${goal.turn_count} pane=${pane}`);
+    return goal;
+  }
+  return null;
 }
 
 /** Canonicalize goal identity: migrate pane-bootstrap to session-bound. */
@@ -254,4 +275,5 @@ export function canonicalizeGoalIdentity(
     prior.id,
   ]);
   bumpChangeLog('goals');
+  logServer('INFO', `[goal] canonicalize: ${agentName} pane=${pane} → session=${sessionId}`);
 }
