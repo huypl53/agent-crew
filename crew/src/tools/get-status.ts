@@ -156,7 +156,11 @@ export function formatInline(data: DashboardData): string {
   }
   parts.push(paneStatus);
 
-  parts.push(`⬣ block:${data.input_block_mode || "None"}`);
+  let blockPart = `⬣ block:${data.input_block_mode || "None"}`;
+  if (data.input_block_mode !== "off" && data.pending_messages > 0) {
+    blockPart += ` (${data.pending_messages}q)`;
+  }
+  parts.push(blockPart);
 
   let hintMsg = "💡 hint:";
   if (data.hint) {
