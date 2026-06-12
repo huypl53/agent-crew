@@ -14,6 +14,13 @@ import { handleHookEvent } from '../tools/hook-event.ts';
 import { handleInputBlock } from '../tools/input-block.ts';
 import { handleInspectWorker } from '../tools/inspect-worker.ts';
 import { handleInterruptWorker } from '../tools/interrupt-worker.ts';
+import {
+  handleGoalDone,
+  handleGoalLookup,
+  handleGoalSet,
+  handleGoalUnset,
+  handleGoalUpdate,
+} from '../tools/goal.ts';
 import { handleJoinRoom } from '../tools/join-room.ts';
 import { handleLeaveRoom } from '../tools/leave-room.ts';
 import { handleListMembers } from '../tools/list-members.ts';
@@ -277,6 +284,27 @@ export const COMMANDS: Record<
       pane: f.pane,
       message: p.slice(1).join(' ') || undefined,
       cadence: f.cadence != null ? parseInt(String(f.cadence), 10) : undefined,
+    }),
+  },
+  goal: {
+    handler: async (p) => {
+      const subcommand = p.subcommand;
+      if (subcommand === 'set') return handleGoalSet(p);
+      if (subcommand === 'done') return handleGoalDone(p);
+      if (subcommand === 'update') return handleGoalUpdate(p);
+      if (subcommand === 'unset') return handleGoalUnset(p);
+      if (subcommand === 'lookup') return handleGoalLookup(p);
+      return err(
+        `Unknown goal subcommand: '${subcommand ?? ''}'. Use: set, done, update, unset, lookup`,
+      );
+    },
+    buildParams: (f, p) => ({
+      subcommand: p[0],
+      agent: f.agent,
+      room: f.room,
+      message: p.slice(1).join(' ') || undefined,
+      session: typeof f.session === 'string' ? f.session : undefined,
+      pane: f.pane,
     }),
   },
   'auto-self': {

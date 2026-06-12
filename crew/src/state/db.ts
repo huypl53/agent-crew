@@ -450,6 +450,35 @@ export function initDb(path?: string): void {
     );
   }
 
+  // Goal tracking table
+  _db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_goals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agent_name TEXT NOT NULL,
+      room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+      description TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'done', 'abandoned')),
+      pane_bootstrap TEXT,
+      session_id TEXT,
+      set_by TEXT NOT NULL DEFAULT 'self',
+      turn_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      completed_at TEXT,
+      CHECK (pane_bootstrap IS NOT NULL OR session_id IS NOT NULL)
+    )
+  `);
+  _db.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_goals_pane ON agent_goals(pane_bootstrap, room_id) WHERE pane_bootstrap IS NOT NULL',
+  );
+  _db.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_goals_session ON agent_goals(session_id, room_id) WHERE session_id IS NOT NULL',
+  );
+  _db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_goals_agent_room ON agent_goals(agent_name, room_id)',
+  );
+
   const scopes = [
     'agents',
     'messages',
@@ -458,6 +487,7 @@ export function initDb(path?: string): void {
     'hook-events',
     'party',
     'hints',
+    'goals',
   ];
   for (const scope of scopes) {
     _db.run(

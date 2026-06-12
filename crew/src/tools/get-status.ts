@@ -9,6 +9,7 @@ import {
   getAgentBySessionId,
   getAgentInputBlockMode,
   getAgentMessageCounts,
+  getGoalByAgent,
   getHint,
   getLatestHookEvent,
   getRoomMembers,
@@ -35,6 +36,7 @@ export interface DashboardData {
   tmux_target: string | null;
   input_block_mode: string;
   hint: { message: string; cadence: number } | null;
+  goal: { description: string; status: string; turn_count: number } | null;
   pending_messages: number;
   workers: { idle: number; busy: number; dead: number } | null;
   last_activity_ago: string | null;
@@ -115,6 +117,15 @@ export function formatDashboard(data: DashboardData): string {
     lines.push(`│ ${hintLine.padEnd(W)}│`);
   }
 
+  if (data.goal && data.goal.status === 'active') {
+    const maxDescLen = W - 16; // "Goal: ... (NNNt)" overhead
+    const desc = data.goal.description.length > maxDescLen
+      ? data.goal.description.slice(0, maxDescLen - 1) + '…'
+      : data.goal.description;
+    const goalLine = `Goal: ${desc} (${data.goal.turn_count}t)`;
+    lines.push(`│ ${goalLine.padEnd(W)}│`);
+  }
+
   const pendingLine = `Pending: ${data.pending_messages} msgs`;
   lines.push(`│ ${pendingLine.padEnd(W)}│`);
 
@@ -163,7 +174,15 @@ export function formatInline(data: DashboardData): string {
     parts.push(`\u{1F465} ${w.idle}i·${w.busy}b·${w.dead}d`);
   }
 
-  return parts.join("|");
+  if (data.goal && data.goal.status === 'active') {
+    const truncated =
+      data.goal.description.length > 30
+        ? data.goal.description.slice(0, 27) + '…'
+        : data.goal.description;
+    parts.push(`🎯 "${truncated}"`);
+  }
+
+  return parts.join(' ');
 }
 
 // --- Core status resolver (unchanged) ---
@@ -265,6 +284,7 @@ export async function handleGetStatus(
       tmux_target: agent.tmux_target,
       input_block_mode: inputBlockMode,
       hint: null,
+      goal: null,
       pending_messages: pendingMessages,
       workers,
       last_activity_ago: lastActivityAgo,
@@ -353,6 +373,17 @@ async function handleSelfStatus(params: GetStatusParams): Promise<ToolResult> {
   // Last activity
   const lastActivityAgo = formatAgo(getLastActivity(agent.name));
 
+  // Goal: lookup active goal for this agent
+  let goalData: { description: string; status: string; turn_count: number } | null = null;
+  try {
+    const goal = getGoalByAgent(agent.name, agent.room_id);
+    if (goal && goal.status === 'active') {
+      goalData = { description: goal.description, status: goal.status, turn_count: goal.turn_count };
+    }
+  } catch {
+    // fail-open
+  }
+
   const data: DashboardData = {
     name: agent.name,
     role: agent.role,
@@ -361,6 +392,7 @@ async function handleSelfStatus(params: GetStatusParams): Promise<ToolResult> {
     tmux_target: agent.tmux_target,
     input_block_mode: inputBlockMode,
     hint: hintData,
+    goal: goalData,
     pending_messages: pendingMessages,
     workers,
     last_activity_ago: lastActivityAgo,

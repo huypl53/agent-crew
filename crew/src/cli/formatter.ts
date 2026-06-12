@@ -50,6 +50,12 @@ Commands:
 
   hint        set|unset|lookup                             Manage registered-agent hint
               set "your message" [-c N] (default cadence: 3)
+  goal        set|done|update|unset|lookup                  Manage agent goals
+              set "description" [--agent <name> --room <name>]
+              done [--agent <name> --room <name>]
+              update "new desc" [--agent <name> --room <name>]
+              unset [--agent <name> --room <name>]
+              lookup [--agent <name> | --session <id>]
   auto-self   on|off [--name <leader>]                     Toggle auto crew status --self on leader idle
   wait-idle   --target <pane> [--timeout <ms>]             Wait until pane is idle (stable content)
               [--stable-count N] [--idle-seconds N]
@@ -208,6 +214,13 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     if (d.message) return d.message;
     if (d.hint?.agent_name) return `Registered agent: ${d.hint.agent_name}`;
     return '(no hint)';
+  },
+  goal: (d) => {
+    if (d.error) return `Error: ${d.error}`;
+    if (d.goal_status) return `Goal ${d.goal_status}${d.message ? ` — ${d.message}` : ''}`;
+    if (d.removed) return d.message ?? 'Goal removed';
+    if (d.goal) return `🎯 ${d.goal.agent_name}: "${d.goal.description}" (${d.goal.status}, turn ${d.goal.turn_count ?? 0})`;
+    return '(no goal)';
   },
   'hook-event': (d) => {
     // Hook stdout is injected into Claude Code conversations.

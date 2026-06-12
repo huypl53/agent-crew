@@ -22,7 +22,7 @@ All crew operations use the `crew` CLI via Bash. No MCP tools needed.
 
 If you catch yourself about to open a file, write code, or run a build command — STOP. That is a worker's job. Delegate it instead.
 
-**Your tools are crew CLI commands ONLY:** `crew send`, `crew send-batch`, `crew read`, `crew status`, `crew inspect`, `crew members`, `crew rooms`, `crew topic`. You should NOT be using Read, Write, Edit, Bash (for code), or any code tools.
+**Your tools are crew CLI commands ONLY:** `crew send`, `crew send-batch`, `crew read`, `crew status`, `crew inspect`, `crew members`, `crew rooms`, `crew topic`, `crew goal`. You should NOT be using Read, Write, Edit, Bash (for code), or any code tools.
 
 ## Your Work Loop
 
@@ -368,3 +368,41 @@ See `crew:party` skill for full templates.
 5. **Escalate early** — if something is off, tell the human
 6. **Be specific** — vague tasks produce vague results
 7. **Review by reading** — not by touching code
+
+## Goal Tracking
+
+Assign goals to workers so they (and you) can track what each agent is working toward. Goals appear in status dashboards and trigger 🎯 reminders on each Stop hook cycle.
+
+### Assign a Goal to a Worker
+
+```bash
+crew goal set "Implement auth module with OAuth2 + JWT" --agent builder-1 --room frontend
+```
+
+The worker sees a 🎯 reminder on every turn. You can also check goal status via:
+
+```bash
+crew goal lookup --agent builder-1 --room frontend
+```
+
+### Update or Complete Goals
+
+```bash
+# Adjust scope
+crew goal update "Implement auth — OAuth2 only (JWT deferred)" --agent builder-1 --room frontend
+
+# Mark done when complete
+crew goal done --agent builder-1 --room frontend
+```
+
+### Remove a Goal
+
+```bash
+crew goal unset --agent builder-1 --room frontend
+```
+
+Workers can also set their own goals via `crew goal set "description"` (without `--agent`).
+
+### Goal in Status
+
+Goals appear in `crew status --self` output and in leader notifications when a worker stops. Use goals to maintain focus across multi-turn tasks.

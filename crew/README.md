@@ -224,6 +224,11 @@ crew <command>
 | `hint set` | `crew hint set "You are builder-1 in project-x." -c 3` | `Hint set for builder-1 in crew. Will inject your message every 3 turn(s).` |
 | `hint unset` | `crew hint unset --agent builder-1 --room crew` | `Hint removed for builder-1 in crew` |
 | `hint lookup` | `crew hint lookup --pane %42` | `agent_name: builder-1, cadence: 3, next_reminder_at: 2` |
+| `goal set` | `crew goal set "Implement auth module" --agent wk-01 --room crew` | `🎯 wk-01: "Implement auth module" (active, turn 0)` |
+| `goal done` | `crew goal done --agent wk-01 --room crew` | `Goal done — completed for wk-01 in crew` |
+| `goal update` | `crew goal update "Fix bug in auth.ts" --agent wk-01 --room crew` | `🎯 wk-01: "Fix bug in auth.ts" (active, turn 0)` |
+| `goal unset` | `crew goal unset --agent wk-01 --room crew` | `Goal removed for wk-01 in crew` |
+| `goal lookup` | `crew goal lookup --agent wk-01 --room crew` or `crew goal lookup --session <id>` | `🎯 wk-01: "Implement auth module" (active, turn 3)` |
 
 ### Interactive Management TUI (`crew manage`)
 

@@ -431,10 +431,11 @@ describe('state module', () => {
         scope: string;
         version: number;
       }[];
-      expect(rows.length).toBe(7);
+      expect(rows.length).toBe(8);
       const scopes = rows.map((r) => r.scope).sort();
       expect(scopes).toEqual([
         'agents',
+        'goals',
         'hints',
         'hook-events',
         'messages',

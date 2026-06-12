@@ -40,6 +40,27 @@ import {
   renderBatchPendingHint,
 } from './batch-state.ts';
 import { renderBatchFinalMessage } from './batch-render.ts';
+import {
+  canonicalizeGoalIdentity,
+  completeGoal,
+  getGoal,
+  getGoalByAgent,
+  setGoal,
+  tickGoalTurnCount,
+  unsetGoal,
+  updateGoalDescription,
+} from './goal-state.ts';
+export type { GoalRecord } from './goal-state.ts';
+export {
+  canonicalizeGoalIdentity,
+  completeGoal,
+  getGoal,
+  getGoalByAgent,
+  setGoal,
+  tickGoalTurnCount,
+  unsetGoal,
+  updateGoalDescription,
+};
 
 // Re-export for callers
 export {
@@ -1323,7 +1344,18 @@ function notifyLeadersOnWorkerStop(
   const leaders = getRoomMembers(agent.room_id).filter(
     (m) => m.role === 'leader' && m.tmux_target,
   );
-  const message = `[${agentName}@${roomName}] completed:\n${truncated}`;
+  let message = `[${agentName}@${roomName}] completed:\n${truncated}`;
+
+  // Append goal context if worker has active goal
+  try {
+    const goal = getGoalByAgent(agentName, agent.room_id);
+    if (goal && goal.status === 'active') {
+      message += `\n\n🎯 Active Goal: ${goal.description}`;
+    }
+  } catch {
+    // Fail-open: don't block notification on goal lookup errors
+  }
+
   for (const leader of leaders) {
     deliverWithRetry(leader, message, msg.sequence).catch(() => {});
   }
@@ -1550,7 +1582,7 @@ export function getAgentTemplateById(id: number): AgentTemplate | undefined {
 
 // --- Party mode operations ---
 
-function bumpChangeLog(scope: string): void {
+export function bumpChangeLog(scope: string): void {
   getDb().run(
     'UPDATE change_log SET version = version + 1, updated_at = datetime("now") WHERE scope = ?',
     [scope],
@@ -1941,6 +1973,6 @@ function rowToHint(row: Record<string, unknown>): HintRecord {
 export function clearState(): void {
   const db = getDb();
   db.exec(
-    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM party_responses; DELETE FROM hook_events; DELETE FROM agent_hints; DELETE FROM messages; DELETE FROM message_batch_workers; DELETE FROM message_batches; DELETE FROM cursors; DELETE FROM push_cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
+    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM party_responses; DELETE FROM hook_events; DELETE FROM agent_hints; DELETE FROM agent_goals; DELETE FROM messages; DELETE FROM message_batch_workers; DELETE FROM message_batches; DELETE FROM cursors; DELETE FROM push_cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
   );
 }
