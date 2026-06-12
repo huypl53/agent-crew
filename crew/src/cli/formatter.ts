@@ -20,6 +20,8 @@ Commands:
   members     --room <name|id|path>                        List room members
   send        --room <name|id|path> (--text <text> | --file <path>) [--name <name>]
               [--to <agent>] [--kind <kind>] [--mode <mode>] Send a message
+  send-batch  --room <name|id|path> --manifest <path> --name <name>
+              [--mode <mode>]                                Send batch messages to workers
   read        [--name <name>] [--room <name|id|path>] [--limit N]
               [--kinds task,completion]                    Read messages
   status      [<agent_name>] [--self] [--inline] [--json] [--session <id>] [--name <self>] Check agent status (--self for rich view, --inline for compact bar)
@@ -133,6 +135,13 @@ const FORMATTERS: Record<string, (data: any) => string> = {
       return `${base}\nMembers:\n${membersStr}`;
     }
     return base;
+  },
+
+  'send-batch': (d) => {
+    const workers = d.workers
+      .map((w: any) => `  ${w.name}: ${w.dispatch_status}`)
+      .join('\n');
+    return `batch:${d.batch_id}\n${workers}`;
   },
 
   join: (d) =>

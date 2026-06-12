@@ -33,7 +33,7 @@ Once you have work, repeat this cycle:
 ```
 1. Check for human directives    → crew read --name <self> --room company
 2. Break work into worker assignments → think, plan (no coding!)
-3. Assign work to an idle worker      → crew send --kind task
+3. Assign work to idle workers   → crew send-batch (2+ workers) or crew send (1 worker)
 4. Wait for push notification    → workers auto-notify on completion/error
 5. Read full message             → crew read --name <self> --room <project>
 6. Review result, give feedback  → crew send if rework needed
@@ -59,9 +59,11 @@ crew send --room your-room --to builder-1 --file /tmp/task-brief.txt --name your
 
 `--file` reads UTF-8 text exactly as written and preserves newlines.
 
-### Batch Assignment
+### Batch Assignment (Preferred for Multi-Worker)
 
-When you need to dispatch multiple worker tasks together and receive one merged final result, use `crew send-batch` with a manifest file instead of sending N separate `crew send` commands.
+**When assigning to 2+ workers, always prefer `crew send-batch` over sequential `crew send`.** Batch dispatch saves your turns and tokens — instead of N round-trips (send → wait → read → send next), you fan out in one command and receive one merged result.
+
+Use `crew send-batch` with a manifest file:
 
 ```bash
 crew send-batch --room your-room --name your-name --manifest /tmp/batch.json --mode push
@@ -94,6 +96,8 @@ Batch behavior:
 - if `hintAfterSeconds` is set and the batch stalls, the leader may receive one hint telling them which workers are still pending
 
 `crew send-batch` is for coordinated fan-out. Use plain `crew send` when you only need one worker or want immediate per-message handling.
+
+**Token savings:** 3 workers via sequential `crew send` = 6+ leader turns (assign → read → assign → read → assign → read). Same 3 workers via `crew send-batch` = 1 leader turn to dispatch + 1 turn to read the merged result.
 
 **Rules:**
 - One task at a time per worker

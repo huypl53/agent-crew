@@ -23,13 +23,8 @@ Your leader sends you assignments via push messages that appear as user input in
 [leader-name@room]: Create the login component in src/components/Login.tsx
 ```
 
-<<<<<<< HEAD
-Leaders may compose these briefs with `crew send --file ...`, so multiline task messages with exact formatting are expected.
+When you see a `[name@room]:` message, this is an assignment from your leader. Execute it.
 
-When you see a `[name@room]:` message, this is an assignment from your leader. Execute it.
-=======
-When you see a `[name@room]:` message, this is an assignment from your leader. Execute it.
->>>>>>> remove-task-flow
 
 ## CRITICAL: Always Report Completion
 
