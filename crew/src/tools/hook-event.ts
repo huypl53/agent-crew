@@ -3,7 +3,7 @@ import { spawnSync } from "bun";
 import { flushPushQueueForAgent } from "../delivery/index.ts";
 import type { Agent, ToolResult } from "../shared/types.ts";
 import { ok } from "../shared/types.ts";
-import { getDb, initDb } from "../state/db.ts";
+import { getDb, initDbWithRetry, withRetry } from "../state/db.ts";
 import type { HintRecord } from "../state/index.ts";
 import {
   addHookEvent,
@@ -45,10 +45,13 @@ export async function processHookEventInput(
     return okResult();
   }
 
+  // Use retry-aware init — concurrent hook processes all contend on the
+  // same SQLite file, and schema migrations hold write locks.  The retry
+  // wrapper handles SQLITE_BUSY with exponential backoff.
   try {
     getDb();
   } catch {
-    initDb();
+    initDbWithRetry();
   }
 
   const agent = getAgentByPane(pane);
@@ -66,12 +69,16 @@ export async function processHookEventInput(
         ? payload.sessionId
         : null;
 
-  const hookEventId = addHookEvent(
-    agent.name,
-    eventType,
-    sessionId,
-    input,
-    agent.room_id,
+  // addHookEvent does INSERT + UPDATE + possible notification writes —
+  // wrap in retry since multiple hook processes may contend on the same DB.
+  const hookEventId = withRetry(() =>
+    addHookEvent(
+      agent.name,
+      eventType,
+      sessionId,
+      input,
+      agent.room_id,
+    ),
   );
 
   // Canonicalize hint identity when session_id is first available

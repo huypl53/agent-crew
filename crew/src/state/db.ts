@@ -523,3 +523,64 @@ export function closeDb(): void {
   _db = null;
   _dbPath = null;
 }
+
+/**
+ * Retry a DB operation with exponential backoff when encountering SQLITE_BUSY.
+ * This handles the case where multiple `crew hook-event` processes contend
+ * on the same SQLite file — WAL mode allows concurrent reads but serializes
+ * writes, and busy_timeout may be exceeded under heavy contention.
+ */
+export function withRetry<T>(fn: () => T, maxRetries = 3, baseDelayMs = 200): T {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return fn();
+    } catch (e: unknown) {
+      lastError = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      // Only retry on SQLITE_BUSY or "database is locked" errors
+      if (!msg.includes('BUSY') && !msg.includes('locked') && !msg.includes('busy')) {
+        throw e;
+      }
+      if (attempt < maxRetries) {
+        const delay = baseDelayMs * Math.pow(2, attempt) + Math.floor(Math.random() * 100);
+        // Synchronous sleep for Bun — use Atomics.wait in a worker-like pattern
+        const end = Date.now() + delay;
+        while (Date.now() < end) {
+          // busy-wait for short delays (200-1000ms)
+        }
+      }
+    }
+  }
+  throw lastError;
+}
+
+/**
+ * Initialise DB with retry — the most contention-prone operation since
+ * every hook-event process calls this on startup.  Schema migrations hold
+ * write locks, so concurrent initDb() calls from multiple processes are
+ * the primary source of SQLITE_BUSY errors.
+ */
+export function initDbWithRetry(path?: string, maxRetries = 4): void {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      initDb(path);
+      return;
+    } catch (e: unknown) {
+      lastError = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!msg.includes('BUSY') && !msg.includes('locked') && !msg.includes('busy')) {
+        throw e;
+      }
+      if (attempt < maxRetries) {
+        const delay = 300 * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
+        const end = Date.now() + delay;
+        while (Date.now() < end) {
+          // busy-wait
+        }
+      }
+    }
+  }
+  throw lastError;
+}

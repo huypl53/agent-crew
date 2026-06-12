@@ -861,10 +861,11 @@ export function readRoomMessages(
     return { messages: [], next_sequence: cursor };
   }
 
-  // Only return messages addressed to this agent within this room.
+  // Return messages addressed to this agent AND broadcast messages (recipient IS NULL)
+  // within this room. Broadcasts include stop-hook completion messages from workers.
   let sql =
-    'SELECT * FROM messages WHERE room_id = ? AND id > ? AND recipient = ?';
-  const params: unknown[] = [roomObj.id, cursor, agentName];
+    'SELECT * FROM messages WHERE room_id = ? AND id > ? AND (recipient = ? OR (recipient IS NULL AND sender != ?))';
+  const params: unknown[] = [roomObj.id, cursor, agentName, agentName];
   if (kinds && kinds.length > 0) {
     sql += ` AND kind IN (${kinds.map(() => '?').join(',')})`;
     params.push(...kinds);
@@ -1296,12 +1297,6 @@ function notifyLeadersOnWorkerStop(
     }
     return;
   }
-
-  const batchAssociation = getLatestBatchAssociationForWorker(
-    agentName,
-    agent.room_id,
-  );
-  if (batchAssociation) return;
 
   const latestBatch = getLatestBatchForWorker(agentName, agent.room_id);
   const latestSubmit = getLatestHookEvent(agentName, 'UserPromptSubmit');

@@ -129,22 +129,27 @@ describe('batch state primitives', () => {
     });
 
     expect(getMessageBatch('batch-state')?.hint_sent_at).toBeNull();
-    expect(listIncompleteBatches('2026-06-11T10:48:00.000Z').map((batch) => batch.batch_id)).toEqual([
+    // Use far-future timestamp so test doesn't rot when current date passes the cutoff
+    const futureNow = '2099-12-31T23:59:59.000Z';
+    const hintTime = '2099-12-31T23:48:00.000Z';
+    const completeTime = '2099-12-31T23:49:00.000Z';
+
+    expect(listIncompleteBatches(futureNow).map((batch) => batch.batch_id)).toEqual([
       'batch-state',
     ]);
     expect(areAllBatchWorkersTerminal('batch-state')).toBe(false);
 
     markBatchWorkerSent('batch-state', 'worker-a');
     completeBatchWorker('batch-state', 'worker-a', 'success', 'done');
-    markBatchHintSent('batch-state', '2026-06-11T10:48:00.000Z');
-    markBatchCompleted('batch-state', '2026-06-11T10:49:00.000Z');
+    markBatchHintSent('batch-state', hintTime);
+    markBatchCompleted('batch-state', completeTime);
 
     const batch = getMessageBatch('batch-state');
     const worker = getBatchWorkers('batch-state')[0];
 
-    expect(batch?.hint_sent_at).toBe('2026-06-11T10:48:00.000Z');
+    expect(batch?.hint_sent_at).toBe(hintTime);
     expect(batch?.status).toBe('completed');
-    expect(batch?.completed_at).toBe('2026-06-11T10:49:00.000Z');
+    expect(batch?.completed_at).toBe(completeTime);
     expect(worker.dispatch_status).toBe('sent');
     expect(worker.terminal_status).toBe('success');
     expect(worker.final_message).toBe('done');
