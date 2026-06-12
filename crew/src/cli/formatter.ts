@@ -7,63 +7,156 @@ export function formatError(data: any): string {
   return `Error: ${data.error ?? JSON.stringify(data)}`;
 }
 
-export function formatHelp(): string {
-  return `crew — multi-agent coordination CLI
+// ---------------------------------------------------------------------------
+// Structured help renderer
+// ---------------------------------------------------------------------------
 
-Usage: crew <command> [flags]
-
-Commands:
-  join        --room <name> --role <role> [--name <name>]  Register in a room (name auto-detected if omitted)
-              [--room-id <id>]                             Join room by ID instead of CWD
-  leave       --room <name|id|path> [--name <name>]        Leave a room
-  rooms                                                    List all rooms
-  members     --room <name|id|path>                        List room members
-  send        --room <name|id|path> (--text <text> | --file <path>) [--name <name>]
-              [--to <agent>] [--kind <kind>] [--mode <mode>] Send a message
-  send-batch  --room <name|id|path> --manifest <path> --name <name>
-              [--mode <mode>]                                Send batch messages to workers
-  read        [--name <name>] [--room <name|id|path>] [--limit N]
-              [--kinds task,completion]                    Read messages
-  status      [<agent_name>] [--self] [--inline] [--json] [--session <id>] [--name <self>] Check agent status (--self for rich view, --inline for compact bar)
-  check       [--name <name>] [--scopes messages,agents]   Check for changes
-  refresh     [--name <name>]                              Re-register agent
-  topic       --room <name|id|path> --text <text> [--name <name>] Set room topic
-  interrupt   --worker <name> --room <name|id|path> [--name <name>] Interrupt worker
-  inspect     --worker <name> [--name <leader>]            Inspect recent worker turns
-              [--room <name|id|path>] [--turns N]
-  clear       --worker <name> --room <name|id|path> [--name <name>] Clear worker session
-  reassign    --worker <name> --room <name|id|path> --text <t> [--name <name>]
-              Replace current assignment
-  create-room --room <name> [--name <self>] [--topic <t>]  Create a new room
-  delete-room [<name|id|path>] --confirm [--name <self>]   Delete room (removes members + messages)
-  manage      [--name <self>]                              Interactive room/member management console
-
-  input-block [on|off|status] [--name <agent>] [--persist] Manage input-block mode (alias: ib)
-
-  mute        idle [--name <name>]                         Mute idle notifications (leader only)
-  unmute      idle [--name <name>]                         Unmute idle notifications
-
-  polling     pause [--reason <text>]                      Pause sweep delivery
-  polling     resume                                       Resume sweep delivery & flush queue
-  polling     status                                       Show sweep status
-  polling     busy <auto|manual_busy|manual_free>         Set busy mode behavior
-
-  hint        set|unset|lookup                             Manage registered-agent hint
-              set "your message" [-c N] (default cadence: 3)
-  goal        set|done|update|unset|lookup                  Manage agent goals
-              set "description" [--agent <name> --room <name>]
-              done [--agent <name> --room <name>]
-              update "new desc" [--agent <name> --room <name>]
-              unset [--agent <name> --room <name>]
-              lookup [--agent <name> | --session <id>]
-  auto-self   on|off [--name <leader>]                     Toggle auto crew status --self on leader idle
-  wait-idle   --target <pane> [--timeout <ms>]             Wait until pane is idle (stable content)
-              [--stable-count N] [--idle-seconds N]
-
-Flags:
-  --json      Output raw JSON instead of text
-  --help      Show this help message`;
+interface HelpEntry {
+  /** e.g. "join" or "polling pause" */
+  name: string;
+  /** first-line usage flags/args; empty string if none */
+  usage: string;
+  /** short description */
+  desc: string;
+  /** additional usage lines shown below the first line */
+  cont?: string[];
 }
+
+interface HelpGroup {
+  heading: string;
+  entries: HelpEntry[];
+}
+
+const HELP_GROUPS: HelpGroup[] = [
+  {
+    heading: 'Room',
+    entries: [
+      { name: 'join', usage: '--room <name> --role <role> [--name <name>]', desc: 'Register in a room (name auto-detected if omitted)', cont: ['[--room-id <id>]'] },
+      { name: 'leave', usage: '--room <name|id|path> [--name <name>]', desc: 'Leave a room' },
+      { name: 'rooms', usage: '', desc: 'List all rooms' },
+      { name: 'members', usage: '--room <name|id|path>', desc: 'List room members' },
+      { name: 'create-room', usage: '--room <name> [--name <self>] [--topic <t>]', desc: 'Create a new room' },
+      { name: 'delete-room', usage: '[<name|id|path>] --confirm [--name <self>]', desc: 'Delete room (removes members + messages)' },
+      { name: 'manage', usage: '[--name <self>]', desc: 'Interactive room/member console' },
+    ],
+  },
+  {
+    heading: 'Messaging',
+    entries: [
+      { name: 'send', usage: '--room <name> (--text <t> | --file <f>)', desc: 'Send a message', cont: ['[--to <agent>] [--kind <kind>] [--mode <mode>]'] },
+      { name: 'send-batch', usage: '--room <name> --manifest <path> --name <name>', desc: 'Send batch messages to workers', cont: ['[--mode <mode>]'] },
+      { name: 'read', usage: '[--name <name>] [--room <name>] [--limit N]', desc: 'Consume queued messages (advances cursor)', cont: ['[--kinds task,completion]'] },
+      { name: 'topic', usage: '--room <name|id|path> --text <text> [--name <name>]', desc: 'Set room topic' },
+    ],
+  },
+  {
+    heading: 'Status',
+    entries: [
+      { name: 'status', usage: '[<agent>] [--self] [--inline] [--json]', desc: 'Check agent status (--self for rich view)', cont: ['[--session <id>] [--name <self>]'] },
+      { name: 'check', usage: '[--name <name>] [--scopes messages,agents]', desc: 'Poll version counters (lightweight)' },
+    ],
+  },
+  {
+    heading: 'Control',
+    entries: [
+      { name: 'polling pause', usage: '[--reason <text>]', desc: 'Pause sweep delivery' },
+      { name: 'polling resume', usage: '', desc: 'Resume sweep delivery & flush queue' },
+      { name: 'polling status', usage: '', desc: 'Show sweep status' },
+      { name: 'polling busy', usage: '<auto|manual_busy|manual_free>', desc: 'Set busy mode behavior' },
+      { name: 'input-block', usage: '[on|off|status] [--name <agent>] [--persist]', desc: 'Manage input-block mode (alias: ib)' },
+      { name: 'mute idle', usage: '[--name <name>]', desc: 'Mute idle notifications (leader only)' },
+      { name: 'unmute idle', usage: '[--name <name>]', desc: 'Unmute idle notifications' },
+      { name: 'auto-self', usage: 'on|off [--name <leader>]', desc: 'Toggle auto --self on leader idle' },
+    ],
+  },
+  {
+    heading: 'Agent',
+    entries: [
+      { name: 'hint set', usage: '"your message" [-c N]', desc: 'Register agent hint (cadence: 3)' },
+      { name: 'hint unset', usage: '', desc: 'Clear registered agent hint' },
+      { name: 'hint lookup', usage: '', desc: 'Show registered agent hint' },
+      { name: 'goal set', usage: '"description" [--agent <name> --room <name>]', desc: 'Set agent goal' },
+      { name: 'goal done', usage: '[--agent <name> --room <name>]', desc: 'Mark agent goal complete' },
+      { name: 'goal update', usage: '"new desc" [--agent <name> --room <name>]', desc: 'Update agent goal description' },
+      { name: 'goal unset', usage: '[--agent <name> --room <name>]', desc: 'Remove agent goal' },
+      { name: 'goal lookup', usage: '[--agent <name> | --session <id>]', desc: 'Show agent goal' },
+    ],
+  },
+  {
+    heading: 'Debug',
+    entries: [
+      { name: 'inspect', usage: '--worker <name> [--name <leader>]', desc: 'Inspect worker session transcript', cont: ['[--room <name>] [--turns N]'] },
+      { name: 'interrupt', usage: '--worker <name> --room <name> [--name <name>]', desc: 'Interrupt worker' },
+      { name: 'clear', usage: '--worker <name> --room <name> [--name <name>]', desc: 'Clear worker session' },
+      { name: 'reassign', usage: '--worker <name> --room <name> --text <t> [--name <name>]', desc: 'Replace current assignment' },
+    ],
+  },
+  {
+    heading: 'Utility',
+    entries: [
+      { name: 'refresh', usage: '[--name <name>]', desc: 'Re-register agent' },
+      { name: 'wait-idle', usage: '--target <pane> [--timeout <ms>]', desc: 'Wait until pane is idle', cont: ['[--stable-count N] [--idle-seconds N]'] },
+    ],
+  },
+];
+
+const INDENT = 2;
+const NAME_WIDTH = 14;  // fixed width for the command name column (including 1-space gap)
+const DESC_COL = 44;    // column where descriptions start
+
+export function formatHelp(): string {
+  const lines: string[] = [];
+  lines.push('crew - multi-agent coordination CLI');
+  lines.push('');
+  lines.push('Usage: crew <command> [flags]');
+  lines.push('');
+
+  for (const group of HELP_GROUPS) {
+    lines.push(group.heading);
+    for (const e of group.entries) {
+      const pad = ' '.repeat(INDENT);
+
+      if (!e.usage) {
+        // Command with no flags: name then description
+        const nameField = e.name.padEnd(DESC_COL - INDENT);
+        lines.push(`${pad}${nameField}${e.desc}`);
+      } else {
+        // First line: name + usage
+        const nameField = e.name.padEnd(NAME_WIDTH - INDENT);
+        const firstLine = `${pad}${nameField}${e.usage}`;
+
+        if (firstLine.length + 2 <= DESC_COL) {
+          // Fits on one line with room for description
+          const gap = ' '.repeat(DESC_COL - firstLine.length);
+          lines.push(`${firstLine}${gap}${e.desc}`);
+        } else {
+          // Usage is long: description goes on next line
+          lines.push(firstLine);
+          lines.push(`${' '.repeat(DESC_COL)}${e.desc}`);
+        }
+      }
+
+      // Continuation lines align at DESC_COL
+      if (e.cont) {
+        const contPad = ' '.repeat(DESC_COL);
+        for (const c of e.cont) {
+          lines.push(`${contPad}${c}`);
+        }
+      }
+    }
+    lines.push('');
+  }
+
+  lines.push('Flags:');
+  lines.push(`${' '.repeat(INDENT)}--json      Output raw JSON instead of text`);
+  lines.push(`${' '.repeat(INDENT)}--help      Show this help message`);
+
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Result formatters (unchanged)
+// ---------------------------------------------------------------------------
 
 const formatInputBlock = (d: any) => {
   let out = `${d.name} input-block:${d.input_block_mode}`;
