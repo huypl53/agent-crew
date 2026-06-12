@@ -157,8 +157,13 @@ export function formatInline(data: DashboardData): string {
   } else {
     hintMsg += "(No hint)";
   }
-  parts.push;
-  return parts.join(" ");
+
+  if (data.workers) {
+    const w = data.workers;
+    parts.push(`\u{1F465} ${w.idle}i·${w.busy}b·${w.dead}d`);
+  }
+
+  return parts.join("|");
 }
 
 // --- Core status resolver (unchanged) ---
