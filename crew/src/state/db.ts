@@ -465,7 +465,8 @@ export function initDb(path?: string): void {
       turn_count INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      completed_at TEXT
+      completed_at TEXT,
+      CHECK (pane_bootstrap IS NOT NULL OR session_id IS NOT NULL)
     )
   `);
   _db.exec(
