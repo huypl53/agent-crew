@@ -7,14 +7,18 @@ import { getDb, initDb } from '../state/db.ts';
 import type { HintRecord } from '../state/index.ts';
 import {
   addHookEvent,
+  canonicalizeGoalIdentity,
   canonicalizeHintIdentity,
   clearArmedInputBlock,
   getAgentByPane,
   getAgentInputBlockMode,
+  getGoalByAgent,
   getRoomMembers,
   isAgentAutoSelfOnIdle,
+  tickGoalTurnCount,
   tickHintCadence,
 } from '../state/index.ts';
+import { sendKeys } from '../tmux/index.ts';
 
 function okResult(
   payload: Record<string, unknown> = { ok: true, decision: 'allow' },
@@ -78,6 +82,13 @@ export async function processHookEventInput(
       // Fail-open: don't block hook processing on canonicalization errors
       console.error(
         `[crew hint] canonicalize error: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+    try {
+      canonicalizeGoalIdentity(agent.name, pane, sessionId);
+    } catch (e) {
+      console.error(
+        `[crew goal] canonicalize error: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
   }
@@ -160,6 +171,24 @@ export async function processHookEventInput(
   //     );
   //   }
   // }
+
+  // Goal reminder: push goal message to agent on Stop
+  if (eventType === 'Stop') {
+    try {
+      const goal = tickGoalTurnCount(pane, sessionId, agent.room_id);
+      if (goal && goal.status === 'active' && agent.tmux_target) {
+        const desc = goal.description.length > 100
+          ? goal.description.slice(0, 97) + '…'
+          : goal.description;
+        const reminder = `🎯 Goal: ${desc} (turn ${goal.turn_count})\n📝 Update: crew goal update "new description"`;
+        sendKeys(agent.tmux_target, reminder).catch(() => {});
+      }
+    } catch (e) {
+      console.error(
+        `[crew goal] reminder error: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
 
   return ok({
     ok: true,
