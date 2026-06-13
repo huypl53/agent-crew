@@ -307,7 +307,7 @@ function checkAutoSelfTransition(
  */
 function buildWorkerSummary(
   agent: Agent,
-): { idle: number; busy: number; dead: number } | null {
+): { idle: number; busy: number; dead: number; unknown: number } | null {
   const members = getRoomMembers(agent.room_id).filter(
     (m) => m.name !== agent.name,
   );
@@ -315,12 +315,14 @@ function buildWorkerSummary(
   let idle = 0;
   let busy = 0;
   let dead = 0;
+  let unknown = 0;
   for (const m of members) {
     if (m.status === "idle") idle++;
     else if (m.status === "busy") busy++;
-    else dead++;
+    else if (m.status === "dead") dead++;
+    else unknown++;
   }
-  return { idle, busy, dead };
+  return { idle, busy, dead, unknown };
 }
 
 function getParentPid(pid: number): number | null {

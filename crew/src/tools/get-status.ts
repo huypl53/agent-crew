@@ -30,6 +30,28 @@ interface GetStatusParams {
 
 // --- Dashboard formatting (--self mode) ---
 
+export interface WorkerSummary {
+  idle: number;
+  busy: number;
+  dead: number;
+  unknown: number;
+}
+
+export function countWorkerStatuses(
+  results: PromiseSettledResult<AgentStatus>[],
+): WorkerSummary {
+  let idle = 0, busy = 0, dead = 0, unknown = 0;
+  for (const r of results) {
+    if (r.status === 'fulfilled') {
+      if (r.value === 'idle') idle++;
+      else if (r.value === 'busy') busy++;
+      else if (r.value === 'dead') dead++;
+      else unknown++;
+    }
+  }
+  return { idle, busy, dead, unknown };
+}
+
 export interface DashboardData {
   name: string;
   role: string;
@@ -40,7 +62,7 @@ export interface DashboardData {
   hint: { message: string; cadence: number } | null;
   goal: { description: string; status: string; turn_count: number } | null;
   pending_messages: number;
-  workers: { idle: number; busy: number; dead: number } | null;
+  workers: WorkerSummary | null;
   last_activity_ago: string | null;
   context_window?: ContextWindowInfo | null;
   // --json only
@@ -144,7 +166,7 @@ export function formatDashboard(data: DashboardData): string {
 
   if (data.workers) {
     const w = data.workers;
-    const workerLine = `Workers: ${w.idle} idle · ${w.busy} busy · ${w.dead} dead`;
+    const workerLine = `Workers: ${w.idle} idle · ${w.busy} busy · ${w.dead} dead · ${w.unknown} unknown`;
     lines.push(`│ ${workerLine.padEnd(W)}│`);
   }
 
@@ -188,7 +210,7 @@ export function formatInline(data: DashboardData): string {
 
   if (data.workers) {
     const w = data.workers;
-    parts.push(`\u{1F465} ${w.idle}i·${w.busy}b·${w.dead}d`);
+    parts.push(`\u{1F465} ${w.idle}i·${w.busy}b·${w.dead}d·${w.unknown}u`);
   }
 
   if (data.goal && data.goal.status === 'active') {
@@ -272,7 +294,7 @@ export async function handleGetStatus(
     const pendingMessages = getPendingMessageCount(agent.name, agent.agent_id);
     const lastActivityAgo = formatAgo(getLastActivity(agent.name));
 
-    let workers: { idle: number; busy: number; dead: number } | null = null;
+    let workers: WorkerSummary | null = null;
     if (agent.role === "leader") {
       const members = getRoomMembers(agent.room_id).filter(
         (m) => m.name !== agent.name,
@@ -280,17 +302,7 @@ export async function handleGetStatus(
       const statusResults = await Promise.allSettled(
         members.map((m) => resolveAgentLiveStatus(m)),
       );
-      let idle = 0;
-      let busy = 0;
-      let dead = 0;
-      for (const r of statusResults) {
-        if (r.status === "fulfilled") {
-          if (r.value === "idle") idle++;
-          else if (r.value === "busy") busy++;
-          else dead++;
-        }
-      }
-      workers = { idle, busy, dead };
+      workers = countWorkerStatuses(statusResults);
     }
 
     // Context window: read from JSONL on-demand
@@ -377,7 +389,7 @@ async function handleSelfStatus(params: GetStatusParams): Promise<ToolResult> {
   const pendingMessages = getPendingMessageCount(agent.name, agent.agent_id);
 
   // Worker summary (leaders only)
-  let workers: { idle: number; busy: number; dead: number } | null = null;
+  let workers: WorkerSummary | null = null;
   if (agent.role === "leader") {
     const members = getRoomMembers(agent.room_id).filter(
       (m) => m.name !== agent?.name,
@@ -385,17 +397,7 @@ async function handleSelfStatus(params: GetStatusParams): Promise<ToolResult> {
     const statusResults = await Promise.allSettled(
       members.map((m) => resolveAgentLiveStatus(m)),
     );
-    let idle = 0;
-    let busy = 0;
-    let dead = 0;
-    for (const r of statusResults) {
-      if (r.status === "fulfilled") {
-        if (r.value === "idle") idle++;
-        else if (r.value === "busy") busy++;
-        else if (r.value === "dead") dead++;
-      }
-    }
-    workers = { idle, busy, dead };
+    workers = countWorkerStatuses(statusResults);
   }
 
   // Last activity

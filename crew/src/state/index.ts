@@ -706,13 +706,6 @@ export function isNameTakenInRoom(name: string, room: string): boolean {
 
 // --- Message operations ---
 
-const IDLE_KINDS = new Set<MessageKind>([
-  'completion',
-  'error',
-  'question',
-  'note',
-]);
-
 export function addMessage(
   _to: string,
   from: string,
@@ -749,20 +742,6 @@ export function addMessage(
         _metadata?.manifest_order ?? null,
       ],
     );
-
-    if (kind === 'task' && targetName) {
-      db.run('UPDATE agents SET status = ? WHERE name = ? AND room_id = ?', [
-        'busy',
-        targetName,
-        roomObj.id,
-      ]);
-    } else if (IDLE_KINDS.has(kind)) {
-      db.run('UPDATE agents SET status = ? WHERE name = ? AND room_id = ?', [
-        'idle',
-        from,
-        roomObj.id,
-      ]);
-    }
 
     return stmt.lastInsertRowid;
   });
