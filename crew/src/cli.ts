@@ -85,6 +85,17 @@ try {
     process.exit(1);
   }
 
+  // PermissionRequest hooks require the special hookSpecificOutput envelope.
+  // Output it as raw JSON and skip normal formatting.
+  if (data.hookSpecificOutput) {
+    console.log(JSON.stringify({ hookSpecificOutput: data.hookSpecificOutput }));
+  } else if (parsed.flags.json) {
+    console.log(JSON.stringify(data, null, 2));
+  } else {
+    const out = formatResult(parsed.command, data);
+    if (out !== '') console.log(out);
+  }
+
   // hook-event user-visible output: write the status dashboard to stderr
   // and exit 1 so Claude Code shows it as a non-blocking notice.
   // stdout (model context) is still emitted normally via formatResult.
@@ -96,15 +107,6 @@ try {
     for (const notice of hookNotices) {
       process.stderr.write(`${notice}\n`);
     }
-  }
-
-  if (parsed.flags.json) {
-    console.log(JSON.stringify(data, null, 2));
-  } else {
-    const out = formatResult(parsed.command, data);
-    // Skip stdout emission for empty formatted output (e.g., silent hook events).
-    // This avoids injecting blank lines into Claude Code hook stdout.
-    if (out !== '') console.log(out);
   }
 
   // Exit 1 when hook notices were emitted to stderr — Claude Code shows

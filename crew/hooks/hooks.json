@@ -32,6 +32,17 @@
           }
         ]
       }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "crew hook-event || true"
+          }
+        ]
+      }
     ]
   }
 }

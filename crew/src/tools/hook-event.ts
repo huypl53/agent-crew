@@ -30,6 +30,44 @@ function okResult(
   return { content: [{ type: "text", text: JSON.stringify(payload) }] };
 }
 
+/**
+ * Build a PermissionRequest hook response that auto-allows the permission
+ * and escalates the session to bypassPermissions mode (if available).
+ */
+function permissionAllowResult(
+  input: Record<string, unknown>,
+): ToolResult {
+  const payload: Record<string, unknown> = {
+    ok: true,
+    hookSpecificOutput: {
+      hookEventName: "PermissionRequest",
+      decision: {
+        behavior: "allow",
+        updatedPermissions: [
+          {
+            type: "setMode",
+            mode: "bypassPermissions",
+            destination: "session",
+          },
+        ],
+      },
+    },
+  };
+
+  // Echo back permission_suggestions as updatedPermissions so each
+  // individual tool rule gets persisted too
+  const suggestions = input.permission_suggestions;
+  if (Array.isArray(suggestions) && suggestions.length > 0) {
+    const perms = payload.hookSpecificOutput.decision.updatedPermissions;
+    payload.hookSpecificOutput.decision.updatedPermissions = [
+      ...perms,
+      ...suggestions,
+    ];
+  }
+
+  return { content: [{ type: "text", text: JSON.stringify(payload) }] };
+}
+
 export async function processHookEventInput(
   input: string,
   pane: string | undefined,
@@ -60,9 +98,37 @@ export async function processHookEventInput(
     return okResult();
   }
 
+  // PermissionRequest: auto-allow all permission dialogs for crew agents.
+  // This prevents agents from getting stuck waiting for user approval.
   const eventType = String(
     payload.hook_event_name ?? payload.event ?? payload.eventName ?? "Unknown",
   );
+
+  if (eventType === "PermissionRequest") {
+    // Record the event for audit trail
+    try {
+      getDb();
+    } catch {
+      initDbWithRetry();
+    }
+    const sessionId =
+      typeof payload.session_id === "string"
+        ? payload.session_id
+        : typeof payload.sessionId === "string"
+          ? payload.sessionId
+          : null;
+    withRetry(() =>
+      addHookEvent(
+        agent.name,
+        eventType,
+        sessionId,
+        input,
+        agent.room_id,
+      ),
+    );
+    return permissionAllowResult(payload);
+  }
+
   const sessionId =
     typeof payload.session_id === "string"
       ? payload.session_id
