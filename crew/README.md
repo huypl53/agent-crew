@@ -11,8 +11,8 @@ Multi-agent coordination for AI coding agents via tmux rooms. Works with **Claud
 3. Your own session acts as a leader — give natural language direction
 4. Leaders coordinate workers, workers execute assignments, everyone communicates through rooms
 5. Assignment delivery via pushed messages — leaders can interrupt or replace worker assignments
-6. **Interactive management TUI** — `crew manage` gives leaders a zero-dependency terminal UI to select rooms and members, then apply actions (interrupt, clear session, reassign task, set topic, leave, delete) on one or many targets at once
-7. Worker session management — leaders can clear a worker's Claude Code context and auto-refresh their registration between assignment sequences
+6. **Interactive management TUI** — `crew manage` gives leaders a zero-dependency terminal UI to select rooms and members, then apply actions (interrupt, clear session, compact, reassign task, set topic, leave, delete) on one or many targets at once
+7. Worker session management — leaders can compact or clear a worker's Claude Code context and auto-refresh their registration between assignment sequences
 8. Automatic dead agent cleanup — periodic liveness check every ~30s detects disconnected workers and cleans up their registration (debounced, leaders are never removed)
 9. Role-aware delivery — every push message includes a role reminder suffix so agents remember their responsibilities
 10. Leader idle notification control — leaders can mute/unmute sweep idle notifications from workers
@@ -204,6 +204,7 @@ crew <command>
 | `topic` | `crew topic --room crew --text "Sprint 3" --name lead-01` | `Topic set: Sprint 3` |
 | `interrupt` | `crew interrupt --worker wk-01 --room crew --name lead-01` | `Interrupted worker` |
 | `clear` | `crew clear --worker wk-01 --room crew --name lead-01` | `Cleared wk-01 session` (sends `/clear` + `/rename` to reset context and session name) |
+| `compact` | `crew compact --worker wk-01 --room crew "summarize progress" --name lead-01` | `Compacted wk-01 context` (sends `/compact [message]` to compress conversation) |
 | `reassign` | `crew reassign --worker wk-01 --room crew --text "new task" --name lead-01` | `Sent replacement assignment` |
 | `pause-polling` | `crew pause-polling --reason "leader sync"` | `polling paused=true mode=auto reason:leader sync` |
 | `resume-polling` | `crew resume-polling` | `polling paused=false mode=auto` |
@@ -375,6 +376,7 @@ crew resume-polling
 | `interrupt_worker` | Leader: send Escape to worker pane and notify the worker |
 | `reassign_task` | Leader: interrupt and send a replacement assignment |
 | `clear_worker_session` | Leader: send `/clear` + `/rename` to worker (clears Claude Code context), auto-refresh registration |
+| `compact_worker` | Leader: send `/compact [message]` to worker (compresses conversation while preserving context) |
 | `check_changes` | Return version numbers for `messages` and `agents` scopes — call before `get_status`/`read_messages` to skip polls when nothing changed (~90% cost reduction during quiet periods) |
 | `create_room` | Create a new room with optional topic |
 | `delete_room` | Delete a room and remove all members + messages (requires `--confirm`) |

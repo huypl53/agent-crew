@@ -2,6 +2,7 @@ import { err } from '../shared/types.ts';
 import { handleAutoSelf } from '../tools/auto-self.ts';
 import { handleCheckChanges } from '../tools/check-changes.ts';
 import { handleClearWorkerSession } from '../tools/clear-worker-session.ts';
+import { handleCompactWorker } from '../tools/compact-worker.ts';
 import { handleCreateRoom } from '../tools/create-room.ts';
 import { handleDeleteRoom } from '../tools/delete-room.ts';
 import { handleGetStatus } from '../tools/get-status.ts';
@@ -139,6 +140,15 @@ export const COMMANDS: Record<
   clear: {
     handler: handleClearWorkerSession,
     buildParams: (f) => ({ worker_name: f.worker, room: f.room, name: f.name }),
+  },
+  compact: {
+    handler: handleCompactWorker,
+    buildParams: (f, p) => ({
+      worker_name: f.worker,
+      room: f.room,
+      name: f.name,
+      message: p[0],
+    }),
   },
   reassign: {
     handler: handleReassignTask,

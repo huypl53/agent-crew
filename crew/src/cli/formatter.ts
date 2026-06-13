@@ -207,6 +207,11 @@ const HELP_GROUPS: HelpGroup[] = [
         desc: "Clear worker session",
       },
       {
+        name: "compact",
+        usage: "--worker <name> --room <name> [message] [--name <name>]",
+        desc: "Compact worker context (send /compact)",
+      },
+      {
         name: "reassign",
         usage: "--worker <name> --room <name> --text <t> [--name <name>]",
         desc: "Replace current assignment",
@@ -407,6 +412,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     return lines.join("\n");
   },
   clear: (d) => `Cleared ${d.worker_name} session`,
+  compact: (d) => `Compacted ${d.worker_name} context`,
   reassign: () => "Sent replacement assignment",
   "create-room": (d) =>
     `Created room: ${d.room}${d.topic ? ` (${d.topic})` : ""}`,

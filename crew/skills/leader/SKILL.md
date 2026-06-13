@@ -178,6 +178,31 @@ This handles the full reset: sends `/clear` → waits → sends `crew:refresh --
 
 **IMPORTANT:** Always use `crew clear` — never send raw `/clear` or tmux commands directly. The CLI handles task cancellation, refresh, and rename atomically.
 
+### Compacting Worker Context
+
+When a worker's context window is filling up but you don't want a full reset, compact it instead:
+
+```bash
+crew compact --worker builder-1 --room frontend --name your-name
+```
+
+Or with a custom compact instruction:
+
+```bash
+crew compact --worker builder-1 --room frontend "summarize current task progress" --name your-name
+```
+
+This sends `/compact [message]` to the worker's pane. Claude Code will summarize and compress the conversation while preserving key context.
+
+**When to compact:**
+- Worker's context window is getting large (check via `crew members`)
+- Worker has been running long tasks and may hit context limits soon
+- You want to reduce token usage without losing the worker's state entirely
+
+**Compact vs Clear:**
+- `crew compact` — soft reset. Compresses conversation, keeps working context intact
+- `crew clear` — hard reset. Blanks the session entirely, requires fresh re-registration
+
 ## Writing Good Task Descriptions
 
 Since you cannot look at the code yourself, your task descriptions must be self-contained:
