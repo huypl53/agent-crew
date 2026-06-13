@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { deliverMessage } from '../src/delivery/index.ts';
 import { closeDb, initDb } from '../src/state/db.ts';
 import {
+  completeGoal,
   createMessageBatch,
   getBatchWorkers,
   getGoalByAgent,
@@ -213,6 +214,74 @@ describe('batch completion rendering', () => {
 
     expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(1);
     expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(0);
+  });
+
+  test.serial('active worker goal blocks Stop-driven batch final delivery until goal is done', async () => {
+    const room = getRoom('crew');
+    expect(room).toBeDefined();
+    setGoal('worker-a', room!.id, 'Finish gated batch task', { pane: workerAPane });
+
+    const batchId = makeBatchId('goal-gated-batch');
+    createMessageBatch({
+      batchId,
+      roomId: room!.id,
+      leaderName: 'lead-1',
+      hintAfterSeconds: null,
+      workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
+    });
+
+    await deliverMessage(
+      'lead-1',
+      'crew',
+      'single task',
+      'worker-a',
+      'pull',
+      'task',
+      undefined,
+      {
+        batch_id: batchId,
+        worker_name: 'worker-a',
+        prompt_file: 'prompts/a.md',
+        manifest_order: 0,
+      },
+    );
+
+    await processHookEventInput(
+      JSON.stringify({
+        hook_event_name: 'Stop',
+        session_id: 'worker-goal-gated-batch-1',
+        last_assistant_message: 'single final',
+      }),
+      workerAPane,
+    );
+
+    await Bun.sleep(400);
+    expect(getBatchWorkers(batchId)[0]?.terminal_status).toBe('running');
+    expect(
+      getRoomMessages('crew').filter(
+        (message) => message.to === 'lead-1' && message.kind === 'completion',
+      ),
+    ).toHaveLength(0);
+
+    expect(completeGoal('worker-a', room!.id)).toBe(true);
+
+    await processHookEventInput(
+      JSON.stringify({
+        hook_event_name: 'Stop',
+        session_id: 'worker-goal-gated-batch-2',
+        last_assistant_message: 'single final',
+      }),
+      workerAPane,
+    );
+
+    await Bun.sleep(1200);
+    expect(getBatchWorkers(batchId)[0]?.terminal_status).toBe('success');
+    const finalMessages = getRoomMessages('crew').filter(
+      (message) => message.to === 'lead-1' && message.kind === 'completion',
+    );
+    expect(finalMessages).toHaveLength(1);
+    expect(finalMessages[0]?.text).toContain('## worker-a');
+    expect(finalMessages[0]?.text).toContain('single final');
   });
 
   test.serial('leader goal reminder arms after non-batch queue drain and fires on next Stop', async () => {
