@@ -128,6 +128,10 @@ describe('batch state primitives', () => {
       workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
     });
 
+    const listedAt = new Date(Date.now() + 60_000).toISOString();
+    const hintedAt = new Date(Date.now() + 120_000).toISOString();
+    const completedAt = new Date(Date.now() + 180_000).toISOString();
+
     expect(getMessageBatch('batch-state')?.hint_sent_at).toBeNull();
     // Use far-future timestamp so test doesn't rot when current date passes the cutoff
     const futureNow = '2099-12-31T23:59:59.000Z';

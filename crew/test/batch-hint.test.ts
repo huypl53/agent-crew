@@ -8,7 +8,7 @@ import {
   listHintableBatches,
   setSweepPaused,
 } from '../src/state/index.ts';
-import { closeDb, initDb } from '../src/state/db.ts';
+import { closeDb, getDb, initDb } from '../src/state/db.ts';
 import { getSweepRuntimeStats, resetSweepRuntimeState, runSweepOnce } from '../src/server/sweep.ts';
 
 function makeBatchId(prefix: string): string {
@@ -17,6 +17,13 @@ function makeBatchId(prefix: string): string {
 
 function countOccurrences(text: string, needle: string): number {
   return text.split(needle).length - 1;
+}
+
+function backdateBatchForHint(batchId: string, ageMs = 2_000): void {
+  getDb().run('UPDATE message_batches SET created_at = ? WHERE batch_id = ?', [
+    new Date(Date.now() - ageMs).toISOString(),
+    batchId,
+  ]);
 }
 
 describe('batch hint sweep delivery', () => {
@@ -75,7 +82,7 @@ describe('batch hint sweep delivery', () => {
     });
 
     setSweepPaused(true, 'test pause');
-    await Bun.sleep(1200);
+    backdateBatchForHint(batchId);
 
     await runSweepOnce();
     await Bun.sleep(250);
@@ -114,7 +121,7 @@ describe('batch hint sweep delivery', () => {
       ],
     });
 
-    await Bun.sleep(1200);
+    backdateBatchForHint(batchId);
 
     setSweepPaused(true, 'test pause');
     await runSweepOnce();
