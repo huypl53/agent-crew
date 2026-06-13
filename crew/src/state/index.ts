@@ -18,7 +18,7 @@ import type {
   SweepControlState,
   TokenUsage,
 } from '../shared/types.ts';
-import { isPaneDead, paneCommandLooksAlive, sendKeys } from '../tmux/index.ts';
+import { isPaneDead, paneCommandLooksAlive } from '../tmux/index.ts';
 import { closeDb, getDb, initDb } from './db.ts';
 import {
   areAllBatchWorkersTerminal,
@@ -41,8 +41,10 @@ import {
 } from './batch-state.ts';
 import { renderBatchFinalMessage } from './batch-render.ts';
 import {
+  armLeaderGoalReminder,
   canonicalizeGoalIdentity,
   completeGoal,
+  consumeLeaderGoalReminder,
   getGoal,
   getGoalByAgent,
   setGoal,
@@ -52,8 +54,10 @@ import {
 } from './goal-state.ts';
 export type { GoalRecord } from './goal-state.ts';
 export {
+  armLeaderGoalReminder,
   canonicalizeGoalIdentity,
   completeGoal,
+  consumeLeaderGoalReminder,
   getGoal,
   getGoalByAgent,
   setGoal,
@@ -1335,7 +1339,8 @@ function notifyLeadersOnWorkerStop(
     'completion',
   );
 
-  // Deliver to leaders with tmux panes via sendKeys (fire-and-forget)
+  // Deliver to leaders with tmux panes via the shared queue so queue-drain
+  // semantics stay consistent with other leader-targeted crew messages.
   const leaders = getRoomMembers(agent.room_id).filter(
     (m) => m.role === 'leader' && m.tmux_target,
   );
@@ -1383,20 +1388,29 @@ async function deliverWithRetry(
     }
   }
 
+  const { getQueue } = await import('../delivery/pane-queue.ts');
+
   // Try delivery with retries
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     if (getAgentInputBlockMode(leader.name) !== 'off') {
       return;
     }
-    const result = await sendKeys(leader.tmux_target!, message);
-    if (result.delivered) {
+
+    try {
+      await getQueue(leader.tmux_target!, { role: leader.role }).enqueue({
+        type: 'paste',
+        text: message,
+        skipLeaderPacing: true,
+        onQueueDrain: () => {
+          armLeaderGoalReminder(leader.name, leader.room_id);
+        },
+      });
       advancePushCursor(leader.name, sequence);
       return;
-    }
-
-    // If not delivered and retries remain, wait and try again
-    if (attempt < MAX_RETRIES) {
-      await Bun.sleep(RETRY_DELAY_MS);
+    } catch {
+      if (attempt < MAX_RETRIES) {
+        await Bun.sleep(RETRY_DELAY_MS);
+      }
     }
   }
 }

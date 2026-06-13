@@ -4,8 +4,10 @@ import { closeDb, initDb } from '../src/state/db.ts';
 import {
   createMessageBatch,
   getBatchWorkers,
+  getGoalByAgent,
   getRoom,
   getRoomMessages,
+  setGoal,
 } from '../src/state/index.ts';
 import { handleJoinRoom } from '../src/tools/join-room.ts';
 import { processHookEventInput } from '../src/tools/hook-event.ts';
@@ -187,6 +189,118 @@ describe('batch completion rendering', () => {
     expect(leaderCapture).toContain('plain completion');
   });
 
+  test.serial('worker Stop path arms leader goal reminder after queue drain', async () => {
+    const room = getRoom('crew');
+    expect(room).toBeDefined();
+    setGoal('lead-1', room!.id, 'Review worker stop output', { pane: leaderPane });
+
+    await processHookEventInput(
+      JSON.stringify({
+        hook_event_name: 'Stop',
+        session_id: 'worker-stop-1',
+        last_assistant_message: 'worker stop completion',
+      }),
+      workerAPane,
+    );
+
+    await Bun.sleep(1000);
+    expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(1);
+
+    await processHookEventInput(
+      JSON.stringify({ hook_event_name: 'Stop', session_id: 'lead-stop-worker-path' }),
+      leaderPane,
+    );
+
+    expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(1);
+    expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(0);
+  });
+
+  test.serial('leader goal reminder arms after non-batch queue drain and fires on next Stop', async () => {
+    const room = getRoom('crew');
+    expect(room).toBeDefined();
+    setGoal('lead-1', room!.id, 'Review inbound results', { pane: leaderPane });
+
+    await deliverMessage(
+      'worker-a',
+      'crew',
+      'plain completion',
+      'lead-1',
+      'pull',
+      'completion',
+    );
+
+    await Bun.sleep(300);
+    expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(0);
+    expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(1);
+
+    await processHookEventInput(
+      JSON.stringify({ hook_event_name: 'Stop', session_id: 'lead-stop-1' }),
+      leaderPane,
+    );
+
+    expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(1);
+    expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(0);
+
+    await processHookEventInput(
+      JSON.stringify({ hook_event_name: 'Stop', session_id: 'lead-stop-1' }),
+      leaderPane,
+    );
+    expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(1);
+  });
+
+  test.serial('leader goal reminder arms after batch final queue drain and fires on next Stop', async () => {
+    const room = getRoom('crew');
+    expect(room).toBeDefined();
+    setGoal('lead-1', room!.id, 'Review batch results', { pane: leaderPane });
+
+    const batchId = makeBatchId('goal-arm-batch');
+    createMessageBatch({
+      batchId,
+      roomId: room!.id,
+      leaderName: 'lead-1',
+      hintAfterSeconds: null,
+      workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
+    });
+
+    await deliverMessage(
+      'lead-1',
+      'crew',
+      'single task',
+      'worker-a',
+      'pull',
+      'task',
+      undefined,
+      {
+        batch_id: batchId,
+        worker_name: 'worker-a',
+        prompt_file: 'prompts/a.md',
+        manifest_order: 0,
+      },
+    );
+    await deliverMessage(
+      'worker-a',
+      'crew',
+      'single final',
+      'lead-1',
+      'pull',
+      'completion',
+      undefined,
+      { batch_id: batchId },
+    );
+
+    await Bun.sleep(2000);
+    expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(0);
+    expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(1);
+
+    await processHookEventInput(
+      JSON.stringify({ hook_event_name: 'Stop', session_id: 'lead-stop-batch' }),
+      leaderPane,
+    );
+
+    expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(1);
+    expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(0);
+  });
+
   test.serial(
     'explicit batch-tagged completion falls back safely when batch recording fails',
     async () => {
@@ -339,7 +453,7 @@ describe('batch completion rendering', () => {
       workerAPane,
     );
 
-    await Bun.sleep(300);
+    await Bun.sleep(1000);
     const leaderCapture = await captureFromPane(leaderPane);
     expect(leaderCapture).toContain('[worker-a@crew] completed:');
     expect(leaderCapture).toContain('done');

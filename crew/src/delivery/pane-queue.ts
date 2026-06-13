@@ -29,7 +29,12 @@ import {
 } from '../tmux/index.ts';
 
 export type QueueItem =
-  | { type: 'paste'; text: string } // content message — gets role suffix
+  | {
+      type: 'paste';
+      text: string;
+      onQueueDrain?: () => void | Promise<void>;
+      skipLeaderPacing?: boolean;
+    } // content message — gets role suffix
   | { type: 'command'; text: string } // CLI command (/rename, crew join, etc.) — no suffix
   | { type: 'escape' }
   | { type: 'sigint' }
@@ -148,6 +153,16 @@ export class PaneQueue {
         await this.withLock(async () => {
           await this.applyLeaderPacing(entry.item);
           await this.deliver(entry.item);
+          if (entry.item.type === 'paste' && this.queue.length === 0) {
+            try {
+              await entry.item.onQueueDrain?.();
+            } catch (error) {
+              logServer(
+                'WARN',
+                `pane-queue: onQueueDrain failed for ${this.target}: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
+          }
         });
         entry.resolve();
       } catch (err) {
@@ -199,7 +214,8 @@ export class PaneQueue {
   }
 
   private async applyLeaderPacing(item: QueueItem): Promise<void> {
-    if (this.role !== 'leader' || item.type !== 'paste') return;
+    if (this.role !== 'leader' || item.type !== 'paste' || item.skipLeaderPacing)
+      return;
     const paceMs = this.leaderPaceMs ?? config.leaderPaceMs;
     const elapsed = Date.now() - this.lastPasteDeliveredAt;
     if (this.lastPasteDeliveredAt > 0 && elapsed < paceMs) {

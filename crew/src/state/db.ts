@@ -463,6 +463,7 @@ export function initDb(path?: string): void {
       session_id TEXT,
       set_by TEXT NOT NULL DEFAULT 'self',
       turn_count INTEGER NOT NULL DEFAULT 0,
+      leader_reminder_armed INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       completed_at TEXT,
@@ -478,6 +479,15 @@ export function initDb(path?: string): void {
   _db.exec(
     'CREATE INDEX IF NOT EXISTS idx_goals_agent_room ON agent_goals(agent_name, room_id)',
   );
+
+  const goalCols = _db.query('PRAGMA table_info(agent_goals)').all() as Array<{
+    name: string;
+  }>;
+  if (!goalCols.some((c) => c.name === 'leader_reminder_armed')) {
+    _db.exec(
+      'ALTER TABLE agent_goals ADD COLUMN leader_reminder_armed INTEGER NOT NULL DEFAULT 0',
+    );
+  }
 
   const scopes = [
     'agents',

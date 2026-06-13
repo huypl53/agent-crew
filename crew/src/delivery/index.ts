@@ -10,6 +10,7 @@ import { dbClearAgentPane } from '../state/db-write.ts';
 import {
   addMessage,
   advancePushCursor,
+  armLeaderGoalReminder,
   getAgent,
   getAgentByRoomAndName,
   getAgentInputBlockMode,
@@ -84,10 +85,24 @@ function decorateMessageWithReminder(
   return [prefix, text, suffix].filter(Boolean).join(' ').trim();
 }
 
+function shouldArmLeaderGoalReminder(
+  targetAgent: Agent | undefined,
+  sender: Agent | undefined,
+  metadata?: MessageDeliveryMetadata,
+): boolean {
+  if (!targetAgent || targetAgent.role !== 'leader') return false;
+  if (metadata?.batch_id) return true;
+  return sender?.role === 'worker';
+}
+
 async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
   const { to, senderName, roomName, text, targetName, mode, kind, replyTo } =
     ctx;
   const targetAgent = ctx.agent ?? getAgent(to);
+  const room = getRoom(roomName);
+  const senderAgent = room
+    ? getAgentByRoomAndName(room.id, senderName) ?? getAgent(senderName)
+    : getAgent(senderName);
   const outgoingText = decorateMessageWithReminder(text, roomName, targetAgent);
   const header = `[${senderName}@${roomName}]:`;
   const fullText = `${header} ${outgoingText}`;
@@ -139,6 +154,11 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
         await getQueue(agent.tmux_target, { role: agent.role }).enqueue({
           type: 'paste',
           text: fullText,
+          onQueueDrain: shouldArmLeaderGoalReminder(agent, senderAgent, ctx.metadata)
+            ? () => {
+                armLeaderGoalReminder(agent.name, agent.room_id);
+              }
+            : undefined,
         });
         incrementRoomReminderDispatchCount(roomName);
         advancePushCursor(agent.name, msg.sequence);
@@ -331,6 +351,9 @@ export async function deliverMessage(
             await getQueue(target, { role: leader.role }).enqueue({
               type: 'paste',
               text: notifyText,
+              onQueueDrain: () => {
+                armLeaderGoalReminder(leader.name, leader.room_id);
+              },
             });
             const matchedResult = results.find((r) => r.message_id !== '-1');
             if (matchedResult) {
@@ -387,6 +410,16 @@ export async function flushPushQueueForAgent(agent: Agent): Promise<number> {
     unknown
   >[];
 
+  const lastLeaderArmableSequence =
+    agent.role === 'leader'
+      ? rows.reduce<number | null>((last, row) => {
+          const senderRole = String(row.sender_role ?? '');
+          return senderRole === 'worker' || row.batch_id != null
+            ? Number(row.id)
+            : last;
+        }, null)
+      : null;
+
   let delivered = 0;
   for (const row of rows) {
     const sequence = Number(row.id);
@@ -412,6 +445,13 @@ export async function flushPushQueueForAgent(agent: Agent): Promise<number> {
         await getQueue(pane, { role: agent.role }).enqueue({
           type: 'paste',
           text: pushText,
+          onQueueDrain:
+            lastLeaderArmableSequence !== null &&
+            sequence === lastLeaderArmableSequence
+              ? () => {
+                  armLeaderGoalReminder(agent.name, agent.room_id);
+                }
+              : undefined,
         });
         delivered++;
       } catch (e) {

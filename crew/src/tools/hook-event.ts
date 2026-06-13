@@ -10,6 +10,7 @@ import {
   canonicalizeGoalIdentity,
   canonicalizeHintIdentity,
   clearArmedInputBlock,
+  consumeLeaderGoalReminder,
   getAgentByPane,
   getAgentInputBlockMode,
   getGoalByAgent,
@@ -179,10 +180,14 @@ export async function processHookEventInput(
   //   }
   // }
 
-  // Goal reminder: push goal message to agent on Stop
+  // Goal reminder: workers remind on every Stop; leaders remind only after
+  // the queue has drained and a prior crew delivery armed the reminder state.
   if (eventType === "Stop") {
     try {
-      const goal = tickGoalTurnCount(pane, sessionId, agent.room_id);
+      const goal =
+        agent.role === 'leader'
+          ? consumeLeaderGoalReminder(pane, sessionId, agent.room_id)
+          : tickGoalTurnCount(pane, sessionId, agent.room_id);
       if (goal && goal.status === "active" && agent.tmux_target) {
         const desc =
           goal.description.length > 100
