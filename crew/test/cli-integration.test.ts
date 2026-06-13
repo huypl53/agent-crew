@@ -86,7 +86,7 @@ async function killPaneSession(session: string): Promise<void> {
 describe('CLI integration', () => {
   test('crew help shows usage', async () => {
     const { out } = await runCli(['help']);
-    expect(out).toContain('crew — multi-agent coordination CLI');
+    expect(out).toContain('crew - multi-agent coordination CLI');
   });
 
   test('crew rooms returns valid output', async () => {

@@ -85,6 +85,12 @@ export async function createTestSession(
   await paneProc.exited;
   const pane = (await new Response(paneProc.stdout).text()).trim();
 
+  // Let the fresh /bin/sh pane settle to its first prompt before tests start
+  // sending markers or relying on queued deliveries.
+  await waitForPaneToContain(pane, '$', { timeoutMs: 2000, intervalMs: 50 }).catch(
+    () => {},
+  );
+
   return { session, pane };
 }
 
@@ -112,7 +118,7 @@ export async function sendPaneMarker(target: string, marker: string): Promise<vo
 export async function captureFromPane(target: string): Promise<string> {
   ensureTestTmuxSocketEnv();
   const proc = Bun.spawn(
-    ['tmux', ...getSocketArgs(), 'capture-pane', '-t', target, '-p'],
+    ['tmux', ...getSocketArgs(), 'capture-pane', '-t', target, '-p', '-S', '-200'],
     {
       stdout: 'pipe',
       stderr: 'pipe',
@@ -314,7 +320,8 @@ export async function waitForPaneOutput(
   if (!session) return { matched: false, seen: '' };
 
   const seen: string[] = [];
-  const re = typeof pattern === 'string' ? new RegExp(pattern) : pattern;
+  const sourceRe = typeof pattern === 'string' ? new RegExp(pattern) : pattern;
+  const re = new RegExp(sourceRe.source, sourceRe.flags.replace(/g/g, ''));
   const outputPrefix = `%output ${target} `;
 
   const proc = Bun.spawn(
@@ -356,7 +363,8 @@ export async function waitForPaneOutput(
         if (!line.startsWith(outputPrefix)) continue;
         const chunk = line.slice(outputPrefix.length);
         seen.push(chunk);
-        if (re.test(chunk)) {
+        const combined = seen.join('');
+        if (re.test(combined)) {
           matched = true;
           resolved = true;
           proc.stdin.end();

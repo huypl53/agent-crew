@@ -128,23 +128,27 @@ describe('batch state primitives', () => {
       workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
     });
 
+    const listedAt = new Date(Date.now() + 60_000).toISOString();
+    const hintedAt = new Date(Date.now() + 120_000).toISOString();
+    const completedAt = new Date(Date.now() + 180_000).toISOString();
+
     expect(getMessageBatch('batch-state')?.hint_sent_at).toBeNull();
-    expect(listIncompleteBatches('2026-06-11T10:48:00.000Z').map((batch) => batch.batch_id)).toEqual([
+    expect(listIncompleteBatches(listedAt).map((batch) => batch.batch_id)).toEqual([
       'batch-state',
     ]);
     expect(areAllBatchWorkersTerminal('batch-state')).toBe(false);
 
     markBatchWorkerSent('batch-state', 'worker-a');
     completeBatchWorker('batch-state', 'worker-a', 'success', 'done');
-    markBatchHintSent('batch-state', '2026-06-11T10:48:00.000Z');
-    markBatchCompleted('batch-state', '2026-06-11T10:49:00.000Z');
+    markBatchHintSent('batch-state', hintedAt);
+    markBatchCompleted('batch-state', completedAt);
 
     const batch = getMessageBatch('batch-state');
     const worker = getBatchWorkers('batch-state')[0];
 
-    expect(batch?.hint_sent_at).toBe('2026-06-11T10:48:00.000Z');
+    expect(batch?.hint_sent_at).toBe(hintedAt);
     expect(batch?.status).toBe('completed');
-    expect(batch?.completed_at).toBe('2026-06-11T10:49:00.000Z');
+    expect(batch?.completed_at).toBe(completedAt);
     expect(worker.dispatch_status).toBe('sent');
     expect(worker.terminal_status).toBe('success');
     expect(worker.final_message).toBe('done');

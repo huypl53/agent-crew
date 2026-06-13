@@ -16,6 +16,7 @@ import {
   captureFromPane,
   cleanupAllTestSessions,
   createTestSession,
+  waitForPaneOutput,
 } from './helpers.ts';
 
 function makeBatchId(prefix: string): string {
@@ -513,19 +514,25 @@ describe('batch completion rendering', () => {
       workerAPane,
     );
 
-    await processHookEventInput(
-      JSON.stringify({
-        hook_event_name: 'Stop',
-        session_id: 'later-turn-stop',
-        last_assistant_message: 'done',
-      }),
-      workerAPane,
+    const leaderDelivery = await waitForPaneOutput(
+      leaderPane,
+      /\[worker-a@crew\] completed:/,
+      7000,
+      async () => {
+        await processHookEventInput(
+          JSON.stringify({
+            hook_event_name: 'Stop',
+            session_id: 'later-turn-stop',
+            last_assistant_message: 'done',
+          }),
+          workerAPane,
+        );
+      },
     );
 
-    await Bun.sleep(1000);
-    const leaderCapture = await captureFromPane(leaderPane);
-    expect(leaderCapture).toContain('[worker-a@crew] completed:');
-    expect(leaderCapture).toContain('done');
+    expect(leaderDelivery.matched).toBe(true);
+    expect(leaderDelivery.seen).toContain('[worker-a@crew] completed:');
+    expect(leaderDelivery.seen).toContain('done');
 
     const completionMessages = getRoomMessages('crew').filter(
       (message) => message.kind === 'completion',
