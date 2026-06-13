@@ -328,7 +328,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
       d.members
         .map(
           (m: any) =>
-            `  ${m.name} ${m.role} ${m.status} pane:${m.tmux_target ?? "(none)"} input-block:${m.input_block_mode ?? "off"}${m.ctx_pct != null ? ` context window:${m.ctx_pct}%${m.ctx_pct >= 80 ? " ⚠ compact/clear encouraged" : ""}` : ""}`,
+            `  ${m.name} ${m.role} ${m.status} pane:${m.tmux_target ?? "(none)"} input-block:${m.input_block_mode ?? "off"}${m.ctx_pct != null ? ` context-window:${m.ctx_pct}%${m.ctx_pct >= 80 ? " ⚠ compact/clear encouraged" : ""}` : ""}`,
         )
         .join("\n")
     );
