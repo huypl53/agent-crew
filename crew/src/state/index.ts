@@ -1277,6 +1277,16 @@ function notifyLeadersOnWorkerStop(
     return;
   }
 
+  // Active worker goals are a completion gate: Stop reminders still fire for
+  // the worker, but leader-facing completion delivery waits until the goal is
+  // explicitly done or unset.
+  try {
+    const goal = getGoalByAgent(agentName, agent.room_id);
+    if (goal?.status === 'active') return;
+  } catch {
+    // Fail-open: don't block completion delivery on goal lookup errors
+  }
+
   const batchTerminal = recordBatchWorkerTerminalMessage({
     workerName: agentName,
     roomId: agent.room_id,
@@ -1344,17 +1354,7 @@ function notifyLeadersOnWorkerStop(
   const leaders = getRoomMembers(agent.room_id).filter(
     (m) => m.role === 'leader' && m.tmux_target,
   );
-  let message = `[${agentName}@${roomName}] completed:\n${truncated}`;
-
-  // Append goal context if worker has active goal
-  try {
-    const goal = getGoalByAgent(agentName, agent.room_id);
-    if (goal && goal.status === 'active') {
-      message += `\n\n🎯 Active Goal: ${goal.description}`;
-    }
-  } catch {
-    // Fail-open: don't block notification on goal lookup errors
-  }
+  const message = `[${agentName}@${roomName}] completed:\n${truncated}`;
 
   for (const leader of leaders) {
     deliverWithRetry(leader, message, msg.sequence).catch(() => {});

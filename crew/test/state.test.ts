@@ -7,6 +7,7 @@ import {
   advanceCursor,
   canonicalizeHintIdentity,
   clearState,
+  completeGoal,
   getAgent,
   getAllRooms,
   getChangeVersions,
@@ -25,8 +26,10 @@ import {
   recordTokenUsage,
   removeAgent,
   removeAgentFully,
+  setGoal,
   setHint,
   tickHintCadence,
+  unsetGoal,
   unsetHint,
   upsertPricing,
   validateLiveness,
@@ -908,6 +911,88 @@ describe('state module', () => {
       const completions = msgs.filter((m: any) => m.kind === 'completion');
       expect(completions.length).toBe(1);
       expect(completions[0].text).toContain('Finished work!');
+    });
+
+    test('Stop hook suppresses completion while worker goal is active and allows next Stop after goal done', async () => {
+      const room = mkRoom('goal-gated-stop-done');
+      addAgent('lead-4', 'leader', room.id, '%930');
+      addAgent('w4', 'worker', room.id, '%931');
+      setGoal('w4', room.id, 'Finish gated task', { pane: '%931' });
+
+      addHookEvent('w4', 'UserPromptSubmit', 's4-active', 'do the gated work');
+      addHookEvent(
+        'w4',
+        'Stop',
+        's4-active',
+        JSON.stringify({ last_assistant_message: 'Gated stop output' }),
+      );
+
+      expect(
+        getRoomMessages('goal-gated-stop-done').filter((m: any) => m.kind === 'completion'),
+      ).toHaveLength(0);
+
+      expect(completeGoal('w4', room.id)).toBe(true);
+      await Bun.sleep(1100);
+
+      addHookEvent('w4', 'UserPromptSubmit', 's4-done', 'wrap up after goal done');
+      addHookEvent(
+        'w4',
+        'Stop',
+        's4-done',
+        JSON.stringify({ last_assistant_message: 'Delivered after goal done' }),
+      );
+
+      const completions = getRoomMessages('goal-gated-stop-done').filter(
+        (m: any) => m.kind === 'completion',
+      );
+      expect(completions).toHaveLength(1);
+      expect(completions[0].text).toContain('Delivered after goal done');
+
+      addHookEvent(
+        'w4',
+        'Stop',
+        's4-done',
+        JSON.stringify({ last_assistant_message: 'Delivered after goal done' }),
+      );
+      expect(
+        getRoomMessages('goal-gated-stop-done').filter((m: any) => m.kind === 'completion'),
+      ).toHaveLength(1);
+    });
+
+    test('Stop hook allows next Stop after worker goal is unset', async () => {
+      const room = mkRoom('goal-gated-stop-unset');
+      addAgent('lead-5', 'leader', room.id, '%940');
+      addAgent('w5', 'worker', room.id, '%941');
+      setGoal('w5', room.id, 'Temporary gated task', { pane: '%941' });
+
+      addHookEvent('w5', 'UserPromptSubmit', 's5-active', 'work while goal active');
+      addHookEvent(
+        'w5',
+        'Stop',
+        's5-active',
+        JSON.stringify({ last_assistant_message: 'Still gated output' }),
+      );
+
+      expect(
+        getRoomMessages('goal-gated-stop-unset').filter((m: any) => m.kind === 'completion'),
+      ).toHaveLength(0);
+
+      expect(unsetGoal('w5', room.id)).toBe(true);
+      await Bun.sleep(1100);
+
+      addHookEvent('w5', 'UserPromptSubmit', 's5-unset', 'work after unset');
+      addHookEvent(
+        'w5',
+        'Stop',
+        's5-unset',
+        JSON.stringify({ last_assistant_message: 'Delivered after unset' }),
+      );
+
+      const completions = getRoomMessages('goal-gated-stop-unset').filter(
+        (m: any) => m.kind === 'completion',
+      );
+      expect(completions).toHaveLength(1);
+      expect(completions[0].text).toContain('Delivered after unset');
     });
 
     test('Stop hook sends completion when previous turn completion exists but new turn started', async () => {

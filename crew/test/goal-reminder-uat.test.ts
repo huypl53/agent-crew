@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from
 import { deliverMessage } from '../src/delivery/index.ts';
 import { closeDb, initDb } from '../src/state/db.ts';
 import {
+  completeGoal,
   createMessageBatch,
   getGoalByAgent,
   getRoom,
@@ -231,6 +232,81 @@ describe('goal reminder UAT harness', () => {
     if (goal?.turn_count !== 2) {
       throw new Error(`unexpected worker turn count\n${trace.dump()}`);
     }
+  });
+
+  test.serial('uat: active worker goal suppresses leader completion until goal is done', async () => {
+    const trace = new ScenarioTrace();
+    const room = getRoom('crew');
+    expect(room).toBeDefined();
+    const harness = new GoalReminderUATHarness(
+      room!.id,
+      { leader: leaderPane, 'worker-1': workerPane, 'worker-2': workerTwoPane },
+      trace,
+    );
+
+    harness.setGoal('worker-1', 'Finish gated worker task', 'worker-1');
+
+    const workerMarker = '=== worker-goal-gated-stop ===';
+    const leaderMarker = '=== leader-goal-gated-stop ===';
+    await harness.markPane('worker-1', workerMarker, true);
+    await harness.markPane('leader', leaderMarker);
+
+    const firstReminder = await waitForPaneOutput(
+      harness.pane('worker-1'),
+      /🎯 Goal: Finish gated worker task \(turn 1\)/,
+      7000,
+      async () => {
+        await processHookEventInput(
+          JSON.stringify({
+            hook_event_name: 'Stop',
+            session_id: 'worker-goal-gated-stop-1',
+            last_assistant_message: 'suppressed while active',
+          }),
+          harness.pane('worker-1'),
+        );
+        trace.add('worker Stop #1 fired with active goal');
+      },
+    );
+    expect(firstReminder.matched).toBe(true);
+    trace.add('worker reminder observed while leader completion stayed gated');
+
+    await harness.assertNoPaneText('leader', leaderMarker, '[worker-1@crew] completed:', 1800);
+    trace.add('confirmed leader did not receive Stop completion while goal was active');
+
+    expect(completeGoal('worker-1', room!.id)).toBe(true);
+    trace.add('worker goal marked done');
+
+    const leaderDelivery = await waitForPaneOutput(
+      harness.pane('leader'),
+      /\[worker-1@crew\] completed:/,
+      7000,
+      async () => {
+        await processHookEventInput(
+          JSON.stringify({
+            hook_event_name: 'Stop',
+            session_id: 'worker-goal-gated-stop-2',
+            last_assistant_message: 'delivered after goal done',
+          }),
+          harness.pane('worker-1'),
+        );
+        trace.add('worker Stop #2 fired after goal done');
+      },
+    );
+    expect(leaderDelivery.matched).toBe(true);
+
+    const output = await harness.waitForPaneText(
+      'leader',
+      leaderMarker,
+      'delivered after goal done',
+      5000,
+    );
+    trace.add('leader completion observed after goal done');
+
+    expectTextInOrder(output, ['[worker-1@crew] completed:', 'delivered after goal done']);
+
+    const goal = harness.goal('worker-1');
+    expect(goal?.status).toBe('done');
+    expect(goal?.turn_count).toBe(1);
   });
 
   test.serial('uat: leader reminder appears only on Stop after queued direct delivery drains', async () => {
