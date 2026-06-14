@@ -1,0 +1,35 @@
+{
+  "name": "submit-no-hint-set",
+  "description": "UserPromptSubmit without hint returns plain ok",
+  "seed": {
+    "room": {
+      "name": "dev",
+      "path": "/tmp/test-crew"
+    },
+    "agents": [
+      {
+        "name": "w1",
+        "pane": "%42",
+        "role": "worker"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%42",
+      "expect": {
+        "stdout": {
+          "ok": true,
+          "decision": "allow"
+        },
+        "stdout_path": [
+          {
+            "path": "hint",
+            "value": null
+          }
+        ]
+      }
+    }
+  ]
+}

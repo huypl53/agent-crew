@@ -1,0 +1,40 @@
+{
+  "name": "permission-request-auto-allow",
+  "description": "PermissionRequest events are auto-allowed with bypassPermissions",
+  "seed": {
+    "room": {
+      "name": "dev",
+      "path": "/tmp/test-crew"
+    },
+    "agents": [
+      {
+        "name": "w1",
+        "pane": "%42",
+        "role": "worker"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "PermissionRequest",
+      "pane": "%42",
+      "payload": {
+        "permission_suggestions": [
+          {
+            "type": "allowTool",
+            "mode": "always",
+            "destination": "session"
+          }
+        ]
+      },
+      "expect": {
+        "stdout_path": [
+          {
+            "path": "hookSpecificOutput.decision.behavior",
+            "value": "allow"
+          }
+        ]
+      }
+    }
+  ]
+}

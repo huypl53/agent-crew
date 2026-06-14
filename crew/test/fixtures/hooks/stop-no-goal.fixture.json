@@ -1,0 +1,35 @@
+{
+  "name": "stop-no-goal-no-tmux",
+  "description": "Stop event without goal should NOT send anything via tmux",
+  "seed": {
+    "room": {
+      "name": "dev",
+      "path": "/tmp/test-crew"
+    },
+    "agents": [
+      {
+        "name": "w1",
+        "pane": "%42",
+        "role": "worker"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "Stop",
+      "pane": "%42",
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "tmux_absent": [
+          {
+            "op": "sendKeys",
+            "target": "%42",
+            "contains": "Goal"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "name": "submit-hint-repeats-on-cadence",
+  "description": "Hint fires on 3rd and 6th UserPromptSubmit (cadence=3 repeats)",
+  "seed": {
+    "room": {
+      "name": "dev",
+      "path": "/tmp/test-crew"
+    },
+    "agents": [
+      {
+        "name": "w1",
+        "pane": "%42",
+        "role": "worker"
+      }
+    ],
+    "hints": [
+      {
+        "agent": "w1",
+        "message": "Check tests",
+        "cadence": 3
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%42",
+      "expect": {
+        "stdout_path": [
+          {
+            "path": "hint",
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%42",
+      "expect": {
+        "stdout_path": [
+          {
+            "path": "hint",
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%42",
+      "expect": {
+        "stdout_path": [
+          {
+            "path": "hint.message",
+            "value": "Check tests"
+          }
+        ]
+      }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%42",
+      "expect": {
+        "stdout_path": [
+          {
+            "path": "hint",
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%42",
+      "expect": {
+        "stdout_path": [
+          {
+            "path": "hint",
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%42",
+      "expect": {
+        "stdout_path": [
+          {
+            "path": "hint.message",
+            "value": "Check tests"
+          }
+        ]
+      }
+    }
+  ]
+}

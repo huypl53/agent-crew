@@ -1,0 +1,46 @@
+{
+  "name": "stop-goal-description-truncated",
+  "description": "Goal description > 100 chars gets truncated with ellipsis",
+  "seed": {
+    "room": {
+      "name": "dev",
+      "path": "/tmp/test-crew"
+    },
+    "agents": [
+      {
+        "name": "w1",
+        "pane": "%42",
+        "role": "worker"
+      }
+    ],
+    "goals": [
+      {
+        "agent": "w1",
+        "description": "This is a very long goal description that exceeds one hundred characters in length and should be truncated with an ellipsis when displayed"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "Stop",
+      "pane": "%42",
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "tmux": [
+          {
+            "op": "sendKeys",
+            "target": "%42",
+            "matches": "This is a very long goal.*…"
+          },
+          {
+            "op": "sendKeys",
+            "target": "%42",
+            "contains": "crew goal done"
+          }
+        ]
+      }
+    }
+  ]
+}
