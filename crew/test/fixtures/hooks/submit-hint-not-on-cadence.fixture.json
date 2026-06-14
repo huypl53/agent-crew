@@ -1,0 +1,50 @@
+{
+  "name": "submit-hint-not-on-cadence",
+  "description": "UserPromptSubmit on turn 1 and 2 of cadence=3 does NOT emit hint",
+  "seed": {
+    "room": {
+      "name": "dev",
+      "path": "/tmp/test-crew"
+    },
+    "agents": [
+      {
+        "name": "w1",
+        "pane": "%42",
+        "role": "worker"
+      }
+    ],
+    "hints": [
+      {
+        "agent": "w1",
+        "message": "Stay focused",
+        "cadence": 3
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%42",
+      "expect": {
+        "stdout_path": [
+          {
+            "path": "hint",
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%42",
+      "expect": {
+        "stdout_path": [
+          {
+            "path": "hint",
+            "value": null
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "name": "stop-leader-no-armed-goal",
+  "description": "Leader Stop without armed reminder does NOT send goal",
+  "seed": {
+    "room": {
+      "name": "dev",
+      "path": "/tmp/test-crew"
+    },
+    "agents": [
+      {
+        "name": "lead",
+        "pane": "%10",
+        "role": "leader"
+      }
+    ],
+    "goals": [
+      {
+        "agent": "lead",
+        "description": "Coordinate the team"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "Stop",
+      "pane": "%10",
+      "expect": {
+        "stdout": {
+          "ok": true,
+          "decision": "allow"
+        },
+        "tmux_absent": [
+          {
+            "op": "sendKeys",
+            "target": "%10",
+            "contains": "Goal"
+          }
+        ]
+      }
+    }
+  ]
+}

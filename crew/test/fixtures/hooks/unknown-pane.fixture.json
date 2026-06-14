@@ -1,0 +1,35 @@
+{
+  "name": "unknown-pane-returns-ok",
+  "description": "Hook event for unregistered pane returns ok without side effects",
+  "seed": {
+    "room": {
+      "name": "dev",
+      "path": "/tmp/test-crew"
+    },
+    "agents": [
+      {
+        "name": "w1",
+        "pane": "%42",
+        "role": "worker"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "Stop",
+      "pane": "%999",
+      "expect": {
+        "stdout": {
+          "ok": true,
+          "decision": "allow"
+        },
+        "tmux_absent": [
+          {
+            "op": "sendKeys",
+            "target": "%999"
+          }
+        ]
+      }
+    }
+  ]
+}
