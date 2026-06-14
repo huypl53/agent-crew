@@ -8,7 +8,7 @@ import { mock } from 'bun:test';
 import { resolve } from 'node:path';
 import { initDb, closeDb, addAgent, getOrCreateRoom } from '../../src/state/index.ts';
 import { setHint } from '../../src/state/index.ts';
-import { setGoal } from '../../src/state/goal-state.ts';
+import { setGoal, completeGoal, armLeaderGoalReminder } from '../../src/state/goal-state.ts';
 import { MockHook } from './mock-hook.ts';
 import type { TapEntry } from './tmux-tap.ts';
 
@@ -55,7 +55,7 @@ export interface FixtureSeed {
   room: { name: string; path: string };
   agents: Array<{ name: string; pane: string; role: 'leader' | 'worker'; cwd?: string }>;
   hints?: Array<{ agent: string; message: string; cadence?: number }>;
-  goals?: Array<{ agent: string; description: string }>;
+  goals?: Array<{ agent: string; description: string; status?: 'active' | 'done'; armed?: boolean }>;
 }
 
 export interface FixtureExpect {
@@ -114,6 +114,12 @@ export async function runFixture(fixture: Fixture): Promise<FixtureResult> {
     if (fixture.seed.goals) {
       for (const g of fixture.seed.goals) {
         setGoal(g.agent, room.id, g.description);
+        if (g.armed) {
+          armLeaderGoalReminder(g.agent, room.id);
+        }
+        if (g.status === 'done') {
+          completeGoal(g.agent, room.id);
+        }
       }
     }
 

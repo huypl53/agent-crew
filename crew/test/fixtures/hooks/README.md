@@ -52,7 +52,7 @@ Each `.fixture.json` has three sections: **seed** (initial DB state), **steps** 
 | `room` | `{name, path}` | Room to create |
 | `agents` | `Array<{name, pane, role}>` | Agents to register. `role` is `"leader"` or `"worker"` |
 | `hints` | `Array<{agent, message, cadence?}>` | Optional. Pre-set hints (default cadence: 3) |
-| `goals` | `Array<{agent, description}>` | Optional. Pre-set goals |
+| `goals` | `Array<{agent, description, status?, armed?}>` | Optional. Pre-set goals. `status: "done"` marks as completed. `armed: true` arms the leader reminder flag. |
 
 ### Steps
 
@@ -226,7 +226,7 @@ test/
 
 The fixture runner intercepts all tmux exports via `mock.module()`, recording `sendKeys`/`sendCommand` calls into a shared tap log. Each step gets its own slice of the log for step-scoped assertions. Stop events wait 2s (goal reminders use `setTimeout(1500ms)`); other events wait 50ms.
 
-## Existing fixtures (23)
+## Existing fixtures (27)
 
 | Fixture | What it tests |
 |---------|---------------|
@@ -234,8 +234,12 @@ The fixture runner intercepts all tmux exports via `mock.module()`, recording `s
 | `stop-with-goal` | Worker goal reminder via sendKeys |
 | `stop-no-goal` | Stop without goal → no tmux |
 | `stop-leader-no-armed-goal` | Leader with unarmed goal → no reminder |
+| `stop-leader-armed-goal` | Leader with armed goal → reminder fires, then disarms |
+| `stop-done-goal-no-reminder` | Completed goal → no reminder on Stop |
 | `stop-goal-truncation` | Long goal description truncated at 100 chars |
 | `stop-worker-turn-count` | Turn count increments on Stop |
+| `same-agent-rapid-stop` | Two rapid Stops on same agent → turn 1, turn 2 |
+| `session-id-canonicalization` | session_id in payload triggers canonicalization + reminder |
 | `permission-request` | PermissionRequest → auto-allow with suggestions |
 | `permission-no-suggestions` | PermissionRequest without suggestions |
 | `user-prompt-submit-hint` | Hint fires on cadence |

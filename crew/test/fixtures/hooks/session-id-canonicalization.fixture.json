@@ -1,0 +1,37 @@
+{
+  "name": "session-id-canonicalization",
+  "description": "Payload with session_id triggers goal canonicalization and goal reminder still fires",
+  "seed": {
+    "room": { "name": "dev", "path": "/tmp/canon" },
+    "agents": [
+      { "name": "w1", "pane": "%42", "role": "worker" }
+    ],
+    "goals": [
+      { "agent": "w1", "description": "Canonicalize me" }
+    ]
+  },
+  "steps": [
+    {
+      "event": "Stop",
+      "pane": "%42",
+      "payload": { "session_id": "sess-abc-123" },
+      "expect": {
+        "stdout": { "ok": true, "decision": "allow" },
+        "tmux": [
+          { "op": "sendKeys", "target": "%42", "contains": "Canonicalize me" },
+          { "op": "sendKeys", "target": "%42", "contains": "(turn 1)" }
+        ]
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": "%42",
+      "payload": { "session_id": "sess-abc-123" },
+      "expect": {
+        "tmux": [
+          { "op": "sendKeys", "target": "%42", "contains": "(turn 2)" }
+        ]
+      }
+    }
+  ]
+}

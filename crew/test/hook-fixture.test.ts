@@ -16,7 +16,7 @@ describe('hook fixtures', () => {
     const { passed, failed } = printResults(results);
     expect(results.length).toBeGreaterThan(0);
     expect(failed).toBe(0);
-  }, 60_000);
+  }, 90_000);
 });
 
 describe('mock-hook unit', () => {
