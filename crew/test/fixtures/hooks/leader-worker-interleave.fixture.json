@@ -1,0 +1,64 @@
+{
+  "name": "leader-worker-stop-interleave",
+  "description": "Leader and workers interleave Stop events — leader gets no reminder (not armed), workers get theirs",
+  "seed": {
+    "room": { "name": "dev", "path": "/tmp/interleave" },
+    "agents": [
+      { "name": "lead", "pane": "%10", "role": "leader" },
+      { "name": "w1", "pane": "%11", "role": "worker" },
+      { "name": "w2", "pane": "%12", "role": "worker" }
+    ],
+    "goals": [
+      { "agent": "lead", "description": "Coordinate team sprint" },
+      { "agent": "w1", "description": "Build the UI" },
+      { "agent": "w2", "description": "Build the API" }
+    ]
+  },
+  "steps": [
+    {
+      "event": "Stop",
+      "pane": "%10",
+      "expect": {
+        "stdout": { "ok": true },
+        "tmux_absent": [
+          { "op": "sendKeys", "target": "%10", "contains": "Goal" }
+        ]
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": "%11",
+      "expect": {
+        "tmux": [
+          { "op": "sendKeys", "target": "%11", "contains": "Build the UI" }
+        ],
+        "tmux_absent": [
+          { "op": "sendKeys", "target": "%10" },
+          { "op": "sendKeys", "target": "%12" }
+        ]
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": "%12",
+      "expect": {
+        "tmux": [
+          { "op": "sendKeys", "target": "%12", "contains": "Build the API" }
+        ],
+        "tmux_absent": [
+          { "op": "sendKeys", "target": "%10" },
+          { "op": "sendKeys", "target": "%11" }
+        ]
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": "%10",
+      "expect": {
+        "tmux_absent": [
+          { "op": "sendKeys", "target": "%10" }
+        ]
+      }
+    }
+  ]
+}

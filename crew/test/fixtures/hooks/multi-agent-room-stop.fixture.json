@@ -1,0 +1,46 @@
+{
+  "name": "multi-agent-room-goal-isolation",
+  "description": "Room with 1 leader + 2 workers: Stop on each worker sends goal reminder only to THAT worker's pane, not to others",
+  "seed": {
+    "room": { "name": "dev", "path": "/tmp/multi-agent" },
+    "agents": [
+      { "name": "lead", "pane": "%10", "role": "leader" },
+      { "name": "w1", "pane": "%11", "role": "worker" },
+      { "name": "w2", "pane": "%12", "role": "worker" }
+    ],
+    "goals": [
+      { "agent": "w1", "description": "Implement auth module" },
+      { "agent": "w2", "description": "Write API tests" }
+    ]
+  },
+  "steps": [
+    {
+      "event": "Stop",
+      "pane": "%11",
+      "expect": {
+        "stdout": { "ok": true, "decision": "allow" },
+        "tmux": [
+          { "op": "sendKeys", "target": "%11", "contains": "Implement auth module" }
+        ],
+        "tmux_absent": [
+          { "op": "sendKeys", "target": "%12" },
+          { "op": "sendKeys", "target": "%10" }
+        ]
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": "%12",
+      "expect": {
+        "stdout": { "ok": true, "decision": "allow" },
+        "tmux": [
+          { "op": "sendKeys", "target": "%12", "contains": "Write API tests" }
+        ],
+        "tmux_absent": [
+          { "op": "sendKeys", "target": "%11" },
+          { "op": "sendKeys", "target": "%10" }
+        ]
+      }
+    }
+  ]
+}

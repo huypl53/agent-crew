@@ -1,0 +1,43 @@
+{
+  "name": "multi-agent-hint-isolation",
+  "description": "Each worker has its own hint cadence — w1 fires at turn 2, w2 at turn 3, they don't interfere",
+  "seed": {
+    "room": { "name": "dev", "path": "/tmp/hint-isolation" },
+    "agents": [
+      { "name": "lead", "pane": "%10", "role": "leader" },
+      { "name": "w1", "pane": "%11", "role": "worker" },
+      { "name": "w2", "pane": "%12", "role": "worker" }
+    ],
+    "hints": [
+      { "agent": "w1", "message": "Run lint before commit", "cadence": 2 },
+      { "agent": "w2", "message": "Check test coverage", "cadence": 3 }
+    ]
+  },
+  "steps": [
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%11",
+      "expect": { "stdout_path": [{ "path": "hint", "value": null }] }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%12",
+      "expect": { "stdout_path": [{ "path": "hint", "value": null }] }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%11",
+      "expect": { "stdout_path": [{ "path": "hint.message", "value": "Run lint before commit" }] }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%12",
+      "expect": { "stdout_path": [{ "path": "hint", "value": null }] }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%12",
+      "expect": { "stdout_path": [{ "path": "hint.message", "value": "Check test coverage" }] }
+    }
+  ]
+}
