@@ -1,0 +1,61 @@
+{
+  "name": "multi-agent-mixed-event-storm",
+  "description": "Mixed Stop + Submit events across workers — goal turns track per-agent, hints track per-agent",
+  "seed": {
+    "room": { "name": "dev", "path": "/tmp/event-storm" },
+    "agents": [
+      { "name": "lead", "pane": "%10", "role": "leader" },
+      { "name": "w1", "pane": "%11", "role": "worker" },
+      { "name": "w2", "pane": "%12", "role": "worker" }
+    ],
+    "goals": [
+      { "agent": "w1", "description": "Goal for w1" },
+      { "agent": "w2", "description": "Goal for w2" }
+    ],
+    "hints": [
+      { "agent": "w1", "message": "w1 hint", "cadence": 2 }
+    ]
+  },
+  "steps": [
+    {
+      "event": "Stop",
+      "pane": "%11",
+      "expect": {
+        "tmux": [{ "op": "sendKeys", "target": "%11", "contains": "(turn 1)" }],
+        "tmux_absent": [{ "op": "sendKeys", "target": "%12" }]
+      }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%11",
+      "expect": { "stdout_path": [{ "path": "hint", "value": null }] }
+    },
+    {
+      "event": "Stop",
+      "pane": "%12",
+      "expect": {
+        "tmux": [{ "op": "sendKeys", "target": "%12", "contains": "(turn 1)" }],
+        "tmux_absent": [{ "op": "sendKeys", "target": "%11" }]
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": "%11",
+      "expect": {
+        "tmux": [{ "op": "sendKeys", "target": "%11", "contains": "(turn 2)" }]
+      }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%11",
+      "expect": { "stdout_path": [{ "path": "hint.message", "value": "w1 hint" }] }
+    },
+    {
+      "event": "Stop",
+      "pane": "%12",
+      "expect": {
+        "tmux": [{ "op": "sendKeys", "target": "%12", "contains": "(turn 2)" }]
+      }
+    }
+  ]
+}

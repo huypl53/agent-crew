@@ -133,7 +133,12 @@ export async function runFixture(fixture: Fixture): Promise<FixtureResult> {
         ? await hook.fireMalformed(rawInput)
         : await hook.fire(step.event, step.payload);
 
-      await new Promise((r) => setTimeout(r, 2000));
+      // Goal reminders use setTimeout(1500ms) — wait long when actual event is Stop
+      const effectiveEvent = step.event === '__skip__'
+        ? String(step.payload?.event ?? step.payload?.eventName ?? '')
+        : step.event;
+      const waitMs = effectiveEvent === 'Stop' ? 2000 : 50;
+      await new Promise((r) => setTimeout(r, waitMs));
 
       if (!step.expect) continue;
 
