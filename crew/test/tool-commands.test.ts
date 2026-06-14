@@ -142,6 +142,30 @@ describe('goal state', () => {
     expect(completeGoal('w1', room.id)).toBe(false);
   });
 
+  test('completeGoal on already-done goal returns false', () => {
+    const room = getOrCreateRoom('/tmp/g', 'dev');
+    addAgent('w1', 'worker', room.id, '%10');
+    setGoal('w1', room.id, 'Done once');
+    expect(completeGoal('w1', room.id)).toBe(true);
+    expect(completeGoal('w1', room.id)).toBe(false);
+  });
+
+  test('updateGoalDescription on done goal returns false', () => {
+    const room = getOrCreateRoom('/tmp/g', 'dev');
+    addAgent('w1', 'worker', room.id, '%10');
+    setGoal('w1', room.id, 'Will complete');
+    completeGoal('w1', room.id);
+    expect(updateGoalDescription('w1', room.id, 'Too late')).toBe(false);
+  });
+
+  test('tickGoalTurnCount on done goal returns null', () => {
+    const room = getOrCreateRoom('/tmp/g', 'dev');
+    addAgent('w1', 'worker', room.id, '%10');
+    setGoal('w1', room.id, 'Done goal');
+    completeGoal('w1', room.id);
+    expect(tickGoalTurnCount('%10', null, room.id)).toBeNull();
+  });
+
   test('updateGoalDescription changes description', () => {
     const room = getOrCreateRoom('/tmp/g', 'dev');
     addAgent('w1', 'worker', room.id, '%10');
@@ -506,7 +530,8 @@ describe('send-batch', () => {
       name: 'w1',
     }));
 
-    expect(result.ok).toBeFalsy();
+    expect(result.error).toBeTruthy();
+    expect(result.batch_id).toBeUndefined();
   });
 
   test('batch rejects invalid manifest JSON', async () => {
@@ -522,7 +547,7 @@ describe('send-batch', () => {
       name: 'lead',
     }));
 
-    expect(result.ok).toBeFalsy();
+    expect(result.error).toBeTruthy();
   });
 
   test('batch rejects manifest with no workers', async () => {
@@ -536,7 +561,7 @@ describe('send-batch', () => {
       name: 'lead',
     }));
 
-    expect(result.ok).toBeFalsy();
+    expect(result.error).toBeTruthy();
   });
 
   test('batch rejects worker not in room', async () => {
@@ -555,7 +580,7 @@ describe('send-batch', () => {
       name: 'lead',
     }));
 
-    expect(result.ok).toBeFalsy();
+    expect(result.error).toBeTruthy();
   });
 
   test('batch rejects duplicate worker names', async () => {
@@ -577,7 +602,7 @@ describe('send-batch', () => {
       name: 'lead',
     }));
 
-    expect(result.ok).toBeFalsy();
+    expect(result.error).toBeTruthy();
   });
 
   test('batch rejects mismatched leader', async () => {
@@ -597,7 +622,7 @@ describe('send-batch', () => {
       name: 'lead',
     }));
 
-    expect(result.ok).toBeFalsy();
+    expect(result.error).toBeTruthy();
   });
 
   test('batch with 3 workers dispatches all in order', async () => {
@@ -648,7 +673,7 @@ describe('send-batch', () => {
       name: 'lead',
     }));
 
-    expect(result.ok).toBeFalsy();
+    expect(result.error).toBeTruthy();
   });
 });
 
