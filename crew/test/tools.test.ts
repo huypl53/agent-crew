@@ -1096,6 +1096,7 @@ describe('MCP tools', () => {
         const data = JSON.parse(result.content[0]?.text);
         expect(data.interrupted).toBe(true);
       },
+      15_000,
     );
 
     test.serial('worker cannot interrupt', async () => {

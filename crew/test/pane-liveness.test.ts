@@ -102,7 +102,6 @@ describe('pane liveness checks', () => {
         'crew',
         'hello',
         'dead-worker',
-        'push',
       );
       expect(results[0]!.delivered).toBe(false);
     });
@@ -122,7 +121,6 @@ describe('pane liveness checks', () => {
         'crew',
         'hello',
         'stale-worker',
-        'push',
       );
       expect(results[0]!.delivered).toBe(false);
       expect(results[0]!.error).toMatch(/stale-target|no longer exists/);
@@ -145,7 +143,6 @@ describe('pane liveness checks', () => {
         'crew',
         'hello',
         'shell-worker',
-        'push',
       );
       // No stale-target error — unknown agents skip the command check
       expect(results[0]!.error).not.toBe(
@@ -168,7 +165,6 @@ describe('pane liveness checks', () => {
         'crew',
         'hello',
         'live-worker',
-        'push',
       );
       expect(results[0]!.delivered).toBe(true);
       expect(results[0]!.error).toBeUndefined();
@@ -206,7 +202,7 @@ describe('pane liveness checks', () => {
         'target',
       ]);
 
-      await deliverMessage('sender', room.name, 'hello', 'target', 'push');
+      await deliverMessage('sender', room.name, 'hello', 'target');
       const msgs = getRoomMessages(room.name);
       const latest = msgs[msgs.length - 1];
       expect(latest?.text).toBe('[AGENT] hello');
@@ -231,8 +227,8 @@ describe('pane liveness checks', () => {
         room.id,
       ]);
 
-      await deliverMessage('sender', room.name, 'm1', 'target', 'push');
-      await deliverMessage('sender', room.name, 'm2', 'target', 'push');
+      await deliverMessage('sender', room.name, 'm1', 'target');
+      await deliverMessage('sender', room.name, 'm2', 'target');
 
       const msgs = getRoomMessages(room.name);
       const t1 = msgs[msgs.length - 2]?.text;
@@ -260,10 +256,10 @@ describe('pane liveness checks', () => {
         room.id,
       ]);
 
-      await deliverMessage('sender', room.name, 'fails', 'target', 'push');
+      await deliverMessage('sender', room.name, 'fails', 'target');
       getDb().run('DELETE FROM agents WHERE name = ?', ['target']);
       addAgent('target', 'worker', room.id, shellPane, 'unknown');
-      await deliverMessage('sender', room.name, 'next', 'target', 'push');
+      await deliverMessage('sender', room.name, 'next', 'target');
 
       const msgs = getRoomMessages(room.name);
       const latest = msgs[msgs.length - 1];
