@@ -64,8 +64,6 @@ describe('Block Unblock Flush', () => {
       name: 'worker-1',
       text: 'Message-Sent-While-Blocked',
       to: 'leader-1',
-      mode: 'pull',
-      kind: 'completion',
     });
 
     // Wait a bit to ensure it is NOT delivered while blocked

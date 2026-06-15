@@ -1,0 +1,55 @@
+{
+  "name": "multi-worker-rapid-submit-race",
+  "description": "3 workers submit nearly simultaneously — each gets correct hint state independently",
+  "seed": {
+    "room": { "name": "dev", "path": "/tmp/rapid-submit" },
+    "agents": [
+      { "name": "lead", "pane": "%10", "role": "leader" },
+      { "name": "w1", "pane": "%11", "role": "worker" },
+      { "name": "w2", "pane": "%12", "role": "worker" },
+      { "name": "w3", "pane": "%13", "role": "worker" }
+    ],
+    "hints": [
+      { "agent": "w1", "message": "Hint for w1", "cadence": 2 },
+      { "agent": "w2", "message": "Hint for w2", "cadence": 2 },
+      { "agent": "w3", "message": "Hint for w3", "cadence": 2 }
+    ]
+  },
+  "steps": [
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%11",
+      "expect": { "stdout_path": [{ "path": "hint", "value": null }] }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%12",
+      "delay": 5,
+      "expect": { "stdout_path": [{ "path": "hint", "value": null }] }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%13",
+      "delay": 5,
+      "expect": { "stdout_path": [{ "path": "hint", "value": null }] }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%11",
+      "delay": 5,
+      "expect": { "stdout_path": [{ "path": "hint.message", "value": "Hint for w1" }] }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%12",
+      "delay": 5,
+      "expect": { "stdout_path": [{ "path": "hint.message", "value": "Hint for w2" }] }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%13",
+      "delay": 5,
+      "expect": { "stdout_path": [{ "path": "hint.message", "value": "Hint for w3" }] }
+    }
+  ]
+}

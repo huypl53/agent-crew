@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { deliverMessage } from '../delivery/index.ts';
-import { paneCommandLooksAlive, paneExists } from '../tmux/index.ts';
 import type {
   MessageBatchWorkerDispatchStatus,
   MessageDeliveryMetadata,
@@ -14,16 +13,13 @@ import {
   markBatchWorkerDispatchFailed,
   markBatchWorkerSent,
 } from '../state/index.ts';
-import {
-  readUtf8TextFile,
-  validateSenderAndRoom,
-} from './send-message.ts';
+import { paneCommandLooksAlive, paneExists } from '../tmux/index.ts';
+import { readUtf8TextFile, validateSenderAndRoom } from './send-message.ts';
 
 interface SendBatchParams {
   room: string;
   manifest: string;
   name: string;
-  mode?: 'push' | 'pull';
 }
 
 interface NormalizedManifestWorker {
@@ -44,7 +40,10 @@ function generateBatchId(): string {
   return `batch_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
 }
 
-function parseManifest(rawText: string): { value?: NormalizedSendBatchManifest; error?: string } {
+function parseManifest(rawText: string): {
+  value?: NormalizedSendBatchManifest;
+  error?: string;
+} {
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawText);
@@ -79,10 +78,14 @@ function parseManifest(rawText: string): { value?: NormalizedSendBatchManifest; 
     }
 
     if (typeof worker.name !== 'string' || !worker.name.trim()) {
-      return { error: `Manifest worker at index ${i} must include a non-empty name` };
+      return {
+        error: `Manifest worker at index ${i} must include a non-empty name`,
+      };
     }
     if (typeof worker.file !== 'string' || !worker.file.trim()) {
-      return { error: `Manifest worker "${worker.name}" must include a non-empty file path` };
+      return {
+        error: `Manifest worker "${worker.name}" must include a non-empty file path`,
+      };
     }
 
     const name = worker.name.trim();
@@ -110,7 +113,9 @@ function parseManifest(rawText: string): { value?: NormalizedSendBatchManifest; 
   };
 }
 
-async function loadManifest(manifestPath: string): Promise<{ value?: NormalizedSendBatchManifest; error?: string }> {
+async function loadManifest(
+  manifestPath: string,
+): Promise<{ value?: NormalizedSendBatchManifest; error?: string }> {
   const manifestFile = await readUtf8TextFile(manifestPath, 'Manifest');
   if (manifestFile.error) {
     return { error: manifestFile.error };
@@ -148,10 +153,7 @@ async function preflightWorkerDelivery(
   roomName: string,
   roomId: number,
   manifest: NormalizedSendBatchManifest,
-  mode: 'push' | 'pull',
 ): Promise<{ error?: string }> {
-  if (mode !== 'push') return {};
-
   const membersByName = new Map(
     getRoomMembers(roomId).map((member) => [member.name, member]),
   );
@@ -170,10 +172,7 @@ async function preflightWorkerDelivery(
       };
     }
 
-    if (
-      member.agent_type === 'claude-code' ||
-      member.agent_type === 'codex'
-    ) {
+    if (member.agent_type === 'claude-code' || member.agent_type === 'codex') {
       if (!(await paneCommandLooksAlive(member.tmux_target))) {
         return {
           error: `stale-target: pane ${member.tmux_target} is not running an agent process`,
@@ -185,8 +184,10 @@ async function preflightWorkerDelivery(
   return {};
 }
 
-export async function handleSendBatch(params: SendBatchParams): Promise<ToolResult> {
-  const { room, manifest, name, mode = 'push' } = params;
+export async function handleSendBatch(
+  params: SendBatchParams,
+): Promise<ToolResult> {
+  const { room, manifest, name } = params;
 
   if (!room || !manifest || !name) {
     return err('Missing required params: room, manifest, name');
@@ -214,7 +215,11 @@ export async function handleSendBatch(params: SendBatchParams): Promise<ToolResu
     );
   }
 
-  const workerMembership = validateWorkerMembership(room, roomObj.id, parsedManifest);
+  const workerMembership = validateWorkerMembership(
+    room,
+    roomObj.id,
+    parsedManifest,
+  );
   if (workerMembership.error) {
     return err(workerMembership.error);
   }
@@ -239,7 +244,11 @@ export async function handleSendBatch(params: SendBatchParams): Promise<ToolResu
     });
   }
 
-  const preflight = await preflightWorkerDelivery(room, roomObj.id, parsedManifest, mode);
+  const preflight = await preflightWorkerDelivery(
+    room,
+    roomObj.id,
+    parsedManifest,
+  );
   if (preflight.error) {
     return err(preflight.error);
   }
@@ -278,8 +287,6 @@ export async function handleSendBatch(params: SendBatchParams): Promise<ToolResu
         room,
         worker.text,
         worker.name,
-        mode,
-        'task',
         undefined,
         metadata,
       );

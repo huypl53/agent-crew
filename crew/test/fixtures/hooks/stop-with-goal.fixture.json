@@ -1,0 +1,47 @@
+{
+  "name": "stop-with-goal-reminder",
+  "description": "Worker receives goal reminder via tmux sendKeys on Stop",
+  "seed": {
+    "room": {
+      "name": "dev",
+      "path": "/tmp/test-crew"
+    },
+    "agents": [
+      {
+        "name": "w1",
+        "pane": "%42",
+        "role": "worker"
+      }
+    ],
+    "goals": [
+      {
+        "agent": "w1",
+        "description": "Implement the auth module"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "Stop",
+      "pane": "%42",
+      "expect": {
+        "stdout": {
+          "ok": true,
+          "decision": "allow"
+        },
+        "tmux": [
+          {
+            "op": "sendKeys",
+            "target": "%42",
+            "contains": "Goal"
+          },
+          {
+            "op": "sendKeys",
+            "target": "%42",
+            "contains": "Implement the auth module"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "name": "multi-agent-concurrent-stop-race",
+  "description": "Two workers fire Stop nearly simultaneously — each gets its own goal reminder, no cross-contamination",
+  "seed": {
+    "room": { "name": "dev", "path": "/tmp/race-test" },
+    "agents": [
+      { "name": "lead", "pane": "%10", "role": "leader" },
+      { "name": "w1", "pane": "%11", "role": "worker" },
+      { "name": "w2", "pane": "%12", "role": "worker" }
+    ],
+    "goals": [
+      { "agent": "w1", "description": "Fix login bug" },
+      { "agent": "w2", "description": "Add rate limiter" }
+    ]
+  },
+  "steps": [
+    {
+      "event": "Stop",
+      "pane": "%11",
+      "expect": {
+        "stdout": { "ok": true },
+        "tmux": [
+          { "op": "sendKeys", "target": "%11", "contains": "Fix login bug" }
+        ],
+        "tmux_absent": [
+          { "op": "sendKeys", "target": "%12" }
+        ]
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": "%12",
+      "delay": 10,
+      "expect": {
+        "stdout": { "ok": true },
+        "tmux": [
+          { "op": "sendKeys", "target": "%12", "contains": "Add rate limiter" }
+        ],
+        "tmux_absent": [
+          { "op": "sendKeys", "target": "%11" }
+        ]
+      }
+    }
+  ]
+}

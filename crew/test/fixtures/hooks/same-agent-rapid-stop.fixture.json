@@ -1,0 +1,33 @@
+{
+  "name": "same-agent-rapid-stop",
+  "description": "Two consecutive Stop events on same agent increment turn_count to 1 then 2",
+  "seed": {
+    "room": { "name": "dev", "path": "/tmp/rapid-stop" },
+    "agents": [
+      { "name": "w1", "pane": "%42", "role": "worker" }
+    ],
+    "goals": [
+      { "agent": "w1", "description": "Track rapid stops" }
+    ]
+  },
+  "steps": [
+    {
+      "event": "Stop",
+      "pane": "%42",
+      "expect": {
+        "tmux": [
+          { "op": "sendKeys", "target": "%42", "contains": "(turn 1)" }
+        ]
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": "%42",
+      "expect": {
+        "tmux": [
+          { "op": "sendKeys", "target": "%42", "contains": "(turn 2)" }
+        ]
+      }
+    }
+  ]
+}

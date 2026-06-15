@@ -59,7 +59,10 @@ export async function validateTmux(): Promise<{
 // Delay between paste-buffer and Enter to let the terminal app finish processing
 // the bracketed paste before we submit. Empirically tested against Claude Code:
 // 80ms fails, 100ms works. Using 500ms for wide margin across machines/apps.
-const PASTE_SETTLE_MS = 500;
+const PASTE_SETTLE_MS = (() => {
+  const v = Number(process.env.CREW_PASTE_SETTLE_MS);
+  return Number.isFinite(v) && v >= 0 ? v : 500;
+})();
 
 export async function sendKeys(
   target: string,
@@ -374,6 +377,9 @@ export async function paneExists(target: string): Promise<boolean> {
   // display-message accepts bare pane IDs (%N) unlike list-panes which expects a window target
   const result = await run('display-message', '-t', target, '-p', '#{pane_id}');
   if (result.success && result.stdout.trim() !== '') return true;
+
+  // When an explicit test socket is set, trust it — don't scan the whole machine.
+  if (process.env.CREW_TMUX_SOCKET) return false;
 
   // First check failed — the configured socket (CREW_TMUX_SOCKET or $TMUX's server)
   // may not be the one where this pane lives. Scan all tmux sockets on the machine to

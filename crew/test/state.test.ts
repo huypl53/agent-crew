@@ -117,12 +117,20 @@ describe('state module', () => {
     });
 
     test('getRoom by name prefers the latest matching room row', () => {
-      const first = getOrCreateRoom('/test/worktree-a/better-logging', 'better-logging');
-      const second = getOrCreateRoom('/test/worktree-b/better-logging', 'better-logging');
+      const first = getOrCreateRoom(
+        '/test/worktree-a/better-logging',
+        'better-logging',
+      );
+      const second = getOrCreateRoom(
+        '/test/worktree-b/better-logging',
+        'better-logging',
+      );
 
       expect(first.id).not.toBe(second.id);
       expect(getRoom('better-logging')?.id).toBe(second.id);
-      expect(getRoom('better-logging')?.path).toBe('/test/worktree-b/better-logging');
+      expect(getRoom('better-logging')?.path).toBe(
+        '/test/worktree-b/better-logging',
+      );
     });
 
     test('isNameTakenInRoom detects duplicates', () => {
@@ -138,8 +146,8 @@ describe('state module', () => {
       addAgent('sender', 'leader', mkRoom('room').id, '%100');
       addAgent('receiver', 'worker', mkRoom('room').id, '%101');
 
-      addMessage('receiver', 'sender', 'room', 'hello', 'push', 'receiver');
-      addMessage('receiver', 'sender', 'room', 'world', 'push', 'receiver');
+      addMessage('receiver', 'sender', 'room', 'hello', 'receiver');
+      addMessage('receiver', 'sender', 'room', 'world', 'receiver');
 
       const result = readMessages('receiver');
       expect(result.messages.length).toBe(2);
@@ -149,13 +157,13 @@ describe('state module', () => {
 
     test('cursor-based reading with since_sequence', () => {
       addAgent('a', 'worker', mkRoom('r').id, '%100');
-      addMessage('a', 'b', 'r', 'msg1', 'push', 'a');
-      addMessage('a', 'b', 'r', 'msg2', 'push', 'a');
+      addMessage('a', 'b', 'r', 'msg1', 'a');
+      addMessage('a', 'b', 'r', 'msg2', 'a');
 
       const first = readMessages('a');
       expect(first.messages.length).toBe(2);
 
-      addMessage('a', 'b', 'r', 'msg3', 'push', 'a');
+      addMessage('a', 'b', 'r', 'msg3', 'a');
       const second = readMessages('a', undefined, first.next_sequence);
       expect(second.messages.length).toBe(1);
       expect(second.messages[0]!.text).toBe('msg3');
@@ -164,25 +172,21 @@ describe('state module', () => {
     test('filters by room', () => {
       addAgent('a', 'worker', mkRoom('room1').id, '%100');
       addAgent('b', 'leader', mkRoom('room1').id, '%101');
-      addMessage('a', 'b', 'room1', 'hello', 'push', 'a');
+      addMessage('a', 'b', 'room1', 'hello', 'a');
 
       const result = readMessages('a', 'room1');
       expect(result.messages.length).toBe(1);
       expect(result.messages[0]!.room_id).toBe(getRoom('room1')!.id);
     });
 
-    test('message has kind field', () => {
+    test('message is stored with correct fields', () => {
       addAgent('a', 'worker', mkRoom('r').id, '%100');
       addAgent('b', 'leader', mkRoom('r').id, '%101');
-      const msg = addMessage('a', 'b', 'r', 'hello', 'push', 'a', 'chat');
-      expect(msg.kind).toBe('chat');
-    });
-
-    test('message kind defaults to chat', () => {
-      addAgent('a', 'worker', mkRoom('r').id, '%100');
-      addAgent('b', 'leader', mkRoom('r').id, '%101');
-      const msg = addMessage('a', 'b', 'r', 'hello', 'push', 'a');
-      expect(msg.kind).toBe('chat');
+      const msg = addMessage('a', 'b', 'r', 'hello', 'a');
+      expect(msg.message_id).toBeDefined();
+      expect(msg.from).toBe('b');
+      expect(msg.to).toBe('a');
+      expect(msg.text).toBe('hello');
     });
   });
 
@@ -190,7 +194,7 @@ describe('state module', () => {
     test('message is stored in room log', () => {
       addAgent('a', 'leader', mkRoom('frontend').id, '%100');
       addAgent('b', 'worker', mkRoom('frontend').id, '%101');
-      addMessage('b', 'a', 'frontend', 'build login', 'push', 'b', 'task');
+      addMessage('b', 'a', 'frontend', 'build login', 'b');
 
       const roomMsgs = getRoomMessages('frontend');
       expect(roomMsgs.length).toBe(1);
@@ -203,7 +207,7 @@ describe('state module', () => {
       addAgent('w1', 'worker', mkRoom('frontend').id, '%101');
       addAgent('w2', 'worker', mkRoom('frontend').id, '%102');
 
-      addMessage('w1', 'lead', 'frontend', 'build login', 'push', 'w1', 'task');
+      addMessage('w1', 'lead', 'frontend', 'build login', 'w1');
 
       const roomMsgs = getRoomMessages('frontend');
       expect(roomMsgs.length).toBe(1);
@@ -214,7 +218,7 @@ describe('state module', () => {
       addAgent('w1', 'worker', mkRoom('team').id, '%101');
       addAgent('w2', 'worker', mkRoom('team').id, '%102');
 
-      addMessage('__room__', 'lead', 'team', 'standup', 'push', null, 'chat');
+      addMessage('__room__', 'lead', 'team', 'standup', null);
 
       const roomMsgs = getRoomMessages('team');
       expect(roomMsgs.length).toBe(1);
@@ -238,15 +242,15 @@ describe('state module', () => {
       addAgent('lead', 'leader', mkRoom('r').id, '%100');
       addAgent('w1', 'worker', mkRoom('r').id, '%101');
 
-      addMessage('w1', 'lead', 'r', 'task1', 'push', 'w1', 'task');
-      addMessage('w1', 'lead', 'r', 'task2', 'push', 'w1', 'task');
+      addMessage('w1', 'lead', 'r', 'task1', 'w1');
+      addMessage('w1', 'lead', 'r', 'task2', 'w1');
 
       // First read: gets both messages
       const first = readRoomMessages('w1', 'r');
       expect(first.messages.length).toBe(2);
 
       // Add a third message
-      addMessage('w1', 'lead', 'r', 'task3', 'push', 'w1', 'task');
+      addMessage('w1', 'lead', 'r', 'task3', 'w1');
 
       // Second read: only new message
       const second = readRoomMessages('w1', 'r');
@@ -451,7 +455,7 @@ describe('state module', () => {
     test('Inserting a message bumps messages version', () => {
       const before = getChangeVersions(['messages']);
       const v1 = before['messages']?.version ?? 0;
-      addMessage('wk-01', 'lead-01', 'test-room', 'hello', 'push', 'wk-01');
+      addMessage('wk-01', 'lead-01', 'test-room', 'hello', 'wk-01');
       const after = getChangeVersions(['messages']);
       const v2 = after['messages']?.version ?? 0;
       expect(v2).toBeGreaterThan(v1);
@@ -489,7 +493,9 @@ describe('state module', () => {
     test('setHint creates a pane-bootstrap record', () => {
       const room = mkRoom('test-room');
       const agent = addAgent('test-agent', 'worker', room.id, '%100');
-      const hint = setHint('test-agent', room.id, 'Test hint message', { pane: '%100' });
+      const hint = setHint('test-agent', room.id, 'Test hint message', {
+        pane: '%100',
+      });
 
       expect(hint.agent_name).toBe('test-agent');
       expect(hint.pane_bootstrap).toBe('%100');
@@ -655,12 +661,16 @@ describe('state module', () => {
       setHint('test-agent', room.id, 'Test hint message', { pane: '%111' });
 
       // Set again - should replace, not duplicate
-      const hint2 = setHint('test-agent', room.id, 'Test hint message', { pane: '%111' });
+      const hint2 = setHint('test-agent', room.id, 'Test hint message', {
+        pane: '%111',
+      });
 
       // Should only have one hint record
       const db = require('../src/state/db.ts').getDb();
       const count = db
-        .prepare('SELECT COUNT(*) as c FROM agent_hints WHERE agent_name = ? AND room_id = ?')
+        .prepare(
+          'SELECT COUNT(*) as c FROM agent_hints WHERE agent_name = ? AND room_id = ?',
+        )
         .get('test-agent', room.id) as { c: number };
       expect(count.c).toBe(1);
     });
@@ -706,7 +716,9 @@ describe('state module', () => {
 
       const recycledRoom = mkRoom('test-room');
       addAgent('new-agent', 'worker', recycledRoom.id, '%114');
-      const hint = setHint('new-agent', recycledRoom.id, 'Test hint message', { pane: '%114' });
+      const hint = setHint('new-agent', recycledRoom.id, 'Test hint message', {
+        pane: '%114',
+      });
       expect(hint.agent_name).toBe('new-agent');
       expect(getHint('%114', null)?.agent_name).toBe('new-agent');
     });
@@ -734,8 +746,12 @@ describe('state module', () => {
       clearState();
 
       const db = require('../src/state/db.ts').getDb();
-      const hintCount = db.query('SELECT COUNT(*) as c FROM agent_hints').get() as { c: number };
-      const hookEventCount = db.query('SELECT COUNT(*) as c FROM hook_events').get() as { c: number };
+      const hintCount = db
+        .query('SELECT COUNT(*) as c FROM agent_hints')
+        .get() as { c: number };
+      const hookEventCount = db
+        .query('SELECT COUNT(*) as c FROM hook_events')
+        .get() as { c: number };
       expect(hintCount.c).toBe(0);
       expect(hookEventCount.c).toBe(0);
     });
@@ -749,11 +765,15 @@ describe('state module', () => {
       addAgent('multi-agent', 'worker', roomB.id, '%200');
 
       // Both setHint calls use the same pane — should not crash with UNIQUE constraint
-      const hintA = setHint('multi-agent', roomA.id, 'Test hint message', { pane: '%200' });
+      const hintA = setHint('multi-agent', roomA.id, 'Test hint message', {
+        pane: '%200',
+      });
       expect(hintA.agent_name).toBe('multi-agent');
       expect(hintA.room_id).toBe(roomA.id);
 
-      const hintB = setHint('multi-agent', roomB.id, 'Test hint message', { pane: '%200' });
+      const hintB = setHint('multi-agent', roomB.id, 'Test hint message', {
+        pane: '%200',
+      });
       expect(hintB.agent_name).toBe('multi-agent');
       expect(hintB.room_id).toBe(roomB.id);
     });
@@ -816,7 +836,12 @@ describe('state module', () => {
     test('setHint stores custom message', () => {
       const room = mkRoom('msg-room');
       addAgent('msg-agent', 'worker', room.id, '%300');
-      const hint = setHint('msg-agent', room.id, 'You are worker-1 in project-x.', { pane: '%300' });
+      const hint = setHint(
+        'msg-agent',
+        room.id,
+        'You are worker-1 in project-x.',
+        { pane: '%300' },
+      );
       expect(hint.message).toBe('You are worker-1 in project-x.');
       expect(hint.cadence).toBe(3); // default
     });
@@ -824,7 +849,10 @@ describe('state module', () => {
     test('setHint stores custom cadence', () => {
       const room = mkRoom('cadence-room');
       addAgent('cadence-agent', 'worker', room.id, '%301');
-      const hint = setHint('cadence-agent', room.id, 'Every turn', { pane: '%301', cadence: 1 });
+      const hint = setHint('cadence-agent', room.id, 'Every turn', {
+        pane: '%301',
+        cadence: 1,
+      });
       expect(hint.cadence).toBe(1);
       expect(hint.message).toBe('Every turn');
     });
@@ -832,14 +860,19 @@ describe('state module', () => {
     test('setHint defaults cadence to 3', () => {
       const room = mkRoom('default-cadence');
       addAgent('dc-agent', 'worker', room.id, '%302');
-      const hint = setHint('dc-agent', room.id, 'Default cadence', { pane: '%302' });
+      const hint = setHint('dc-agent', room.id, 'Default cadence', {
+        pane: '%302',
+      });
       expect(hint.cadence).toBe(3);
     });
 
     test('tickHintCadence respects cadence of 1 (every turn)', () => {
       const room = mkRoom('every-turn');
       addAgent('et-agent', 'worker', room.id, '%303');
-      setHint('et-agent', room.id, 'Every single turn', { pane: '%303', cadence: 1 });
+      setHint('et-agent', room.id, 'Every single turn', {
+        pane: '%303',
+        cadence: 1,
+      });
 
       const r1 = tickHintCadence('%303', null);
       expect(r1.shouldShow).toBe(true); // Turn 1: 1 % 1 === 0
@@ -851,7 +884,10 @@ describe('state module', () => {
     test('tickHintCadence respects cadence of 5', () => {
       const room = mkRoom('every-5');
       addAgent('e5-agent', 'worker', room.id, '%304');
-      setHint('e5-agent', room.id, 'Every fifth turn', { pane: '%304', cadence: 5 });
+      setHint('e5-agent', room.id, 'Every fifth turn', {
+        pane: '%304',
+        cadence: 5,
+      });
 
       for (let i = 1; i <= 4; i++) {
         expect(tickHintCadence('%304', null).shouldShow).toBe(false);
@@ -864,7 +900,9 @@ describe('state module', () => {
     test('custom message is returned in tickHintCadence result', () => {
       const room = mkRoom('msg-tick');
       addAgent('mt-agent', 'worker', room.id, '%305');
-      setHint('mt-agent', room.id, 'Custom reminder text here', { pane: '%305' });
+      setHint('mt-agent', room.id, 'Custom reminder text here', {
+        pane: '%305',
+      });
 
       tickHintCadence('%305', null);
       tickHintCadence('%305', null);
@@ -884,16 +922,16 @@ describe('state module', () => {
       addHookEvent('w1', 'UserPromptSubmit', 's1', 'do the task');
 
       // Simulate Path 1: worker actively sent completion via crew send
-      addMessage('lead-1', 'w1', 'dedup-test', 'Task done!', 'push', 'lead-1', 'completion');
+      addMessage('lead-1', 'w1', 'dedup-test', 'Task done!', 'lead-1');
 
       // Simulate Path 2: Stop hook fires — should detect existing completion
       const payload = JSON.stringify({ last_assistant_message: 'Task done!' });
       addHookEvent('w1', 'Stop', 's1', payload);
 
-      // Should be exactly 1 completion (from Path 1), not 2
+      // Should be exactly 1 message from w1 (from Path 1), not 2
       const msgs = getRoomMessages('dedup-test');
-      const completions = msgs.filter((m: any) => m.kind === 'completion');
-      expect(completions.length).toBe(1);
+      const fromW1 = msgs.filter((m: any) => m.from === 'w1');
+      expect(fromW1.length).toBe(1);
     });
 
     test('Stop event records completion when worker did NOT actively send', () => {
@@ -904,11 +942,13 @@ describe('state module', () => {
       // Turn start but no prior completion — worker didn't actively send
       addHookEvent('w2', 'UserPromptSubmit', 's2', 'do the work');
 
-      const payload = JSON.stringify({ last_assistant_message: 'Finished work!' });
+      const payload = JSON.stringify({
+        last_assistant_message: 'Finished work!',
+      });
       addHookEvent('w2', 'Stop', 's2', payload);
 
       const msgs = getRoomMessages('no-dedup-test');
-      const completions = msgs.filter((m: any) => m.kind === 'completion');
+      const completions = msgs.filter((m: any) => m.to === null);
       expect(completions.length).toBe(1);
       expect(completions[0].text).toContain('Finished work!');
     });
@@ -929,7 +969,7 @@ describe('state module', () => {
       addHookEvent('w-trunc', 'Stop', 's-trunc', payload);
 
       const completions = getRoomMessages('stop-store-full-trunc').filter(
-        (m: any) => m.kind === 'completion',
+        (m: any) => m.to === null,
       );
       expect(completions.length).toBe(1);
       // Full text stored — tail marker survives the notifyMaxChars boundary
@@ -952,13 +992,20 @@ describe('state module', () => {
       );
 
       expect(
-        getRoomMessages('goal-gated-stop-done').filter((m: any) => m.kind === 'completion'),
+        getRoomMessages('goal-gated-stop-done').filter(
+          (m: any) => m.to === null,
+        ),
       ).toHaveLength(0);
 
       expect(completeGoal('w4', room.id)).toBe(true);
       await Bun.sleep(1100);
 
-      addHookEvent('w4', 'UserPromptSubmit', 's4-done', 'wrap up after goal done');
+      addHookEvent(
+        'w4',
+        'UserPromptSubmit',
+        's4-done',
+        'wrap up after goal done',
+      );
       addHookEvent(
         'w4',
         'Stop',
@@ -967,7 +1014,7 @@ describe('state module', () => {
       );
 
       const completions = getRoomMessages('goal-gated-stop-done').filter(
-        (m: any) => m.kind === 'completion',
+        (m: any) => m.to === null,
       );
       expect(completions).toHaveLength(1);
       expect(completions[0].text).toContain('Delivered after goal done');
@@ -979,7 +1026,9 @@ describe('state module', () => {
         JSON.stringify({ last_assistant_message: 'Delivered after goal done' }),
       );
       expect(
-        getRoomMessages('goal-gated-stop-done').filter((m: any) => m.kind === 'completion'),
+        getRoomMessages('goal-gated-stop-done').filter(
+          (m: any) => m.to === null,
+        ),
       ).toHaveLength(1);
     });
 
@@ -989,7 +1038,12 @@ describe('state module', () => {
       addAgent('w5', 'worker', room.id, '%941');
       setGoal('w5', room.id, 'Temporary gated task', { pane: '%941' });
 
-      addHookEvent('w5', 'UserPromptSubmit', 's5-active', 'work while goal active');
+      addHookEvent(
+        'w5',
+        'UserPromptSubmit',
+        's5-active',
+        'work while goal active',
+      );
       addHookEvent(
         'w5',
         'Stop',
@@ -998,7 +1052,9 @@ describe('state module', () => {
       );
 
       expect(
-        getRoomMessages('goal-gated-stop-unset').filter((m: any) => m.kind === 'completion'),
+        getRoomMessages('goal-gated-stop-unset').filter(
+          (m: any) => m.to === null,
+        ),
       ).toHaveLength(0);
 
       expect(unsetGoal('w5', room.id)).toBe(true);
@@ -1013,7 +1069,7 @@ describe('state module', () => {
       );
 
       const completions = getRoomMessages('goal-gated-stop-unset').filter(
-        (m: any) => m.kind === 'completion',
+        (m: any) => m.to === null,
       );
       expect(completions).toHaveLength(1);
       expect(completions[0].text).toContain('Delivered after unset');
@@ -1026,7 +1082,7 @@ describe('state module', () => {
 
       // Turn 1: worker sends completion
       addHookEvent('w3', 'UserPromptSubmit', 's1', 'task 1');
-      addMessage('lead-3', 'w3', 'multi-turn-test', 'Done 1', 'push', 'lead-3', 'completion');
+      addMessage('lead-3', 'w3', 'multi-turn-test', 'Done 1', 'lead-3');
       addHookEvent('w3', 'Stop', 's1', '{"last_assistant_message":"Done 1"}');
 
       // Wait 1s so Turn 2's UserPromptSubmit has a later timestamp
@@ -1039,8 +1095,8 @@ describe('state module', () => {
       addHookEvent('w3', 'Stop', 's2', payload);
 
       const msgs = getRoomMessages('multi-turn-test');
-      const completions = msgs.filter((m: any) => m.kind === 'completion');
-      expect(completions.length).toBe(2); // one from each turn
+      const fromW3 = msgs.filter((m: any) => m.from === 'w3');
+      expect(fromW3.length).toBe(2); // one from each turn
     });
   });
 });

@@ -1,10 +1,5 @@
-import { config } from '../config.ts';
-import { parsePaneInputSection } from '../shared/pane-status.ts';
-import type {
-  Agent,
-  MessageDeliveryMetadata,
-  MessageKind,
-} from '../shared/types.ts';
+import type { Agent, MessageDeliveryMetadata } from '../shared/types.ts';
+import { renderBatchFinalMessage } from '../state/batch-render.ts';
 import { getDb } from '../state/db.ts';
 import { dbClearAgentPane } from '../state/db-write.ts';
 import {
@@ -14,8 +9,8 @@ import {
   getAgent,
   getAgentByRoomAndName,
   getAgentInputBlockMode,
-  getMessageBatch,
   getAllAgents,
+  getMessageBatch,
   getPushCursor,
   getRenderableBatchWorkers,
   getRoom,
@@ -26,15 +21,12 @@ import {
   queueBatchFinalDelivery,
   recordBatchWorkerTerminalMessage,
 } from '../state/index.ts';
-import { renderBatchFinalMessage } from '../state/batch-render.ts';
 import {
   capturePaneTail,
   paneCommandLooksAlive,
   paneExists,
 } from '../tmux/index.ts';
 import { getQueue, PaneDeliveryError } from './pane-queue.ts';
-
-const NOTIFY_KINDS: MessageKind[] = ['completion', 'error', 'question'];
 
 interface DeliveryResult {
   message_id: string;
@@ -50,8 +42,6 @@ interface DeliveryContext {
   text: string;
   fullText: string;
   targetName: string | null;
-  mode: 'push' | 'pull';
-  kind: MessageKind;
   replyTo?: number | null;
   metadata?: MessageDeliveryMetadata;
   agent?: Agent;
@@ -96,12 +86,11 @@ function shouldArmLeaderGoalReminder(
 }
 
 async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
-  const { to, senderName, roomName, text, targetName, mode, kind, replyTo } =
-    ctx;
+  const { to, senderName, roomName, text, targetName, replyTo } = ctx;
   const targetAgent = ctx.agent ?? getAgent(to);
   const room = getRoom(roomName);
   const senderAgent = room
-    ? getAgentByRoomAndName(room.id, senderName) ?? getAgent(senderName)
+    ? (getAgentByRoomAndName(room.id, senderName) ?? getAgent(senderName))
     : getAgent(senderName);
   const outgoingText = decorateMessageWithReminder(text, roomName, targetAgent);
   const header = `[${senderName}@${roomName}]:`;
@@ -112,84 +101,78 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
     senderName,
     roomName,
     outgoingText,
-    mode,
     targetName ?? to,
-    kind,
     replyTo,
     ctx.metadata,
   );
 
-  if (mode === 'push') {
-    const agent = ctx.agent ?? getAgent(to);
-    if (agent) {
-      if (!agent.tmux_target) {
-        return {
-          message_id: msg.message_id,
-          delivered: false,
-          queued: true,
-          error: 'pull-only agent: no tmux pane',
-        };
-      }
-      if (!(await paneExists(agent.tmux_target))) {
-        dbClearAgentPane(agent.name, agent.tmux_target);
-        return {
-          message_id: msg.message_id,
-          delivered: false,
-          queued: true,
-          error: `Agent pane ${agent.tmux_target} no longer exists. Agent may need to rejoin.`,
-        };
-      }
-      if (agent.agent_type === 'claude-code' || agent.agent_type === 'codex') {
-        if (!(await paneCommandLooksAlive(agent.tmux_target))) {
-          markAgentStale(agent.name);
-          return {
-            message_id: msg.message_id,
-            delivered: false,
-            queued: true,
-            error: `stale-target: pane ${agent.tmux_target} is not running an agent process`,
-          };
-        }
-      }
-      try {
-        await getQueue(agent.tmux_target, { role: agent.role }).enqueue({
-          type: 'paste',
-          text: fullText,
-          onQueueDrain: shouldArmLeaderGoalReminder(agent, senderAgent, ctx.metadata)
-            ? () => {
-                armLeaderGoalReminder(agent.name, agent.room_id);
-              }
-            : undefined,
-        });
-        incrementRoomReminderDispatchCount(roomName);
-        advancePushCursor(agent.name, msg.sequence);
-        return {
-          message_id: msg.message_id,
-          delivered: true,
-          queued: true,
-        };
-      } catch (e) {
-        return {
-          message_id: msg.message_id,
-          delivered: false,
-          queued: true,
-          error: e instanceof Error ? e.message : String(e),
-        };
-      }
-    } else {
+  const agent = ctx.agent ?? getAgent(to);
+  if (agent) {
+    if (!agent.tmux_target) {
       return {
         message_id: msg.message_id,
         delivered: false,
         queued: true,
-        error: 'Agent not found',
+        error: 'no tmux pane',
       };
     }
+    if (!(await paneExists(agent.tmux_target))) {
+      dbClearAgentPane(agent.name, agent.tmux_target);
+      return {
+        message_id: msg.message_id,
+        delivered: false,
+        queued: true,
+        error: `Agent pane ${agent.tmux_target} no longer exists. Agent may need to rejoin.`,
+      };
+    }
+    if (agent.agent_type === 'claude-code' || agent.agent_type === 'codex') {
+      if (!(await paneCommandLooksAlive(agent.tmux_target))) {
+        markAgentStale(agent.name);
+        return {
+          message_id: msg.message_id,
+          delivered: false,
+          queued: true,
+          error: `stale-target: pane ${agent.tmux_target} is not running an agent process`,
+        };
+      }
+    }
+    try {
+      await getQueue(agent.tmux_target, { role: agent.role }).enqueue({
+        type: 'paste',
+        text: fullText,
+        onQueueDrain: shouldArmLeaderGoalReminder(
+          agent,
+          senderAgent,
+          ctx.metadata,
+        )
+          ? () => {
+              armLeaderGoalReminder(agent.name, agent.room_id);
+            }
+          : undefined,
+      });
+      incrementRoomReminderDispatchCount(roomName);
+      advancePushCursor(agent.name, msg.sequence);
+      return {
+        message_id: msg.message_id,
+        delivered: true,
+        queued: true,
+      };
+    } catch (e) {
+      return {
+        message_id: msg.message_id,
+        delivered: false,
+        queued: true,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  } else {
+    return {
+      message_id: msg.message_id,
+      delivered: false,
+      queued: true,
+      error: 'Agent not found',
+    };
   }
-
-  return {
-    message_id: msg.message_id,
-    delivered: false,
-    queued: true,
-  };
 }
 
 export async function deliverMessage(
@@ -197,26 +180,20 @@ export async function deliverMessage(
   room: string,
   text: string,
   targetName: string | null,
-  mode: 'push' | 'pull',
-  kind: MessageKind = 'chat',
   replyTo?: number | null,
   metadata?: MessageDeliveryMetadata,
 ): Promise<DeliveryResult[]> {
   const roomObj = getRoom(room);
   const sender = roomObj
-    ? getAgentByRoomAndName(roomObj.id, senderName) ?? getAgent(senderName)
+    ? (getAgentByRoomAndName(roomObj.id, senderName) ?? getAgent(senderName))
     : getAgent(senderName);
 
-  if (
-    metadata?.batch_id &&
-    sender?.role === 'worker' &&
-    (kind === 'completion' || kind === 'error')
-  ) {
+  if (metadata?.batch_id && sender?.role === 'worker') {
     const batchTerminal = recordBatchWorkerTerminalMessage({
       batchId: metadata.batch_id,
       workerName: senderName,
       roomId: roomObj?.id,
-      terminalStatus: kind === 'error' ? 'error' : 'success',
+      terminalStatus: 'success',
       finalMessage: text,
     });
 
@@ -271,8 +248,6 @@ export async function deliverMessage(
         text,
         fullText: '',
         targetName,
-        mode,
-        kind,
         replyTo,
         metadata,
       },
@@ -289,8 +264,6 @@ export async function deliverMessage(
         text,
         fullText: '',
         targetName: null as string | null,
-        mode,
-        kind,
         replyTo,
         metadata,
         agent: m,
@@ -302,7 +275,7 @@ export async function deliverMessage(
     targets.map((ctx) => deliverToTarget(ctx)),
   );
 
-  const results: DeliveryResult[] = settled.map((r) =>
+  return settled.map((r) =>
     r.status === 'fulfilled'
       ? r.value
       : {
@@ -313,62 +286,6 @@ export async function deliverMessage(
             r.reason instanceof Error ? r.reason.message : String(r.reason),
         },
   );
-
-  // Auto-notify: if sender is worker and kind is notifiable, push summary to leaders
-  if (NOTIFY_KINDS.includes(kind) && !metadata?.batch_id) {
-    if (sender?.role === 'worker') {
-      const leaders = members.filter(
-        (m) => m.role === 'leader' && m.name !== senderName && m.tmux_target,
-      );
-
-      if (leaders.length > 0) {
-        const summary =
-          text.length > config.notifyMaxChars
-            ? `${text.slice(0, config.notifyMaxChars - 3)}...`
-            : text;
-        let notifyText = `[system@${room}]: ${senderName} ${kind}: "${summary}"`;
-
-        if (sender.tmux_target) {
-          const tail = await capturePaneTail(sender.tmux_target, 20).catch(
-            () => null,
-          );
-          if (tail) {
-            const sanitized = parsePaneInputSection(tail).sanitized;
-            const flatTail = sanitized
-              .split('\n')
-              .map((l) => l.trim())
-              .filter(Boolean)
-              .join(' | ');
-            if (flatTail) notifyText += ` [context: ${flatTail}]`;
-          }
-        }
-
-        // Push notifications to all leaders in parallel
-        await Promise.allSettled(
-          leaders.map(async (leader) => {
-            const target = leader.tmux_target;
-            if (!target) return;
-            await getQueue(target, { role: leader.role }).enqueue({
-              type: 'paste',
-              text: notifyText,
-              onQueueDrain: () => {
-                armLeaderGoalReminder(leader.name, leader.room_id);
-              },
-            });
-            const matchedResult = results.find((r) => r.message_id !== '-1');
-            if (matchedResult) {
-              const seq = parseInt(matchedResult.message_id, 10);
-              if (!Number.isNaN(seq)) {
-                advancePushCursor(leader.name, seq);
-              }
-            }
-          }),
-        );
-      }
-    }
-  }
-
-  return results;
 }
 
 export async function flushPushQueue(): Promise<void> {
@@ -425,45 +342,27 @@ export async function flushPushQueueForAgent(agent: Agent): Promise<number> {
     const sequence = Number(row.id);
     const from = String(row.sender);
     const text = String(row.text);
-    const kind = String(row.kind ?? 'chat');
-    const mode = row.mode ? String(row.mode) : null;
     const roomName = String(row.room_name);
-
-    let pushText: string | null = null;
-    if (mode === 'push') {
-      pushText = `[${from}@${roomName}]: ${text}`;
-    } else if (mode === 'pull' && NOTIFY_KINDS.includes(kind as any)) {
-      const summary =
-        text.length > config.notifyMaxChars
-          ? `${text.slice(0, config.notifyMaxChars - 3)}...`
-          : text;
-      pushText = `[system@${roomName}]: ${from} ${kind}: "${summary}"`;
-    }
-
-    if (pushText !== null) {
-      try {
-        await getQueue(pane, { role: agent.role }).enqueue({
-          type: 'paste',
-          text: pushText,
-          onQueueDrain:
-            lastLeaderArmableSequence !== null &&
-            sequence === lastLeaderArmableSequence
-              ? () => {
-                  armLeaderGoalReminder(agent.name, agent.room_id);
-                }
-              : undefined,
-        });
-        delivered++;
-      } catch (e) {
-        if (e instanceof PaneDeliveryError && e.code === 'PANE_BLOCKED_INPUT') {
-          break;
-        }
-        console.error(
-          `Failed to push message ${sequence} to ${agent.name}:`,
-          e,
-        );
+    const pushText = `[${from}@${roomName}]: ${text}`;
+    try {
+      await getQueue(pane, { role: agent.role }).enqueue({
+        type: 'paste',
+        text: pushText,
+        onQueueDrain:
+          lastLeaderArmableSequence !== null &&
+          sequence === lastLeaderArmableSequence
+            ? () => {
+                armLeaderGoalReminder(agent.name, agent.room_id);
+              }
+            : undefined,
+      });
+      delivered++;
+    } catch (e) {
+      if (e instanceof PaneDeliveryError && e.code === 'PANE_BLOCKED_INPUT') {
         break;
       }
+      console.error(`Failed to push message ${sequence} to ${agent.name}:`, e);
+      break;
     }
 
     advancePushCursor(agent.name, sequence);

@@ -92,14 +92,12 @@ describe('CLI formatter', () => {
           from: 'leader',
           room: 'crew',
           text: 'hello',
-          kind: 'chat',
           timestamp: '2026-04-12T10:00:00Z',
         },
         {
           from: 'wk-01',
           room: 'crew',
           text: 'done',
-          kind: 'completion',
           timestamp: '2026-04-12T10:01:00Z',
         },
       ],
@@ -142,7 +140,9 @@ describe('CLI formatter', () => {
     const out = formatResult('send', data);
     expect(out).toContain('msg:42 delivered');
     expect(out).toContain('Members:');
-    expect(out).toContain('  wk-01 worker idle pane:(none) input-block:persist');
+    expect(out).toContain(
+      '  wk-01 worker idle pane:(none) input-block:persist',
+    );
     expect(out).toContain('  lead leader idle pane:(none) input-block:off');
   });
 

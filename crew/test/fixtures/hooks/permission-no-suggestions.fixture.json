@@ -1,0 +1,35 @@
+{
+  "name": "permission-no-suggestions",
+  "description": "PermissionRequest without suggestions still returns allow",
+  "seed": {
+    "room": {
+      "name": "dev",
+      "path": "/tmp/test-crew"
+    },
+    "agents": [
+      {
+        "name": "w1",
+        "pane": "%42",
+        "role": "worker"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "PermissionRequest",
+      "pane": "%42",
+      "expect": {
+        "stdout_path": [
+          {
+            "path": "hookSpecificOutput.decision.behavior",
+            "value": "allow"
+          },
+          {
+            "path": "hookSpecificOutput.hookEventName",
+            "value": "PermissionRequest"
+          }
+        ]
+      }
+    }
+  ]
+}

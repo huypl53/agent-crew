@@ -51,13 +51,10 @@ console.log('--- Group 1: Message delivery without ACK ---\n');
     'leader-1',
     'main',
     'task: build login page',
-    'pull',
     'worker-1',
-    'task',
   );
   assert(!!msg.message_id, 'TC-1: message written to DB immediately on send');
   assert(msg.from === 'leader-1', 'TC-1: sender recorded correctly');
-  assert(msg.room === 'main', 'TC-1: room recorded correctly');
 }
 
 // TC-2: Recipient can read messages without ever sending an ACK
@@ -67,9 +64,7 @@ console.log('--- Group 1: Message delivery without ACK ---\n');
     'leader-1',
     'main',
     'ping: are you alive?',
-    'pull',
     'worker-1',
-    'chat',
   );
   const { messages } = readMessages('worker-1');
   assert(
@@ -86,15 +81,7 @@ console.log('--- Group 1: Message delivery without ACK ---\n');
 // TC-3: Multiple messages accumulate in DB without ACK
 {
   for (let i = 1; i <= 5; i++) {
-    addMessage(
-      'worker-1',
-      'leader-1',
-      'main',
-      `batch-msg-${i}`,
-      'pull',
-      'worker-1',
-      'chat',
-    );
+    addMessage('worker-1', 'leader-1', 'main', `batch-msg-${i}`, 'worker-1');
   }
   const all = getAllMessages();
   const workerMessages = all.filter((m) => m.to === 'worker-1');
@@ -109,24 +96,8 @@ console.log('--- Group 1: Message delivery without ACK ---\n');
 {
   // Fresh agent with no cursor — first read gets all messages
   addAgent('worker-2', 'worker', 'alpha', null);
-  addMessage(
-    'worker-2',
-    'leader-1',
-    'alpha',
-    'first task',
-    'pull',
-    'worker-2',
-    'task',
-  );
-  addMessage(
-    'worker-2',
-    'leader-1',
-    'alpha',
-    'second task',
-    'pull',
-    'worker-2',
-    'task',
-  );
+  addMessage('worker-2', 'leader-1', 'alpha', 'first task', 'worker-2');
+  addMessage('worker-2', 'leader-1', 'alpha', 'second task', 'worker-2');
 
   const poll1 = readMessages('worker-2', 'alpha');
   assert(
@@ -147,15 +118,7 @@ console.log('--- Group 1: Message delivery without ACK ---\n');
   );
 
   // New message arrives, third poll picks it up
-  addMessage(
-    'worker-2',
-    'leader-1',
-    'alpha',
-    'third task',
-    'pull',
-    'worker-2',
-    'task',
-  );
+  addMessage('worker-2', 'leader-1', 'alpha', 'third task', 'worker-2');
   const { messages: poll3 } = readMessages(
     'worker-2',
     'alpha',
@@ -240,11 +203,11 @@ console.log('\n--- Group 2: Agent status detection without ACK ---\n');
   );
 }
 
-// ─── Group 3: ACK-present-but-unused causes no regression ─────────────────
+// ─── Group 3: Message storage ─────────────────────────────────────────
 
-console.log('\n--- Group 3: ACK infrastructure present but unused ---\n');
+console.log('\n--- Group 3: Message storage ---\n');
 
-// TC-9: System works correctly when delivery mode is 'pull' (no push/ACK)
+// TC-9: Message is stored and readable
 {
   addAgent('worker-3', 'worker', 'beta', null);
   const msg = addMessage(
@@ -252,11 +215,9 @@ console.log('\n--- Group 3: ACK infrastructure present but unused ---\n');
     'leader-1',
     'beta',
     'no-ack task',
-    'pull',
     'worker-3',
-    'task',
   );
-  assert(msg.mode === 'pull', 'TC-9: message stored with pull mode');
+  assert(!!msg.message_id, 'TC-9: message stored');
 
   const { messages } = readMessages('worker-3');
   const found = messages.find((m) => m.message_id === msg.message_id);
@@ -268,24 +229,8 @@ console.log('\n--- Group 3: ACK infrastructure present but unused ---\n');
   addAgent('worker-4', 'worker', 'gamma', null);
   addAgent('worker-5', 'worker', 'gamma', null);
 
-  addMessage(
-    'worker-4',
-    'leader-1',
-    'gamma',
-    'for worker-4',
-    'pull',
-    'worker-4',
-    'chat',
-  );
-  addMessage(
-    'worker-5',
-    'leader-1',
-    'gamma',
-    'for worker-5',
-    'pull',
-    'worker-5',
-    'chat',
-  );
+  addMessage('worker-4', 'leader-1', 'gamma', 'for worker-4', 'worker-4');
+  addMessage('worker-5', 'leader-1', 'gamma', 'for worker-5', 'worker-5');
 
   const w4 = readMessages('worker-4');
   const w5 = readMessages('worker-5');

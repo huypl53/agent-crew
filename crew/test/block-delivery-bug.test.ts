@@ -7,9 +7,9 @@ import {
   test,
 } from 'bun:test';
 import { closeDb, initDb } from '../src/state/db.ts';
+import { setAgentInputBlockMode } from '../src/state/index.ts';
 import { handleJoinRoom } from '../src/tools/join-room.ts';
 import { handleSendMessage } from '../src/tools/send-message.ts';
-import { setAgentInputBlockMode } from '../src/state/index.ts';
 import {
   captureFromPane,
   cleanupAllTestSessions,
@@ -64,8 +64,6 @@ describe('Block Delivery Bug Reproduction', () => {
       name: 'worker-1',
       text: 'Hello Leader',
       to: 'leader-1',
-      mode: 'pull',
-      kind: 'completion',
     });
 
     console.log('SendMessage Result:', JSON.stringify(result));
@@ -98,7 +96,9 @@ describe('Block Delivery Bug Reproduction', () => {
     setAgentInputBlockMode('leader-1', 'persist');
 
     // 3. Worker stops (sends Stop hook event)
-    const { processHookEventInput } = await import('../src/tools/hook-event.ts');
+    const { processHookEventInput } = await import(
+      '../src/tools/hook-event.ts'
+    );
     await processHookEventInput(
       JSON.stringify({
         hook_event_name: 'Stop',
@@ -144,7 +144,9 @@ describe('Block Delivery Bug Reproduction', () => {
     });
 
     // 4. Worker responds (fires Stop hook)
-    const { processHookEventInput } = await import('../src/tools/hook-event.ts');
+    const { processHookEventInput } = await import(
+      '../src/tools/hook-event.ts'
+    );
     await processHookEventInput(
       JSON.stringify({
         hook_event_name: 'Stop',

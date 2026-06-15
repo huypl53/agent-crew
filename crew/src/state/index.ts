@@ -7,7 +7,6 @@ import type {
   InputBlockMode,
   Message,
   MessageDeliveryMetadata,
-  MessageKind,
   PartyResponse,
   PartyState,
   PricingEntry,
@@ -19,7 +18,7 @@ import type {
   TokenUsage,
 } from '../shared/types.ts';
 import { isPaneDead, paneCommandLooksAlive } from '../tmux/index.ts';
-import { closeDb, getDb, initDb } from './db.ts';
+import { renderBatchFinalMessage } from './batch-render.ts';
 import {
   areAllBatchWorkersTerminal,
   completeBatchWorker,
@@ -39,7 +38,7 @@ import {
   recordBatchWorkerTerminalMessage,
   renderBatchPendingHint,
 } from './batch-state.ts';
-import { renderBatchFinalMessage } from './batch-render.ts';
+import { closeDb, getDb, initDb } from './db.ts';
 import {
   armLeaderGoalReminder,
   canonicalizeGoalIdentity,
@@ -52,27 +51,21 @@ import {
   unsetGoal,
   updateGoalDescription,
 } from './goal-state.ts';
-export type { GoalRecord } from './goal-state.ts';
-export {
-  armLeaderGoalReminder,
-  canonicalizeGoalIdentity,
-  completeGoal,
-  consumeLeaderGoalReminder,
-  getGoal,
-  getGoalByAgent,
-  setGoal,
-  tickGoalTurnCount,
-  unsetGoal,
-  updateGoalDescription,
-};
 
+export type { GoalRecord } from './goal-state.ts';
 // Re-export for callers
 export {
   areAllBatchWorkersTerminal,
+  armLeaderGoalReminder,
+  canonicalizeGoalIdentity,
   closeDb,
   completeBatchWorker,
+  completeGoal,
+  consumeLeaderGoalReminder,
   createMessageBatch,
   getBatchWorkers,
+  getGoal,
+  getGoalByAgent,
   getLatestBatchAssociationForWorker,
   getLatestBatchForWorker,
   getMessageBatch,
@@ -87,6 +80,10 @@ export {
   markBatchWorkerSent,
   recordBatchWorkerTerminalMessage,
   renderBatchPendingHint,
+  setGoal,
+  tickGoalTurnCount,
+  unsetGoal,
+  updateGoalDescription,
 };
 
 // --- Helpers ---
@@ -156,10 +153,8 @@ function rowToMessage(row: Record<string, unknown>): Message {
     room_id: row.room_id as number,
     to: row.recipient as string | null,
     text: row.text as string,
-    kind: row.kind as MessageKind,
     timestamp: row.timestamp as string,
     sequence: row.id as number,
-    mode: row.mode as 'push' | 'pull',
     reply_to: (row.reply_to as number | null) ?? null,
     batch_id: (row.batch_id as string | null) ?? null,
     worker_name: (row.worker_name as string | null) ?? null,
@@ -711,9 +706,7 @@ export function addMessage(
   from: string,
   room: string,
   text: string,
-  mode: 'push' | 'pull',
   targetName: string | null,
-  kind: MessageKind = 'chat',
   replyTo?: number | null,
   _metadata?: MessageDeliveryMetadata,
 ): Message {
@@ -726,14 +719,12 @@ export function addMessage(
 
   const insert = db.transaction(() => {
     const stmt = db.run(
-      'INSERT INTO messages (room_id, sender, recipient, text, kind, mode, timestamp, reply_to, batch_id, worker_name, prompt_file, manifest_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO messages (room_id, sender, recipient, text, timestamp, reply_to, batch_id, worker_name, prompt_file, manifest_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         roomObj.id,
         from,
         targetName,
         text,
-        kind,
-        mode,
         ts,
         replyTo ?? null,
         _metadata?.batch_id ?? null,
@@ -829,7 +820,6 @@ export function advancePushCursor(agentName: string, sequence: number): void {
 export function readRoomMessages(
   agentName: string,
   room: string,
-  kinds?: string[],
   limit = 50,
 ): { messages: Message[]; next_sequence: number } {
   const db = getDb();
@@ -846,14 +836,9 @@ export function readRoomMessages(
 
   // Return messages addressed to this agent AND broadcast messages (recipient IS NULL)
   // within this room. Broadcasts include stop-hook completion messages from workers.
-  let sql =
-    'SELECT * FROM messages WHERE room_id = ? AND id > ? AND (recipient = ? OR (recipient IS NULL AND sender != ?))';
+  const sql =
+    'SELECT * FROM messages WHERE room_id = ? AND id > ? AND (recipient = ? OR (recipient IS NULL AND sender != ?)) ORDER BY id';
   const params: unknown[] = [roomObj.id, cursor, agentName, agentName];
-  if (kinds && kinds.length > 0) {
-    sql += ` AND kind IN (${kinds.map(() => '?').join(',')})`;
-    params.push(...kinds);
-  }
-  sql += ' ORDER BY id';
   const allMsgs = (
     db.query(sql).all(...params) as Record<string, unknown>[]
   ).map(rowToMessage);
@@ -1134,7 +1119,7 @@ export function addHookEvent(
   const newStatus: 'idle' | 'busy' = eventType === 'Stop' ? 'idle' : 'busy';
   const resolvedAgent =
     roomId !== undefined
-      ? getAgentByRoomAndName(roomId, agentName) ?? getAgent(agentName)
+      ? (getAgentByRoomAndName(roomId, agentName) ?? getAgent(agentName))
       : getAgent(agentName);
   if (resolvedAgent) {
     db.run('UPDATE agents SET status = ? WHERE id = ?', [
@@ -1161,7 +1146,7 @@ function capturePartyResponseIfActive(
 ): void {
   const agent =
     roomId !== undefined
-      ? getAgentByRoomAndName(roomId, agentName) ?? getAgent(agentName)
+      ? (getAgentByRoomAndName(roomId, agentName) ?? getAgent(agentName))
       : getAgent(agentName);
   if (!agent || agent.role !== 'worker') return;
 
@@ -1215,16 +1200,9 @@ export async function queueBatchFinalDelivery(
   if (!room) return;
 
   const { deliverMessage } = await import('../delivery/index.ts');
-  await deliverMessage(
-    'system',
-    room.name,
-    rendered,
-    leaderName,
-    'push',
-    'completion',
-    undefined,
-    { batch_id: batchId },
-  );
+  await deliverMessage('system', room.name, rendered, leaderName, undefined, {
+    batch_id: batchId,
+  });
 }
 
 /**
@@ -1239,7 +1217,7 @@ function notifyLeadersOnWorkerStop(
 ): void {
   const agent =
     roomId !== undefined
-      ? getAgentByRoomAndName(roomId, agentName) ?? getAgent(agentName)
+      ? (getAgentByRoomAndName(roomId, agentName) ?? getAgent(agentName))
       : getAgent(agentName);
   if (!agent || agent.role !== 'worker') return;
 
@@ -1326,9 +1304,7 @@ function notifyLeadersOnWorkerStop(
     agentName,
     roomName,
     response,
-    'push',
     null, // broadcast to room
-    'completion',
   );
 
   // Deliver a CAPPED preview to leaders' tmux panes via the shared queue so

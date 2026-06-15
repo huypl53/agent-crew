@@ -1,8 +1,8 @@
-import { getPaneStatus } from "../shared/pane-status.ts";
-import { logServer } from "../shared/server-log.ts";
-import type { Agent, AgentStatus, ToolResult } from "../shared/types.ts";
-import { err, ok } from "../shared/types.ts";
-import { getDb, initDb } from "../state/db.ts";
+import { getPaneStatus } from '../shared/pane-status.ts';
+import { logServer } from '../shared/server-log.ts';
+import type { Agent, AgentStatus, ToolResult } from '../shared/types.ts';
+import { err, ok } from '../shared/types.ts';
+import { getDb, initDb } from '../state/db.ts';
 import {
   getAgent,
   getAgentByPane,
@@ -14,10 +14,10 @@ import {
   getLatestHookEvent,
   getRoomMembers,
   touchAgentActivity,
-} from "../state/index.ts";
-import { getContextWindowForPane } from "../tokens/claude-code.ts";
-import type { ContextWindowInfo } from "../tokens/claude-code.ts";
-import { isPaneDead } from "../tmux/index.ts";
+} from '../state/index.ts';
+import { isPaneDead } from '../tmux/index.ts';
+import type { ContextWindowInfo } from '../tokens/claude-code.ts';
+import { getContextWindowForPane } from '../tokens/claude-code.ts';
 
 interface GetStatusParams {
   agent_name?: string;
@@ -40,7 +40,10 @@ export interface WorkerSummary {
 export function countWorkerStatuses(
   results: PromiseSettledResult<AgentStatus>[],
 ): WorkerSummary {
-  let idle = 0, busy = 0, dead = 0, unknown = 0;
+  let idle = 0,
+    busy = 0,
+    dead = 0,
+    unknown = 0;
   for (const r of results) {
     if (r.status === 'fulfilled') {
       if (r.value === 'idle') idle++;
@@ -78,17 +81,17 @@ export function getPendingMessageCount(
 ): number {
   try {
     const db = getDb();
-    // Use the higher of pull cursor and push cursor — agents may consume via either mode
+    // Use the higher of pull cursor and push cursor
     const pullRow = db
-      .query("SELECT last_seq FROM cursors WHERE agent_id = ?")
+      .query('SELECT last_seq FROM cursors WHERE agent_id = ?')
       .get(agentId) as { last_seq: number } | null;
     const pushRow = db
-      .query("SELECT last_seq FROM push_cursors WHERE agent_id = ?")
+      .query('SELECT last_seq FROM push_cursors WHERE agent_id = ?')
       .get(agentId) as { last_seq: number } | null;
     const cursor = Math.max(pullRow?.last_seq ?? 0, pushRow?.last_seq ?? 0);
     const row = db
       .query(
-        "SELECT COUNT(*) as cnt FROM messages WHERE recipient = ? AND id > ?",
+        'SELECT COUNT(*) as cnt FROM messages WHERE recipient = ? AND id > ?',
       )
       .get(agentName, cursor) as { cnt: number } | null;
     return row?.cnt ?? 0;
@@ -102,7 +105,7 @@ export function getLastActivity(agentName: string): string | null {
     const db = getDb();
     const row = db
       .query(
-        "SELECT last_activity FROM agents WHERE name = ? ORDER BY id DESC LIMIT 1",
+        'SELECT last_activity FROM agents WHERE name = ? ORDER BY id DESC LIMIT 1',
       )
       .get(agentName) as { last_activity: string | null } | null;
     return row?.last_activity ?? null;
@@ -117,12 +120,12 @@ export function formatAgo(isoString: string | null): string | null {
     // Normalize to parseable ISO 8601.
     // Sources: SQLite datetime() → "YYYY-MM-DD HH:MM:SS" (space, no TZ)
     //          JS toISOString()  → "YYYY-MM-DDTHH:MM:SS.sssZ" (already valid)
-    let normalized = isoString.replace(" ", "T"); // SQLite → ISO separator
-    if (!normalized.endsWith("Z") && !normalized.includes("+")) {
-      normalized += "Z"; // Add UTC suffix if missing
+    let normalized = isoString.replace(' ', 'T'); // SQLite → ISO separator
+    if (!normalized.endsWith('Z') && !normalized.includes('+')) {
+      normalized += 'Z'; // Add UTC suffix if missing
     }
     const ms = Date.now() - new Date(normalized).getTime();
-    if (ms < 1000) return "just now";
+    if (ms < 1000) return 'just now';
     if (ms < 60_000) return `${Math.floor(ms / 1000)}s ago`;
     if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
     return `${Math.floor(ms / 3_600_000)}h ago`;
@@ -135,8 +138,8 @@ export function formatDashboard(data: DashboardData): string {
   const W = 42; // inner width (excluding │...│)
   const lines: string[] = [];
 
-  const header = `${data.name} @ ${data.room}${data.tmux_target ? ` pane:${data.tmux_target}` : ""}`;
-  lines.push(`┌─ ${header} ${"─".repeat(Math.max(1, W - header.length - 1))}┐`);
+  const header = `${data.name} @ ${data.room}${data.tmux_target ? ` pane:${data.tmux_target}` : ''}`;
+  lines.push(`┌─ ${header} ${'─'.repeat(Math.max(1, W - header.length - 1))}┐`);
 
   const statusBlock = `Status: ${data.status} │ Block: ${data.input_block_mode}`;
   lines.push(`│ ${statusBlock.padEnd(W)}│`);
@@ -148,9 +151,10 @@ export function formatDashboard(data: DashboardData): string {
 
   if (data.goal && data.goal.status === 'active') {
     const maxDescLen = W - 16; // "Goal: ... (NNNt)" overhead
-    const desc = data.goal.description.length > maxDescLen
-      ? data.goal.description.slice(0, maxDescLen - 1) + '…'
-      : data.goal.description;
+    const desc =
+      data.goal.description.length > maxDescLen
+        ? data.goal.description.slice(0, maxDescLen - 1) + '…'
+        : data.goal.description;
     const goalLine = `Goal: ${desc} (${data.goal.turn_count}t)`;
     lines.push(`│ ${goalLine.padEnd(W)}│`);
   }
@@ -175,8 +179,8 @@ export function formatDashboard(data: DashboardData): string {
     lines.push(`│ ${actLine.padEnd(W)}│`);
   }
 
-  lines.push(`└${"─".repeat(W + 2)}┘`);
-  return lines.join("\n");
+  lines.push(`└${'─'.repeat(W + 2)}┘`);
+  return lines.join('\n');
 }
 
 // --- Inline status bar (--self --inline) ---
@@ -185,27 +189,27 @@ export function formatDashboard(data: DashboardData): string {
 export function formatInline(data: DashboardData): string {
   const parts: string[] = [];
 
-  let paneStatus = "⬡ pane:";
+  let paneStatus = '⬡ pane:';
   if (data.tmux_target) {
     paneStatus += `${data.tmux_target}`;
   }
   parts.push(paneStatus);
 
-  let blockPart = `⬣ block:${data.input_block_mode || "None"}`;
+  let blockPart = `⬣ block:${data.input_block_mode || 'None'}`;
   if (data.pending_messages > 0) {
     blockPart += ` (${data.pending_messages}q)`;
   }
   parts.push(blockPart);
 
-  let hintMsg = "💡 hint:";
+  let hintMsg = '💡 hint:';
   if (data.hint) {
     const truncated =
       data.hint.message.length > 40
-        ? data.hint.message.slice(0, 37) + "…"
+        ? data.hint.message.slice(0, 37) + '…'
         : data.hint.message;
     hintMsg += `"${truncated}"`;
   } else {
-    hintMsg += "(No hint)";
+    hintMsg += '(No hint)';
   }
 
   if (data.workers) {
@@ -231,13 +235,16 @@ export async function resolveAgentLiveStatus(
 ): Promise<AgentStatus> {
   const dead = await isPaneDead(agent.tmux_target);
   if (dead) {
-    return "dead";
+    return 'dead';
   }
 
   try {
     let result = await getPaneStatus(agent.tmux_target);
-    if (result.status === "unknown") {
-      await Bun.sleep(3500);
+    if (result.status === 'unknown') {
+      const retryMs = Number(process.env.CREW_STATUS_RETRY_MS);
+      await Bun.sleep(
+        Number.isFinite(retryMs) && retryMs >= 0 ? retryMs : 3500,
+      );
       result = await getPaneStatus(agent.tmux_target);
     }
     if (result.contentChanged) {
@@ -246,10 +253,10 @@ export async function resolveAgentLiveStatus(
     return result.status;
   } catch (e) {
     logServer(
-      "ERROR",
+      'ERROR',
       `getPaneStatus failed for ${agent.name} (pane ${agent.tmux_target}): ${e instanceof Error ? e.message : String(e)}`,
     );
-    return "unknown";
+    return 'unknown';
   }
 }
 
@@ -277,7 +284,7 @@ export async function handleGetStatus(
     const targetName = params.agent_name ?? params.name;
 
     if (!targetName) {
-      return err("Missing required param: agent_name, name, or session");
+      return err('Missing required param: agent_name, name, or session');
     }
 
     agent = getAgent(targetName);
@@ -295,7 +302,7 @@ export async function handleGetStatus(
     const lastActivityAgo = formatAgo(getLastActivity(agent.name));
 
     let workers: WorkerSummary | null = null;
-    if (agent.role === "leader") {
+    if (agent.role === 'leader') {
       const members = getRoomMembers(agent.room_id).filter(
         (m) => m.name !== agent.name,
       );
@@ -358,10 +365,10 @@ async function handleSelfStatus(params: GetStatusParams): Promise<ToolResult> {
     agent = getAgentByPane(pane);
     if (!agent)
       return err(
-        "No registered agent found for current pane. Pass --name explicitly.",
+        'No registered agent found for current pane. Pass --name explicitly.',
       );
   } else {
-    return err("Not running inside a tmux pane. Pass --name explicitly.");
+    return err('Not running inside a tmux pane. Pass --name explicitly.');
   }
 
   initDb();
@@ -390,7 +397,7 @@ async function handleSelfStatus(params: GetStatusParams): Promise<ToolResult> {
 
   // Worker summary (leaders only)
   let workers: WorkerSummary | null = null;
-  if (agent.role === "leader") {
+  if (agent.role === 'leader') {
     const members = getRoomMembers(agent.room_id).filter(
       (m) => m.name !== agent?.name,
     );
@@ -404,11 +411,19 @@ async function handleSelfStatus(params: GetStatusParams): Promise<ToolResult> {
   const lastActivityAgo = formatAgo(getLastActivity(agent.name));
 
   // Goal: lookup active goal for this agent
-  let goalData: { description: string; status: string; turn_count: number } | null = null;
+  let goalData: {
+    description: string;
+    status: string;
+    turn_count: number;
+  } | null = null;
   try {
     const goal = getGoalByAgent(agent.name, agent.room_id);
     if (goal && goal.status === 'active') {
-      goalData = { description: goal.description, status: goal.status, turn_count: goal.turn_count };
+      goalData = {
+        description: goal.description,
+        status: goal.status,
+        turn_count: goal.turn_count,
+      };
     }
   } catch {
     // fail-open

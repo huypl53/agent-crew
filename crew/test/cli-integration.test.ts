@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -21,7 +21,10 @@ async function runCli(
   return { out, err, exitCode: proc.exitCode };
 }
 
-async function createPaneSession(): Promise<{ session: string; panes: string[] }> {
+async function createPaneSession(): Promise<{
+  session: string;
+  panes: string[];
+}> {
   const socket = process.env.CREW_TMUX_SOCKET;
   const socketArgs = socket ? ['-L', socket] : [];
   const create = Bun.spawn(
@@ -34,7 +37,7 @@ async function createPaneSession(): Promise<{ session: string; panes: string[] }
       CLI_CWD,
       '-P',
       '-F',
-      '#{session_name}\t#{pane_id}',
+      '#{session_name}|#{pane_id}',
     ],
     {
       cwd: CLI_CWD,
@@ -44,7 +47,7 @@ async function createPaneSession(): Promise<{ session: string; panes: string[] }
   );
   const created = (await new Response(create.stdout).text()).trim();
   await create.exited;
-  const [session, firstPane] = created.split('\t');
+  const [session, firstPane] = created.split('|');
 
   const split = Bun.spawn(
     [
@@ -75,11 +78,14 @@ async function createPaneSession(): Promise<{ session: string; panes: string[] }
 async function killPaneSession(session: string): Promise<void> {
   const socket = process.env.CREW_TMUX_SOCKET;
   const socketArgs = socket ? ['-L', socket] : [];
-  const proc = Bun.spawn(['tmux', ...socketArgs, 'kill-session', '-t', session], {
-    cwd: CLI_CWD,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
+  const proc = Bun.spawn(
+    ['tmux', ...socketArgs, 'kill-session', '-t', session],
+    {
+      cwd: CLI_CWD,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
   await proc.exited;
 }
 
@@ -132,7 +138,12 @@ describe('CLI integration', () => {
         { CREW_STATE_DIR: stateDir },
       );
       if (result.exitCode !== 0) {
-        console.error('join leader failed stderr:', result.err, 'stdout:', result.out);
+        console.error(
+          'join leader failed stderr:',
+          result.err,
+          'stdout:',
+          result.out,
+        );
       }
       expect(result.exitCode).toBe(0);
 
@@ -151,7 +162,12 @@ describe('CLI integration', () => {
         { CREW_STATE_DIR: stateDir },
       );
       if (result.exitCode !== 0) {
-        console.error('join worker failed stderr:', result.err, 'stdout:', result.out);
+        console.error(
+          'join worker failed stderr:',
+          result.err,
+          'stdout:',
+          result.out,
+        );
       }
       expect(result.exitCode).toBe(0);
 
@@ -166,8 +182,6 @@ describe('CLI integration', () => {
           `${relDir.split('/').pop()}/task.txt`,
           '--name',
           'lead-1',
-          '--mode',
-          'pull',
         ],
         { CREW_STATE_DIR: stateDir },
       );

@@ -1,0 +1,45 @@
+{
+  "name": "rapid-stop-then-submit",
+  "description": "Stop followed immediately by UserPromptSubmit (race condition test)",
+  "seed": {
+    "room": {
+      "name": "dev",
+      "path": "/tmp/test-crew"
+    },
+    "agents": [
+      {
+        "name": "w1",
+        "pane": "%42",
+        "role": "worker"
+      }
+    ],
+    "goals": [
+      {
+        "agent": "w1",
+        "description": "Fix the login bug"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "Stop",
+      "pane": "%42",
+      "expect": {
+        "stdout": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%42",
+      "delay": 50,
+      "expect": {
+        "stdout": {
+          "ok": true,
+          "decision": "allow"
+        }
+      }
+    }
+  ]
+}

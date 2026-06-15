@@ -54,15 +54,7 @@ export async function handleInterruptWorker(
   // Record and send system notification to worker
   const notifyBody = `Your current assignment was interrupted by ${name}`;
   const notifyText = `[system@${room}]: ${notifyBody}`;
-  addMessage(
-    worker_name,
-    'system',
-    room,
-    notifyBody,
-    'push',
-    worker_name,
-    'status',
-  );
+  addMessage(worker_name, 'system', room, notifyBody, worker_name);
   await getQueue(worker.tmux_target).enqueue({
     type: 'paste',
     text: notifyText,
