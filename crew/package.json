@@ -12,7 +12,8 @@
     "postinstall": "bash scripts/patch-string-width.sh",
     "lint": "bunx biome check src/ test/ scripts/",
     "lint:fix": "bunx biome check --write src/ test/ scripts/",
-    "format": "bunx biome format --write src/ test/ scripts/"
+    "format": "bunx biome format --write src/ test/ scripts/",
+    "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "latest"

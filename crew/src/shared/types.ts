@@ -93,7 +93,6 @@ export type MessageBatchWorkerDispatchStatus = 'pending' | 'sent' | 'failed';
 export type MessageBatchWorkerTerminalStatus =
   | 'running'
   | 'success'
-  | 'error'
   | 'interrupted';
 export type MessageBatchWorkerTerminalOutcome = Exclude<
   MessageBatchWorkerTerminalStatus,

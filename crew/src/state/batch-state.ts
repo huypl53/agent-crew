@@ -50,7 +50,7 @@ function parseDispatchStatus(value: unknown): MessageBatchWorkerDispatchStatus {
 }
 
 function parseTerminalStatus(value: unknown): MessageBatchWorkerTerminalStatus {
-  return value === 'success' || value === 'error' || value === 'interrupted'
+  return value === 'success' || value === 'interrupted'
     ? value
     : 'running';
 }
@@ -167,7 +167,6 @@ function isTerminalOutcome(
 ): terminalStatus is MessageBatchWorkerTerminalOutcome {
   return (
     terminalStatus === 'success' ||
-    terminalStatus === 'error' ||
     terminalStatus === 'interrupted'
   );
 }

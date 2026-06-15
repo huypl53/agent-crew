@@ -72,7 +72,9 @@ const HELP_GROUPS: HelpGroup[] = [
         name: 'send',
         usage: '--room <name> (--text <t> | --file <f>)',
         desc: 'Send a message',
-        cont: ['[--to <agent>] [--kind <kind>] [--mode <mode>]'],
+        cont: [
+          '[--to <agent>] [--name <self>] [--reply-to <id>] [--sender-pane <pane>]',
+        ],
       },
       {
         name: 'send-batch',
