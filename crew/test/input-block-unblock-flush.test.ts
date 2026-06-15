@@ -66,7 +66,6 @@ describe('Input Block Unblock Auto-Flush', () => {
       text: 'AutoFlushTest-QueuedMessage',
       to: 'leader-1',
       mode: 'push',
-      kind: 'completion',
     });
 
     // Wait a bit to ensure it's NOT delivered while blocked
@@ -166,7 +165,6 @@ describe('Input Block Unblock Auto-Flush', () => {
       text: 'FlushCountTest',
       to: 'leader-1',
       mode: 'push',
-      kind: 'completion',
     });
 
     // 4. Unblock — should report flushed_messages

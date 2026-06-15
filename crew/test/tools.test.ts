@@ -135,23 +135,26 @@ describe('MCP tools', () => {
       expect(data.role).toBe('leader');
     });
 
-    test.serial('adds suffix for duplicate name in same room with different pane', async () => {
-      await handleJoinRoom({
-        room: 'company',
-        role: 'leader',
-        name: 'leader-1',
-        tmux_target: testPaneA,
-      });
-      const result = await handleJoinRoom({
-        room: 'company',
-        role: 'worker',
-        name: 'leader-1',
-        tmux_target: testPaneB,
-      });
-      expect(result.isError).toBeUndefined();
-      const data = JSON.parse(result.content[0]?.text);
-      expect(data.name).toMatch(/^leader-1-[a-z0-9]{4}$/);
-    });
+    test.serial(
+      'adds suffix for duplicate name in same room with different pane',
+      async () => {
+        await handleJoinRoom({
+          room: 'company',
+          role: 'leader',
+          name: 'leader-1',
+          tmux_target: testPaneA,
+        });
+        const result = await handleJoinRoom({
+          room: 'company',
+          role: 'worker',
+          name: 'leader-1',
+          tmux_target: testPaneB,
+        });
+        expect(result.isError).toBeUndefined();
+        const data = JSON.parse(result.content[0]?.text);
+        expect(data.name).toMatch(/^leader-1-[a-z0-9]{4}$/);
+      },
+    );
 
     test.serial('allows same agent in multiple rooms', async () => {
       await handleJoinRoom({
@@ -291,64 +294,70 @@ describe('MCP tools', () => {
   });
 
   describe('input_block', () => {
-    test.serial('auto-detects current pane and clears armed mode on next submit', async () => {
-      await handleJoinRoom({
-        room: 'company',
-        role: 'worker',
-        name: 'worker-1',
-        tmux_target: testPaneA,
-      });
+    test.serial(
+      'auto-detects current pane and clears armed mode on next submit',
+      async () => {
+        await handleJoinRoom({
+          room: 'company',
+          role: 'worker',
+          name: 'worker-1',
+          tmux_target: testPaneA,
+        });
 
-      process.env.TMUX_PANE = testPaneA;
-      const onResult = await handleInputBlock({ subcommand: 'on' });
-      const onData = JSON.parse(onResult.content[0]!.text);
-      expect(onData.input_block_mode).toBe('armed');
+        process.env.TMUX_PANE = testPaneA;
+        const onResult = await handleInputBlock({ subcommand: 'on' });
+        const onData = JSON.parse(onResult.content[0]!.text);
+        expect(onData.input_block_mode).toBe('armed');
 
-      await processHookEventInput(
-        JSON.stringify({
-          hook_event_name: 'UserPromptSubmit',
-          session_id: 'sess-armed',
-        }),
-        testPaneA,
-      );
+        await processHookEventInput(
+          JSON.stringify({
+            hook_event_name: 'UserPromptSubmit',
+            session_id: 'sess-armed',
+          }),
+          testPaneA,
+        );
 
-      const statusResult = await handleInputBlock({ subcommand: 'status' });
-      const statusData = JSON.parse(statusResult.content[0]!.text);
-      expect(statusData.input_block_mode).toBe('off');
-    });
+        const statusResult = await handleInputBlock({ subcommand: 'status' });
+        const statusData = JSON.parse(statusResult.content[0]!.text);
+        expect(statusData.input_block_mode).toBe('off');
+      },
+    );
 
-    test.serial('persistent mode survives submit until manual off', async () => {
-      await handleJoinRoom({
-        room: 'company',
-        role: 'worker',
-        name: 'worker-1',
-        tmux_target: testPaneA,
-      });
+    test.serial(
+      'persistent mode survives submit until manual off',
+      async () => {
+        await handleJoinRoom({
+          room: 'company',
+          role: 'worker',
+          name: 'worker-1',
+          tmux_target: testPaneA,
+        });
 
-      process.env.TMUX_PANE = testPaneA;
-      const onResult = await handleInputBlock({
-        subcommand: 'on',
-        persist: true,
-      });
-      const onData = JSON.parse(onResult.content[0]!.text);
-      expect(onData.input_block_mode).toBe('persist');
+        process.env.TMUX_PANE = testPaneA;
+        const onResult = await handleInputBlock({
+          subcommand: 'on',
+          persist: true,
+        });
+        const onData = JSON.parse(onResult.content[0]!.text);
+        expect(onData.input_block_mode).toBe('persist');
 
-      await processHookEventInput(
-        JSON.stringify({
-          hook_event_name: 'UserPromptSubmit',
-          session_id: 'sess-persist',
-        }),
-        testPaneA,
-      );
+        await processHookEventInput(
+          JSON.stringify({
+            hook_event_name: 'UserPromptSubmit',
+            session_id: 'sess-persist',
+          }),
+          testPaneA,
+        );
 
-      const statusResult = await handleInputBlock({ subcommand: 'status' });
-      const statusData = JSON.parse(statusResult.content[0]!.text);
-      expect(statusData.input_block_mode).toBe('persist');
+        const statusResult = await handleInputBlock({ subcommand: 'status' });
+        const statusData = JSON.parse(statusResult.content[0]!.text);
+        expect(statusData.input_block_mode).toBe('persist');
 
-      const offResult = await handleInputBlock({ subcommand: 'off' });
-      const offData = JSON.parse(offResult.content[0]!.text);
-      expect(offData.input_block_mode).toBe('off');
-    });
+        const offResult = await handleInputBlock({ subcommand: 'off' });
+        const offData = JSON.parse(offResult.content[0]!.text);
+        expect(offData.input_block_mode).toBe('off');
+      },
+    );
   });
 
   describe('messaging', () => {
@@ -383,55 +392,59 @@ describe('MCP tools', () => {
       expect(readData.messages[0].from).toBe('lead-1');
     });
 
-    test.serial('read_messages returns no messages when input block is active', async () => {
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'leader',
-        name: 'lead-1',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'worker',
-        name: 'builder-1',
-        tmux_target: testPaneB,
-      });
+    test.serial(
+      'read_messages returns no messages when input block is active',
+      async () => {
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'leader',
+          name: 'lead-1',
+          tmux_target: testPaneA,
+        });
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'worker',
+          name: 'builder-1',
+          tmux_target: testPaneB,
+        });
 
-      // 1. Send a message to builder-1 (normally delivered/queued)
-      await handleSendMessage({
-        room: 'frontend',
-        text: 'Hello builder',
-        to: 'builder-1',
-        name: 'lead-1',
-        mode: 'pull', // use pull so we don't block on tmux pane delivery
-      });
+        // 1. Send a message to builder-1 (normally delivered/queued)
+        await handleSendMessage({
+          room: 'frontend',
+          text: 'Hello builder',
+          to: 'builder-1',
+          name: 'lead-1',
+        });
 
-      // 2. Enable input block (persist)
-      const { setAgentInputBlockMode } = await import('../src/state/index.ts');
-      setAgentInputBlockMode('builder-1', 'persist');
+        // 2. Enable input block (persist)
+        const { setAgentInputBlockMode } = await import(
+          '../src/state/index.ts'
+        );
+        setAgentInputBlockMode('builder-1', 'persist');
 
-      // 3. Try reading messages — should return empty list
-      const readResult1 = await handleReadMessages({
-        name: 'builder-1',
-        room: 'frontend',
-      });
-      const readData1 = JSON.parse(readResult1.content[0]!.text);
-      expect(readData1.messages.length).toBe(0);
+        // 3. Try reading messages — should return empty list
+        const readResult1 = await handleReadMessages({
+          name: 'builder-1',
+          room: 'frontend',
+        });
+        const readData1 = JSON.parse(readResult1.content[0]!.text);
+        expect(readData1.messages.length).toBe(0);
 
-      // 4. Disable input block
-      setAgentInputBlockMode('builder-1', 'off');
+        // 4. Disable input block
+        setAgentInputBlockMode('builder-1', 'off');
 
-      // 5. Try reading messages — should return the message now
-      const readResult2 = await handleReadMessages({
-        name: 'builder-1',
-        room: 'frontend',
-      });
-      const readData2 = JSON.parse(readResult2.content[0]!.text);
-      expect(readData2.messages.length).toBe(1);
-      expect(readData2.messages[0].text).toBe('Hello builder');
-    });
+        // 5. Try reading messages — should return the message now
+        const readResult2 = await handleReadMessages({
+          name: 'builder-1',
+          room: 'frontend',
+        });
+        const readData2 = JSON.parse(readResult2.content[0]!.text);
+        expect(readData2.messages.length).toBe(1);
+        expect(readData2.messages[0].text).toBe('Hello builder');
+      },
+    );
 
-    test.serial('pull message is queued but not delivered', async () => {
+    test.serial('message is queued and delivered via push', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -450,89 +463,96 @@ describe('MCP tools', () => {
         text: 'Task complete',
         to: 'lead-1',
         name: 'builder-1',
-        mode: 'pull',
-      });
+      } as any);
       const data = JSON.parse(result.content[0]?.text);
       expect(data.queued).toBe(true);
-      expect(data.delivered).toBe(false);
+      expect(data.delivered).toBe(true);
     });
 
-    test.serial('broadcast message reaches all members except sender', async () => {
-      await handleJoinRoom({
-        room: 'team',
-        role: 'leader',
-        name: 'lead',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'team',
-        role: 'worker',
-        name: 'w1',
-        tmux_target: testPaneB,
-      });
+    test.serial(
+      'broadcast message reaches all members except sender',
+      async () => {
+        await handleJoinRoom({
+          room: 'team',
+          role: 'leader',
+          name: 'lead',
+          tmux_target: testPaneA,
+        });
+        await handleJoinRoom({
+          room: 'team',
+          role: 'worker',
+          name: 'w1',
+          tmux_target: testPaneB,
+        });
 
-      await handleSendMessage({ room: 'team', text: 'Stand by', name: 'lead' });
+        await handleSendMessage({
+          room: 'team',
+          text: 'Stand by',
+          name: 'lead',
+        });
 
-      const readW1 = await handleReadMessages({ name: 'w1', room: 'team' });
-      expect(readW1.isError).toBeUndefined();
-      const w1Data = JSON.parse(readW1.content[0]!.text);
-      expect(Array.isArray(w1Data.messages)).toBe(true);
+        const readW1 = await handleReadMessages({ name: 'w1', room: 'team' });
+        expect(readW1.isError).toBeUndefined();
+        const w1Data = JSON.parse(readW1.content[0]!.text);
+        expect(Array.isArray(w1Data.messages)).toBe(true);
 
-      // Sender should not receive a directed copy of their own broadcast
-      const readLead = await handleReadMessages({ name: 'lead' });
-      const leadData = JSON.parse(readLead.content[0]!.text);
-      expect(Array.isArray(leadData.messages)).toBe(true);
-      expect(leadData.messages.some((m: any) => m.text === 'Stand by')).toBe(
-        false,
-      );
-    });
+        // Sender should not receive a directed copy of their own broadcast
+        const readLead = await handleReadMessages({ name: 'lead' });
+        const leadData = JSON.parse(readLead.content[0]!.text);
+        expect(Array.isArray(leadData.messages)).toBe(true);
+        expect(leadData.messages.some((m: any) => m.text === 'Stand by')).toBe(
+          false,
+        );
+      },
+    );
 
-    test.serial('cursor-based read_messages', async () => {
-      await handleJoinRoom({
-        room: 'r',
-        role: 'worker',
-        name: 'a',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'r',
-        role: 'leader',
-        name: 'b',
-        tmux_target: testPaneB,
-      });
+    test.serial(
+      'cursor-based read_messages',
+      async () => {
+        await handleJoinRoom({
+          room: 'r',
+          role: 'worker',
+          name: 'a',
+          tmux_target: testPaneA,
+        });
+        await handleJoinRoom({
+          room: 'r',
+          role: 'leader',
+          name: 'b',
+          tmux_target: testPaneB,
+        });
 
-      await handleSendMessage({
-        room: 'r',
-        text: 'msg1',
-        to: 'a',
-        name: 'b',
-        mode: 'pull',
-      });
-      await handleSendMessage({
-        room: 'r',
-        text: 'msg2',
-        to: 'a',
-        name: 'b',
-        mode: 'pull',
-      });
+        await handleSendMessage({
+          room: 'r',
+          text: 'msg1',
+          to: 'a',
+          name: 'b',
+        });
+        await handleSendMessage({
+          room: 'r',
+          text: 'msg2',
+          to: 'a',
+          name: 'b',
+        });
 
-      const first = await handleReadMessages({ name: 'a', room: 'r' });
-      const firstData = JSON.parse(first.content[0]!.text);
-      expect(firstData.messages.length).toBe(2);
+        const first = await handleReadMessages({ name: 'a', room: 'r' });
+        const firstData = JSON.parse(first.content[0]!.text);
+        expect(firstData.messages.length).toBe(2);
 
-      await handleSendMessage({
-        room: 'r',
-        text: 'msg3',
-        to: 'a',
-        name: 'b',
-        mode: 'pull',
-      });
+        await handleSendMessage({
+          room: 'r',
+          text: 'msg3',
+          to: 'a',
+          name: 'b',
+        });
 
-      const second = await handleReadMessages({ name: 'a', room: 'r' });
-      const secondData = JSON.parse(second.content[0]!.text);
-      expect(secondData.messages.length).toBe(1);
-      expect(secondData.messages[0].text).toBe('msg3');
-    }, 15000);
+        const second = await handleReadMessages({ name: 'a', room: 'r' });
+        const secondData = JSON.parse(second.content[0]!.text);
+        expect(secondData.messages.length).toBe(1);
+        expect(secondData.messages[0].text).toBe('msg3');
+      },
+      15000,
+    );
 
     test.serial('room-filtered read_messages', async () => {
       await handleJoinRoom({
@@ -561,121 +581,81 @@ describe('MCP tools', () => {
       expect(data.messages[0].room_id).toBeDefined();
     });
 
-    test.serial('read_messages with room reads inbox for that room only', async () => {
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'leader',
-        name: 'lead-1',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'worker',
-        name: 'w1',
-        tmux_target: testPaneB,
-      });
+    test.serial(
+      'read_messages with room reads inbox for that room only',
+      async () => {
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'leader',
+          name: 'lead-1',
+          tmux_target: testPaneA,
+        });
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'worker',
+          name: 'w1',
+          tmux_target: testPaneB,
+        });
 
-      // leader sends directed message to w1
-      await handleSendMessage({
-        room: 'frontend',
-        text: 'build login',
-        to: 'w1',
-        name: 'lead-1',
-      });
+        // leader sends directed message to w1
+        await handleSendMessage({
+          room: 'frontend',
+          text: 'build login',
+          to: 'w1',
+          name: 'lead-1',
+        });
 
-      // lead-1 cannot read w1-directed inbox entries via room-scoped read
-      const result = await handleReadMessages({
-        name: 'lead-1',
-        room: 'frontend',
-      });
-      const data = JSON.parse(result.content[0]?.text);
-      expect(data.messages.length).toBe(0);
+        // lead-1 cannot read w1-directed inbox entries via room-scoped read
+        const result = await handleReadMessages({
+          name: 'lead-1',
+          room: 'frontend',
+        });
+        const data = JSON.parse(result.content[0]?.text);
+        expect(data.messages.length).toBe(0);
 
-      const workerResult = await handleReadMessages({
-        name: 'w1',
-        room: 'frontend',
-      });
-      const workerData = JSON.parse(workerResult.content[0]?.text);
-      expect(workerData.messages.length).toBe(1);
-      expect(workerData.messages[0].text).toBe('build login');
-    });
+        const workerResult = await handleReadMessages({
+          name: 'w1',
+          room: 'frontend',
+        });
+        const workerData = JSON.parse(workerResult.content[0]?.text);
+        expect(workerData.messages.length).toBe(1);
+        expect(workerData.messages[0].text).toBe('build login');
+      },
+    );
 
-    test.serial('read_messages with kinds filter', async () => {
-      await handleJoinRoom({
-        room: 'r',
-        role: 'leader',
-        name: 'lead',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'r',
-        role: 'worker',
-        name: 'w1',
-        tmux_target: testPaneB,
-      });
+    test.serial(
+      'worker message is pushed to leader pane',
+      async () => {
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'leader',
+          name: 'lead-1',
+          tmux_target: testPaneA,
+        });
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'worker',
+          name: 'w1',
+          tmux_target: testPaneB,
+        });
 
-      await handleSendMessage({
-        room: 'r',
-        text: 'build it',
-        to: 'w1',
-        name: 'lead',
-        kind: 'task',
-      });
-      await handleSendMessage({
-        room: 'r',
-        text: 'done!',
-        to: 'lead',
-        name: 'w1',
-        kind: 'completion',
-        mode: 'pull',
-      });
+        // worker sends message to leader
+        await handleSendMessage({
+          room: 'frontend',
+          text: 'Login component done',
+          to: 'lead-1',
+          name: 'w1',
+        });
 
-      const result = await handleReadMessages({
-        name: 'lead',
-        room: 'r',
-        kinds: ['completion'],
-      });
-      expect(result.isError).toBeUndefined();
-      const data = JSON.parse(result.content[0]?.text);
-      expect(data.messages.length).toBeGreaterThanOrEqual(1);
-      expect(data.messages.some((m: any) => m.kind === 'completion')).toBe(
-        true,
-      );
-    });
+        // Verify message was delivered to leader's pane.
+        await Bun.sleep(2500);
+        const captured = await captureFromPane(testPaneA);
+        expect(typeof captured).toBe('string');
+      },
+      15000,
+    );
 
-    test.serial('worker completion auto-notifies leader via push', async () => {
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'leader',
-        name: 'lead-1',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'worker',
-        name: 'w1',
-        tmux_target: testPaneB,
-      });
-
-      // worker sends pull completion to leader
-      await handleSendMessage({
-        room: 'frontend',
-        text: 'Login component done',
-        to: 'lead-1',
-        name: 'w1',
-        mode: 'pull',
-        kind: 'completion',
-      });
-
-      // Verify push was sent to leader's pane.
-      // Notification is fire-and-forget via the queue; waitForReady() needs
-      // 2 stable polls at 500ms = 1000ms, plus paste+verify ~800ms.
-      await Bun.sleep(2500);
-      const captured = await captureFromPane(testPaneA);
-      expect(typeof captured).toBe('string');
-    }, 15000);
-
-    test.serial('send_message with kind=task sends an assignment without task metadata', async () => {
+    test.serial('send_message sends a directed message', async () => {
       await handleJoinRoom({
         room: 'frontend',
         role: 'leader',
@@ -694,38 +674,38 @@ describe('MCP tools', () => {
         text: 'Build the login page with validation',
         to: 'builder-1',
         name: 'lead-1',
-        kind: 'task',
       });
       const data = JSON.parse(result.content[0]?.text);
       expect(data.message_id).toBeDefined();
       expect(data.task_id).toBeUndefined();
     });
 
-    test.serial('send_message with kind=task requires to param', async () => {
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'leader',
-        name: 'lead-1',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'worker',
-        name: 'builder-1',
-        tmux_target: testPaneB,
-      });
+    test.serial(
+      'send_message broadcast without to param succeeds',
+      async () => {
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'leader',
+          name: 'lead-1',
+          tmux_target: testPaneA,
+        });
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'worker',
+          name: 'builder-1',
+          tmux_target: testPaneB,
+        });
 
-      const result = await handleSendMessage({
-        room: 'frontend',
-        text: 'Build something',
-        name: 'lead-1',
-        kind: 'task',
-      });
-      expect(result.isError).toBe(true);
-    });
+        const result = await handleSendMessage({
+          room: 'frontend',
+          text: 'Build something',
+          name: 'lead-1',
+        } as any);
+        expect(result.isError).toBeUndefined();
+      },
+    );
 
     test.serial('parallel broadcast delivers to all members', async () => {
-      // Use pull mode so delivery is DB-only (no pane queue timing issues).
       // Verifies that Promise.allSettled parallel delivery produces correct results
       // for every recipient, not just the first.
       await handleJoinRoom({
@@ -742,21 +722,19 @@ describe('MCP tools', () => {
       });
       // Get the room created by join-room (based on test pane CWD)
       const room = getRoom('parallel-test')!;
-      // Add w2/w3 directly via addAgent (fake panes, pull-only)
+      // Add w2/w3 directly via addAgent (fake panes — push will fail for them)
       addAgent('w2', 'worker', room.id, '%99991', 'unknown');
       addAgent('w3', 'worker', room.id, '%99992', 'unknown');
 
-      // Broadcast from lead to w1 + w2 + w3 (pull mode = instant, no pane delivery)
+      // Broadcast from lead to w1 + w2 + w3
       const result = await handleSendMessage({
         room: 'parallel-test',
         text: 'Hello team',
         name: 'lead',
-        mode: 'pull',
-      });
+      } as any);
       const data = JSON.parse(result.content[0]?.text);
       expect(data.broadcast).toBe(true);
       expect(data.recipients).toBe(3);
-      expect(data.delivered).toBe(0); // pull mode
       expect(data.queued).toBe(3);
 
       // Verify each worker can read the message
@@ -791,135 +769,140 @@ describe('MCP tools', () => {
       );
     });
 
-    test.serial('leader sending message to worker includes room member statuses in output', async () => {
-      await handleJoinRoom({
-        room: 'status-test',
-        role: 'leader',
-        name: 'lead',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'status-test',
-        role: 'worker',
-        name: 'w1',
-        tmux_target: testPaneB,
-      });
+    test.serial(
+      'leader sending message to worker includes room member statuses in output',
+      async () => {
+        await handleJoinRoom({
+          room: 'status-test',
+          role: 'leader',
+          name: 'lead',
+          tmux_target: testPaneA,
+        });
+        await handleJoinRoom({
+          room: 'status-test',
+          role: 'worker',
+          name: 'w1',
+          tmux_target: testPaneB,
+        });
 
-      const result = await handleSendMessage({
-        room: 'status-test',
-        text: 'hello status test',
-        name: 'lead',
-        to: 'w1',
-        mode: 'push',
-      });
-      const data = JSON.parse(result.content[0]!.text);
-      expect(data.delivered).toBe(true);
-      expect(data.members).toBeDefined();
-      expect(data.members.length).toBe(2);
-      expect(data.members.some((m: any) => m.name === 'w1')).toBe(true);
-      expect(data.members.some((m: any) => m.name === 'lead')).toBe(true);
-    });
+        const result = await handleSendMessage({
+          room: 'status-test',
+          text: 'hello status test',
+          name: 'lead',
+          to: 'w1',
+        });
+        const data = JSON.parse(result.content[0]!.text);
+        expect(data.delivered).toBe(true);
+        expect(data.members).toBeDefined();
+        expect(data.members.length).toBe(2);
+        expect(data.members.some((m: any) => m.name === 'w1')).toBe(true);
+        expect(data.members.some((m: any) => m.name === 'lead')).toBe(true);
+      },
+    );
 
-    test.serial('concurrent crew CLI send messages to DB without locking', async () => {
-      closeDb();
-      const testDir = process.cwd();
-      const testDbPath = `${testDir}/crew.db`;
-      const fs = await import('node:fs');
+    test.serial(
+      'concurrent crew CLI send messages to DB without locking',
+      async () => {
+        closeDb();
+        const testDir = process.cwd();
+        const testDbPath = `${testDir}/crew.db`;
+        const fs = await import('node:fs');
 
-      // Clean up previous files if any
-      try {
-        fs.unlinkSync(testDbPath);
-      } catch {}
-      try {
-        fs.unlinkSync(`${testDbPath}-wal`);
-      } catch {}
-      try {
-        fs.unlinkSync(`${testDbPath}-shm`);
-      } catch {}
+        // Clean up previous files if any
+        try {
+          fs.unlinkSync(testDbPath);
+        } catch {}
+        try {
+          fs.unlinkSync(`${testDbPath}-wal`);
+        } catch {}
+        try {
+          fs.unlinkSync(`${testDbPath}-shm`);
+        } catch {}
 
-      process.env.CREW_STATE_DIR = testDir;
-      initDb();
+        process.env.CREW_STATE_DIR = testDir;
+        initDb();
 
-      await handleJoinRoom({
-        room: 'parallel-cli-test',
-        role: 'leader',
-        name: 'lead-1',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'parallel-cli-test',
-        role: 'worker',
-        name: 'builder-1',
-        tmux_target: testPaneB,
-      });
+        await handleJoinRoom({
+          room: 'parallel-cli-test',
+          role: 'leader',
+          name: 'lead-1',
+          tmux_target: testPaneA,
+        });
+        await handleJoinRoom({
+          room: 'parallel-cli-test',
+          role: 'worker',
+          name: 'builder-1',
+          tmux_target: testPaneB,
+        });
 
-      // Spawn 10 concurrent CLI send commands
-      const path = await import('node:path');
-      const cliPath = path.resolve(import.meta.dir, '../src/cli.ts');
-      const promises = Array.from({ length: 10 }).map(async (_, i) => {
-        const proc = Bun.spawn(
-          [
-            'bun',
-            cliPath,
-            'send',
-            '--room',
-            'parallel-cli-test',
-            '--text',
-            `msg-${i}`,
-            '--to',
-            'builder-1',
-            '--name',
-            'lead-1',
-          ],
-          {
-            env: {
-              ...process.env,
-              CREW_STATE_DIR: testDir,
-              TMUX_PANE: testPaneA,
+        // Spawn 10 concurrent CLI send commands
+        const path = await import('node:path');
+        const cliPath = path.resolve(import.meta.dir, '../src/cli.ts');
+        const promises = Array.from({ length: 10 }).map(async (_, i) => {
+          const proc = Bun.spawn(
+            [
+              'bun',
+              cliPath,
+              'send',
+              '--room',
+              'parallel-cli-test',
+              '--text',
+              `msg-${i}`,
+              '--to',
+              'builder-1',
+              '--name',
+              'lead-1',
+            ],
+            {
+              env: {
+                ...process.env,
+                CREW_STATE_DIR: testDir,
+                TMUX_PANE: testPaneA,
+              },
+              stdout: 'pipe',
+              stderr: 'pipe',
             },
-            stdout: 'pipe',
-            stderr: 'pipe',
-          },
-        );
-        const exitCode = await proc.exited;
-        const errOutput = await new Response(proc.stderr).text();
-        const outOutput = await new Response(proc.stdout).text();
-        return { exitCode, errOutput, outOutput };
-      });
+          );
+          const exitCode = await proc.exited;
+          const errOutput = await new Response(proc.stderr).text();
+          const outOutput = await new Response(proc.stdout).text();
+          return { exitCode, errOutput, outOutput };
+        });
 
-      const results = await Promise.all(promises);
+        const results = await Promise.all(promises);
 
-      // Verify all succeeded
-      for (const r of results) {
-        if (r.exitCode !== 0) {
-          console.error('CONCURRENT TEST PROCESS FAILED:', r.errOutput);
+        // Verify all succeeded
+        for (const r of results) {
+          if (r.exitCode !== 0) {
+            console.error('CONCURRENT TEST PROCESS FAILED:', r.errOutput);
+          }
+          expect(r.exitCode).toBe(0);
+          expect(r.errOutput).toBe('');
         }
-        expect(r.exitCode).toBe(0);
-        expect(r.errOutput).toBe('');
-      }
 
-      // Read messages and expect all 10 to be stored
-      const readResult = await handleReadMessages({
-        name: 'builder-1',
-        room: 'parallel-cli-test',
-      });
-      const readData = JSON.parse(readResult.content[0]!.text);
-      expect(readData.messages.length).toBe(10);
+        // Read messages and expect all 10 to be stored
+        const readResult = await handleReadMessages({
+          name: 'builder-1',
+          room: 'parallel-cli-test',
+        });
+        const readData = JSON.parse(readResult.content[0]!.text);
+        expect(readData.messages.length).toBe(10);
 
-      // Clean up
-      closeDb();
-      try {
-        fs.unlinkSync(testDbPath);
-      } catch {}
-      try {
-        fs.unlinkSync(`${testDbPath}-wal`);
-      } catch {}
-      try {
-        fs.unlinkSync(`${testDbPath}-shm`);
-      } catch {}
-      delete process.env.CREW_STATE_DIR;
-      initDb(':memory:');
-    });
+        // Clean up
+        closeDb();
+        try {
+          fs.unlinkSync(testDbPath);
+        } catch {}
+        try {
+          fs.unlinkSync(`${testDbPath}-wal`);
+        } catch {}
+        try {
+          fs.unlinkSync(`${testDbPath}-shm`);
+        } catch {}
+        delete process.env.CREW_STATE_DIR;
+        initDb(':memory:');
+      },
+    );
   });
 
   describe('set_room_topic', () => {
@@ -962,53 +945,59 @@ describe('MCP tools', () => {
   });
 
   describe('duplicate room names across paths', () => {
-    test.serial('list_members prefers the latest matching room row', async () => {
-      const firstRoom = getOrCreateRoom(
-        '/test/worktree-a/better-logging',
-        'better-logging',
-      );
-      const secondRoom = getOrCreateRoom(
-        '/test/worktree-b/better-logging',
-        'better-logging',
-      );
+    test.serial(
+      'list_members prefers the latest matching room row',
+      async () => {
+        const firstRoom = getOrCreateRoom(
+          '/test/worktree-a/better-logging',
+          'better-logging',
+        );
+        const secondRoom = getOrCreateRoom(
+          '/test/worktree-b/better-logging',
+          'better-logging',
+        );
 
-      addAgent('old-worker', 'worker', firstRoom.id, '%9001');
-      addAgent('new-leader', 'leader', secondRoom.id, '%9002');
-      addAgent('new-worker', 'worker', secondRoom.id, '%9003');
+        addAgent('old-worker', 'worker', firstRoom.id, '%9001');
+        addAgent('new-leader', 'leader', secondRoom.id, '%9002');
+        addAgent('new-worker', 'worker', secondRoom.id, '%9003');
 
-      const result = await handleListMembers({ room: 'better-logging' });
-      const data = JSON.parse(result.content[0]!.text);
+        const result = await handleListMembers({ room: 'better-logging' });
+        const data = JSON.parse(result.content[0]!.text);
 
-      expect(data.members.map((member: any) => member.name).sort()).toEqual([
-        'new-leader',
-        'new-worker',
-      ]);
-    });
+        expect(data.members.map((member: any) => member.name).sort()).toEqual([
+          'new-leader',
+          'new-worker',
+        ]);
+      },
+    );
 
-    test.serial('inspect requires --room when worker is visible in multiple room ids with the same name', async () => {
-      const firstRoom = getOrCreateRoom(
-        '/test/worktree-a/better-logging',
-        'better-logging',
-      );
-      const secondRoom = getOrCreateRoom(
-        '/test/worktree-b/better-logging',
-        'better-logging',
-      );
+    test.serial(
+      'inspect requires --room when worker is visible in multiple room ids with the same name',
+      async () => {
+        const firstRoom = getOrCreateRoom(
+          '/test/worktree-a/better-logging',
+          'better-logging',
+        );
+        const secondRoom = getOrCreateRoom(
+          '/test/worktree-b/better-logging',
+          'better-logging',
+        );
 
-      addAgent('lead-1', 'leader', firstRoom.id, '%9010');
-      addAgent('shared-worker', 'worker', firstRoom.id, '%9011');
-      addAgent('lead-1', 'leader', secondRoom.id, '%9012');
-      addAgent('shared-worker', 'worker', secondRoom.id, '%9013');
+        addAgent('lead-1', 'leader', firstRoom.id, '%9010');
+        addAgent('shared-worker', 'worker', firstRoom.id, '%9011');
+        addAgent('lead-1', 'leader', secondRoom.id, '%9012');
+        addAgent('shared-worker', 'worker', secondRoom.id, '%9013');
 
-      const result = await handleInspectWorker({
-        worker_name: 'shared-worker',
-        name: 'lead-1',
-      });
-      const data = JSON.parse(result.content[0]!.text);
+        const result = await handleInspectWorker({
+          worker_name: 'shared-worker',
+          name: 'lead-1',
+        });
+        const data = JSON.parse(result.content[0]!.text);
 
-      expect(result.isError).toBe(true);
-      expect(data.error).toContain('Use --room');
-    });
+        expect(result.isError).toBe(true);
+        expect(data.error).toContain('Use --room');
+      },
+    );
   });
 
   describe('refresh', () => {
@@ -1075,38 +1064,39 @@ describe('MCP tools', () => {
   });
 
   describe('interrupt_worker', () => {
-    test.serial('leader can interrupt worker with current assignment', async () => {
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'leader',
-        name: 'lead-1',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'worker',
-        name: 'builder-1',
-        tmux_target: testPaneB,
-      });
+    test.serial(
+      'leader can interrupt worker with current assignment',
+      async () => {
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'leader',
+          name: 'lead-1',
+          tmux_target: testPaneA,
+        });
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'worker',
+          name: 'builder-1',
+          tmux_target: testPaneB,
+        });
 
-      await handleSendMessage({
-        room: 'frontend',
-        text: 'Build login',
-        to: 'builder-1',
-        name: 'lead-1',
-        kind: 'task',
-        mode: 'pull',
-      });
+        await handleSendMessage({
+          room: 'frontend',
+          text: 'Build login',
+          to: 'builder-1',
+          name: 'lead-1',
+        });
 
-      const result = await handleInterruptWorker({
-        worker_name: 'builder-1',
-        room: 'frontend',
-        name: 'lead-1',
-      });
-      expect(result.isError).toBeUndefined();
-      const data = JSON.parse(result.content[0]?.text);
-      expect(data.interrupted).toBe(true);
-    });
+        const result = await handleInterruptWorker({
+          worker_name: 'builder-1',
+          room: 'frontend',
+          name: 'lead-1',
+        });
+        expect(result.isError).toBeUndefined();
+        const data = JSON.parse(result.content[0]?.text);
+        expect(data.interrupted).toBe(true);
+      },
+    );
 
     test.serial('worker cannot interrupt', async () => {
       await handleJoinRoom({
@@ -1130,57 +1120,64 @@ describe('MCP tools', () => {
       expect(result.isError).toBe(true);
     });
 
-    test.serial('can interrupt a worker even without persisted task state', async () => {
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'leader',
-        name: 'lead-1',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'worker',
-        name: 'builder-1',
-        tmux_target: testPaneB,
-      });
+    test.serial(
+      'can interrupt a worker even without persisted task state',
+      async () => {
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'leader',
+          name: 'lead-1',
+          tmux_target: testPaneA,
+        });
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'worker',
+          name: 'builder-1',
+          tmux_target: testPaneB,
+        });
 
-      const result = await handleInterruptWorker({
-        worker_name: 'builder-1',
-        room: 'frontend',
-        name: 'lead-1',
-      });
-      expect(result.isError).toBeUndefined();
-    });
+        const result = await handleInterruptWorker({
+          worker_name: 'builder-1',
+          room: 'frontend',
+          name: 'lead-1',
+        });
+        expect(result.isError).toBeUndefined();
+      },
+    );
   });
 
   describe('clear_worker_session', () => {
-    test.serial('leader can clear worker session', async () => {
-      await handleJoinRoom({
-        room: 'test-room',
-        role: 'leader',
-        name: 'lead-01',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'test-room',
-        role: 'worker',
-        name: 'wk-01',
-        tmux_target: testPaneB,
-      });
+    test.serial(
+      'leader can clear worker session',
+      async () => {
+        await handleJoinRoom({
+          room: 'test-room',
+          role: 'leader',
+          name: 'lead-01',
+          tmux_target: testPaneA,
+        });
+        await handleJoinRoom({
+          room: 'test-room',
+          role: 'worker',
+          name: 'wk-01',
+          tmux_target: testPaneB,
+        });
 
-      const result = await handleClearWorkerSession({
-        worker_name: 'wk-01',
-        room: 'test-room',
-        name: 'lead-01',
-      });
-      const data = JSON.parse(result.content[0]?.text);
-      if (result.isError) {
-        expect(data.error).toMatch(/no longer exists|pane/i);
-        return;
-      }
-      expect(data.cleared).toBe(true);
-      expect(data.worker_name).toBe('wk-01');
-    }, 15000);
+        const result = await handleClearWorkerSession({
+          worker_name: 'wk-01',
+          room: 'test-room',
+          name: 'lead-01',
+        });
+        const data = JSON.parse(result.content[0]?.text);
+        if (result.isError) {
+          expect(data.error).toMatch(/no longer exists|pane/i);
+          return;
+        }
+        expect(data.cleared).toBe(true);
+        expect(data.worker_name).toBe('wk-01');
+      },
+      15000,
+    );
 
     test.serial('worker cannot clear sessions', async () => {
       await handleJoinRoom({
@@ -1257,77 +1254,87 @@ describe('MCP tools', () => {
       expect(state.busy_mode).toBe('manual_busy');
     });
 
-    test.serial('direct state api keeps defaults and supports mode switch', () => {
-      const initial = getSweepControlState();
-      expect(initial.busy_mode).toBe('auto');
+    test.serial(
+      'direct state api keeps defaults and supports mode switch',
+      () => {
+        const initial = getSweepControlState();
+        expect(initial.busy_mode).toBe('auto');
 
-      setSweepPaused(true, 'temp');
-      setSweepBusyMode('manual_free');
+        setSweepPaused(true, 'temp');
+        setSweepBusyMode('manual_free');
 
-      const next = getSweepControlState();
-      expect(next.delivery_paused).toBe(true);
-      expect(next.pause_reason).toBe('temp');
-      expect(next.busy_mode).toBe('manual_free');
-    });
+        const next = getSweepControlState();
+        expect(next.delivery_paused).toBe(true);
+        expect(next.pause_reason).toBe('temp');
+        expect(next.busy_mode).toBe('manual_free');
+      },
+    );
   });
 
   describe('reassign_task', () => {
-    test.serial('leader can replace a current assignment', async () => {
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'leader',
-        name: 'lead-1',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'worker',
-        name: 'builder-1',
-        tmux_target: testPaneB,
-      });
+    test.serial(
+      'leader can replace a current assignment',
+      async () => {
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'leader',
+          name: 'lead-1',
+          tmux_target: testPaneA,
+        });
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'worker',
+          name: 'builder-1',
+          tmux_target: testPaneB,
+        });
 
-      await handleSendMessage({
-        room: 'frontend',
-        text: 'Build login',
-        to: 'builder-1',
-        name: 'lead-1',
-        kind: 'task',
-      });
+        await handleSendMessage({
+          room: 'frontend',
+          text: 'Build login',
+          to: 'builder-1',
+          name: 'lead-1',
+        });
 
-      const result = await handleReassignTask({
-        worker_name: 'builder-1',
-        room: 'frontend',
-        text: 'Build signup instead',
-        name: 'lead-1',
-      });
-      expect(result.isError).toBeUndefined();
-      const data = JSON.parse(result.content[0]?.text);
-      expect(data.reassigned).toBe(true);
-    }, 15000);
+        const result = await handleReassignTask({
+          worker_name: 'builder-1',
+          room: 'frontend',
+          text: 'Build signup instead',
+          name: 'lead-1',
+        });
+        expect(result.isError).toBeUndefined();
+        const data = JSON.parse(result.content[0]?.text);
+        expect(data.reassigned).toBe(true);
+      },
+      15000,
+    );
 
-    test.serial('leader can replace an assignment without task ids', async () => {
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'leader',
-        name: 'lead-1',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'worker',
-        name: 'builder-1',
-        tmux_target: testPaneB,
-      });
+    test.serial(
+      'leader can replace an assignment without task ids',
+      async () => {
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'leader',
+          name: 'lead-1',
+          tmux_target: testPaneA,
+        });
+        await handleJoinRoom({
+          room: 'frontend',
+          role: 'worker',
+          name: 'builder-1',
+          tmux_target: testPaneB,
+        });
 
-      const result = await handleReassignTask({
-        worker_name: 'builder-1',
-        room: 'frontend',
-        text: 'Build signup instead',
-        name: 'lead-1',
-      });
-      const data = JSON.parse(result.content[0]?.text);
-      expect(data.reassigned).toBe(true);
-    }, 15000);
+        const result = await handleReassignTask({
+          worker_name: 'builder-1',
+          room: 'frontend',
+          text: 'Build signup instead',
+          name: 'lead-1',
+        });
+        const data = JSON.parse(result.content[0]?.text);
+        expect(data.reassigned).toBe(true);
+      },
+      15000,
+    );
 
     test.serial('leader can reassign to idle worker', async () => {
       await handleJoinRoom({
@@ -1378,30 +1385,33 @@ describe('MCP tools', () => {
   });
 
   describe('manage', () => {
-    test.serial('allows caller name to be missing (operator mode)', async () => {
-      const { handleManage } = await import('../src/tools/manage.ts');
-      const { Readable, Writable } = await import('node:stream');
+    test.serial(
+      'allows caller name to be missing (operator mode)',
+      async () => {
+        const { handleManage } = await import('../src/tools/manage.ts');
+        const { Readable, Writable } = await import('node:stream');
 
-      class MockStdin extends Readable {
-        isTTY = true;
-        _read() {}
-      }
-      class MockStdout extends Writable {
-        isTTY = true;
-        output: string[] = [];
-        _write(chunk: any, encoding: any, callback: any) {
-          this.output.push(chunk.toString());
-          callback();
+        class MockStdin extends Readable {
+          isTTY = true;
+          _read() {}
         }
-      }
+        class MockStdout extends Writable {
+          isTTY = true;
+          output: string[] = [];
+          _write(chunk: any, encoding: any, callback: any) {
+            this.output.push(chunk.toString());
+            callback();
+          }
+        }
 
-      const stdin = new MockStdin();
-      const stdout = new MockStdout();
+        const stdin = new MockStdin();
+        const stdout = new MockStdout();
 
-      const result = await handleManage({ stdin, stdout });
-      expect(result.isError).toBeUndefined();
-      expect(stdout.output.join('')).toContain('No active rooms found');
-    });
+        const result = await handleManage({ stdin, stdout });
+        expect(result.isError).toBeUndefined();
+        expect(stdout.output.join('')).toContain('No active rooms found');
+      },
+    );
 
     test.serial('exits early if no rooms are found', async () => {
       const { handleManage } = await import('../src/tools/manage.ts');

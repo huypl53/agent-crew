@@ -51,7 +51,7 @@ export async function handleReassignTask(
   } else {
     await getQueue(worker.tmux_target).enqueue({ type: 'escape' });
   }
-  await deliverMessage(name, room, text, worker_name, 'push', 'task');
+  await deliverMessage(name, room, text, worker_name);
 
   return ok({ reassigned: true });
 }

@@ -2,11 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { config } from '../config.ts';
 import { deliverMessage } from '../delivery/index.ts';
-import type {
-  MessageDeliveryMetadata,
-  MessageKind,
-  ToolResult,
-} from '../shared/types.ts';
+import type { MessageDeliveryMetadata, ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
 import { getAgent, getRoom, getRoomMembers } from '../state/index.ts';
 import { resolveAgentLiveStatus } from './get-status.ts';
@@ -16,9 +12,7 @@ interface SendMessageParams {
   text?: string;
   file?: string;
   to?: string;
-  mode?: 'push' | 'pull';
   name: string; // sender identity
-  kind?: MessageKind;
   reply_to?: number;
   metadata?: MessageDeliveryMetadata;
 }
@@ -71,7 +65,13 @@ export async function readUtf8TextFile(
 export function validateSenderAndRoom(
   room: string,
   name: string,
-): { value?: { sender: ReturnType<typeof getAgent>; room: ReturnType<typeof getRoom> }; error?: string } {
+): {
+  value?: {
+    sender: ReturnType<typeof getAgent>;
+    room: ReturnType<typeof getRoom>;
+  };
+  error?: string;
+} {
   if (!room || !name) {
     return { error: 'Missing required params: room, name' };
   }
@@ -133,7 +133,7 @@ async function resolveMessageText(
 export async function handleSendMessage(
   params: SendMessageParams,
 ): Promise<ToolResult> {
-  const { room, to, mode = 'push', name, kind, reply_to } = params;
+  const { room, to, name, reply_to } = params;
 
   if (!room || !name) {
     return err('Missing required params: room, name');
@@ -152,12 +152,6 @@ export async function handleSendMessage(
 
   const { sender, room: r } = senderContext.value!;
 
-  if (kind === 'task' && !to) {
-    return err(
-      'Task messages require a "to" param — broadcast tasks are not supported',
-    );
-  }
-
   // Validate target if directed message
   if (to) {
     const target = getAgent(to);
@@ -174,8 +168,6 @@ export async function handleSendMessage(
     room,
     text,
     to ?? null,
-    mode,
-    kind,
     reply_to,
     params.metadata,
   );

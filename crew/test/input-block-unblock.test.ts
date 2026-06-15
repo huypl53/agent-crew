@@ -117,7 +117,6 @@ describe('Input block unblock flow', () => {
         'leader-1',
         'room',
         'Hello worker, this is blocked',
-        'pull',
         'worker-1',
       );
       expect(msg.message_id).toBeTruthy();

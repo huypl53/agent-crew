@@ -7,6 +7,13 @@ import { handleCreateRoom } from '../tools/create-room.ts';
 import { handleDeleteRoom } from '../tools/delete-room.ts';
 import { handleGetStatus } from '../tools/get-status.ts';
 import {
+  handleGoalDone,
+  handleGoalLookup,
+  handleGoalSet,
+  handleGoalUnset,
+  handleGoalUpdate,
+} from '../tools/goal.ts';
+import {
   handleHintLookup,
   handleHintSet,
   handleHintUnset,
@@ -15,13 +22,6 @@ import { handleHookEvent } from '../tools/hook-event.ts';
 import { handleInputBlock } from '../tools/input-block.ts';
 import { handleInspectWorker } from '../tools/inspect-worker.ts';
 import { handleInterruptWorker } from '../tools/interrupt-worker.ts';
-import {
-  handleGoalDone,
-  handleGoalLookup,
-  handleGoalSet,
-  handleGoalUnset,
-  handleGoalUpdate,
-} from '../tools/goal.ts';
 import { handleJoinRoom } from '../tools/join-room.ts';
 import { handleLeaveRoom } from '../tools/leave-room.ts';
 import { handleListMembers } from '../tools/list-members.ts';
@@ -80,8 +80,6 @@ export const COMMANDS: Record<
       file: f.file,
       name: f.name,
       to: f.to,
-      mode: f.mode ?? 'push',
-      kind: f.kind ?? 'chat',
       reply_to:
         f['reply-to'] != null ? parseInt(String(f['reply-to']), 10) : undefined,
       sender_pane: f['sender-pane'],
@@ -93,7 +91,6 @@ export const COMMANDS: Record<
       room: f.room,
       manifest: f.manifest,
       name: f.name,
-      mode: f.mode ?? 'push',
     }),
   },
   read: {
@@ -101,7 +98,6 @@ export const COMMANDS: Record<
     buildParams: (f) => ({
       name: f.name,
       room: f.room,
-      kinds: typeof f.kinds === 'string' ? f.kinds.split(',') : undefined,
       limit: f.limit ? parseInt(f.limit, 10) : undefined,
     }),
   },

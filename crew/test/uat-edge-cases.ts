@@ -393,8 +393,7 @@ addAgent('test-leader', 'leader', 'test-room', '%11', 'claude-code');
 
 const result = await handleSendMessage({
   room: 'test-room', text: 'test message',
-  name: 'test-worker', to: 'test-leader', mode: 'pull',
-});
+  name: 'test-worker', to: 'test-leader', });
 console.log('log-ok:' + (result.isError !== true));
 `;
   await Bun.write(tmpScript, scriptLog);
@@ -432,8 +431,7 @@ addAgent('test-leader', 'leader', 'test-room', '%11', 'claude-code');
 
 const result = await handleSendMessage({
   room: 'test-room', text: 'test message',
-  name: 'test-worker', to: 'test-leader', mode: 'pull',
-});
+  name: 'test-worker', to: 'test-leader', });
 const isOk = result.isError !== true;
 console.log('enforce-ok:' + isOk);
 if (result.isError) {
@@ -488,8 +486,7 @@ addAgent('cli-leader', 'leader', 'cli-room', '%21', 'claude-code');
 
 const result = await handleSendMessage({
   room: 'cli-room', text: 'external cli message',
-  name: 'cli-agent', to: 'cli-leader', mode: 'pull',
-});
+  name: 'cli-agent', to: 'cli-leader', });
 console.log('result-ok:' + (result.isError !== true));
 `;
   await Bun.write(tmpScript, script);

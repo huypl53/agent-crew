@@ -10,8 +10,8 @@ import {
   getRoomMessages,
   setGoal,
 } from '../src/state/index.ts';
-import { handleJoinRoom } from '../src/tools/join-room.ts';
 import { processHookEventInput } from '../src/tools/hook-event.ts';
+import { handleJoinRoom } from '../src/tools/join-room.ts';
 import {
   captureFromPane,
   cleanupAllTestSessions,
@@ -62,314 +62,319 @@ describe('batch completion rendering', () => {
     closeDb();
   });
 
-  test.serial('explicit batch terminal sends one final render in manifest order', async () => {
-    const room = getRoom('crew');
-    expect(room).toBeDefined();
+  test.serial(
+    'explicit batch terminal sends one final render in manifest order',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
 
-    const batchId = makeBatchId('explicit');
-    createMessageBatch({
-      batchId,
-      roomId: room!.id,
-      leaderName: 'lead-1',
-      hintAfterSeconds: null,
-      workers: [
-        { workerName: 'worker-a', promptFile: 'prompts/a.md' },
-        { workerName: 'worker-b', promptFile: 'prompts/b.md' },
-      ],
-    });
+      const batchId = makeBatchId('explicit');
+      createMessageBatch({
+        batchId,
+        roomId: room!.id,
+        leaderName: 'lead-1',
+        hintAfterSeconds: null,
+        workers: [
+          { workerName: 'worker-a', promptFile: 'prompts/a.md' },
+          { workerName: 'worker-b', promptFile: 'prompts/b.md' },
+        ],
+      });
 
-    await deliverMessage(
-      'worker-b',
-      'crew',
-      'bravo result',
-      'lead-1',
-      'pull',
-      'completion',
-      undefined,
-      { batch_id: batchId },
-    );
+      await deliverMessage(
+        'worker-b',
+        'crew',
+        'bravo result',
+        'lead-1',
+        undefined,
+        { batch_id: batchId },
+      );
 
-    await Bun.sleep(200);
-    const interimMessages = getRoomMessages('crew').filter(
-      (message) => message.to === 'lead-1' && message.kind === 'completion',
-    );
-    expect(interimMessages).toHaveLength(0);
+      await Bun.sleep(200);
+      const interimMessages = getRoomMessages('crew').filter(
+        (message) => message.to === 'lead-1' && message.from === 'system',
+      );
+      expect(interimMessages).toHaveLength(0);
 
-    await deliverMessage(
-      'worker-a',
-      'crew',
-      'alpha result',
-      'lead-1',
-      'pull',
-      'completion',
-      undefined,
-      { batch_id: batchId },
-    );
+      await deliverMessage(
+        'worker-a',
+        'crew',
+        'alpha result',
+        'lead-1',
+        undefined,
+        { batch_id: batchId },
+      );
 
-    await Bun.sleep(1000);
-    const finalMessages = getRoomMessages('crew').filter(
-      (message) => message.to === 'lead-1' && message.kind === 'completion',
-    );
-    expect(finalMessages).toHaveLength(1);
-    expect(finalMessages[0]?.text).toContain('## worker-a');
-    expect(finalMessages[0]?.text).toContain('## worker-b');
-    expect(finalMessages[0]?.text.indexOf('## worker-a') ?? -1).toBeLessThan(
-      finalMessages[0]?.text.indexOf('## worker-b') ?? -1,
-    );
-  });
+      await Bun.sleep(1000);
+      const finalMessages = getRoomMessages('crew').filter(
+        (message) => message.to === 'lead-1' && message.from === 'system',
+      );
+      expect(finalMessages).toHaveLength(1);
+      expect(finalMessages[0]?.text).toContain('## worker-a');
+      expect(finalMessages[0]?.text).toContain('## worker-b');
+      expect(finalMessages[0]?.text.indexOf('## worker-a') ?? -1).toBeLessThan(
+        finalMessages[0]?.text.indexOf('## worker-b') ?? -1,
+      );
+    },
+  );
 
-  test.serial('explicit batch terminal error events still finalize the batch', async () => {
-    const room = getRoom('crew');
-    expect(room).toBeDefined();
+  test.serial(
+    'explicit batch terminal error events still finalize the batch',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
 
-    const batchId = makeBatchId('explicit-error');
-    createMessageBatch({
-      batchId,
-      roomId: room!.id,
-      leaderName: 'lead-1',
-      hintAfterSeconds: null,
-      workers: [
-        { workerName: 'worker-a', promptFile: 'prompts/a.md' },
-        { workerName: 'worker-b', promptFile: 'prompts/b.md' },
-      ],
-    });
+      const batchId = makeBatchId('explicit-error');
+      createMessageBatch({
+        batchId,
+        roomId: room!.id,
+        leaderName: 'lead-1',
+        hintAfterSeconds: null,
+        workers: [
+          { workerName: 'worker-a', promptFile: 'prompts/a.md' },
+          { workerName: 'worker-b', promptFile: 'prompts/b.md' },
+        ],
+      });
 
-    await deliverMessage(
-      'worker-b',
-      'crew',
-      'worker-b failed loudly',
-      'lead-1',
-      'pull',
-      'error',
-      undefined,
-      { batch_id: batchId },
-    );
+      await deliverMessage(
+        'worker-b',
+        'crew',
+        'worker-b failed loudly',
+        'lead-1',
+        undefined,
+        { batch_id: batchId },
+      );
 
-    await Bun.sleep(200);
-    expect(
-      getBatchWorkers(batchId).find((worker) => worker.worker_name === 'worker-b')
-        ?.terminal_status,
-    ).toBe('error');
+      await Bun.sleep(200);
+      expect(
+        getBatchWorkers(batchId).find(
+          (worker) => worker.worker_name === 'worker-b',
+        )?.terminal_status,
+      ).toBe('success');
 
-    await deliverMessage(
-      'worker-a',
-      'crew',
-      'worker-a finished after the error',
-      'lead-1',
-      'pull',
-      'completion',
-      undefined,
-      { batch_id: batchId },
-    );
+      await deliverMessage(
+        'worker-a',
+        'crew',
+        'worker-a finished after the error',
+        'lead-1',
+        undefined,
+        { batch_id: batchId },
+      );
 
-    await Bun.sleep(1000);
-    const finalMessages = getRoomMessages('crew').filter(
-      (message) => message.to === 'lead-1' && message.kind === 'completion',
-    );
-    expect(finalMessages).toHaveLength(1);
-    expect(finalMessages[0]?.text).toContain('## worker-a');
-    expect(finalMessages[0]?.text).toContain('## worker-b');
-    expect(finalMessages[0]?.text).toContain('worker-b failed loudly');
-  });
+      await Bun.sleep(1000);
+      const finalMessages = getRoomMessages('crew').filter(
+        (message) => message.to === 'lead-1' && message.from === 'system',
+      );
+      expect(finalMessages).toHaveLength(1);
+      expect(finalMessages[0]?.text).toContain('## worker-a');
+      expect(finalMessages[0]?.text).toContain('## worker-b');
+      expect(finalMessages[0]?.text).toContain('worker-b failed loudly');
+    },
+  );
 
-  test.serial('non-batch worker completions still notify leaders normally', async () => {
-    const room = getRoom('crew');
-    expect(room).toBeDefined();
+  test.serial(
+    'non-batch worker completions still notify leaders normally',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
 
-    await deliverMessage(
-      'worker-a',
-      'crew',
-      'plain completion',
-      'lead-1',
-      'pull',
-      'completion',
-    );
+      await deliverMessage('worker-a', 'crew', 'plain completion', 'lead-1');
 
-    await Bun.sleep(300);
-    const leaderCapture = await captureFromPane(leaderPane);
-    expect(leaderCapture).toContain('worker-a completion');
-    expect(leaderCapture).toContain('plain completion');
-  });
+      await Bun.sleep(300);
+      const leaderCapture = await captureFromPane(leaderPane);
+      expect(leaderCapture).toContain('plain completion');
+    },
+  );
 
-  test.serial('worker Stop path arms leader goal reminder after queue drain', async () => {
-    const room = getRoom('crew');
-    expect(room).toBeDefined();
-    setGoal('lead-1', room!.id, 'Review worker stop output', { pane: leaderPane });
+  test.serial(
+    'worker Stop path arms leader goal reminder after queue drain',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
+      setGoal('lead-1', room!.id, 'Review worker stop output', {
+        pane: leaderPane,
+      });
 
-    await processHookEventInput(
-      JSON.stringify({
-        hook_event_name: 'Stop',
-        session_id: 'worker-stop-1',
-        last_assistant_message: 'worker stop completion',
-      }),
-      workerAPane,
-    );
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'worker-stop-1',
+          last_assistant_message: 'worker stop completion',
+        }),
+        workerAPane,
+      );
 
-    await Bun.sleep(1000);
-    expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(1);
+      await Bun.sleep(1000);
+      expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(1);
 
-    await processHookEventInput(
-      JSON.stringify({ hook_event_name: 'Stop', session_id: 'lead-stop-worker-path' }),
-      leaderPane,
-    );
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'lead-stop-worker-path',
+        }),
+        leaderPane,
+      );
 
-    expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(1);
-    expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(0);
-  });
+      expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(1);
+      expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(0);
+    },
+  );
 
-  test.serial('active worker goal blocks Stop-driven batch final delivery until goal is done', async () => {
-    const room = getRoom('crew');
-    expect(room).toBeDefined();
-    setGoal('worker-a', room!.id, 'Finish gated batch task', { pane: workerAPane });
+  test.serial(
+    'active worker goal blocks Stop-driven batch final delivery until goal is done',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
+      setGoal('worker-a', room!.id, 'Finish gated batch task', {
+        pane: workerAPane,
+      });
 
-    const batchId = makeBatchId('goal-gated-batch');
-    createMessageBatch({
-      batchId,
-      roomId: room!.id,
-      leaderName: 'lead-1',
-      hintAfterSeconds: null,
-      workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
-    });
+      const batchId = makeBatchId('goal-gated-batch');
+      createMessageBatch({
+        batchId,
+        roomId: room!.id,
+        leaderName: 'lead-1',
+        hintAfterSeconds: null,
+        workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
+      });
 
-    await deliverMessage(
-      'lead-1',
-      'crew',
-      'single task',
-      'worker-a',
-      'pull',
-      'task',
-      undefined,
-      {
-        batch_id: batchId,
-        worker_name: 'worker-a',
-        prompt_file: 'prompts/a.md',
-        manifest_order: 0,
-      },
-    );
+      await deliverMessage(
+        'lead-1',
+        'crew',
+        'single task',
+        'worker-a',
+        undefined,
+        {
+          batch_id: batchId,
+          worker_name: 'worker-a',
+          prompt_file: 'prompts/a.md',
+          manifest_order: 0,
+        },
+      );
 
-    await processHookEventInput(
-      JSON.stringify({
-        hook_event_name: 'Stop',
-        session_id: 'worker-goal-gated-batch-1',
-        last_assistant_message: 'single final',
-      }),
-      workerAPane,
-    );
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'worker-goal-gated-batch-1',
+          last_assistant_message: 'single final',
+        }),
+        workerAPane,
+      );
 
-    await Bun.sleep(400);
-    expect(getBatchWorkers(batchId)[0]?.terminal_status).toBe('running');
-    expect(
-      getRoomMessages('crew').filter(
-        (message) => message.to === 'lead-1' && message.kind === 'completion',
-      ),
-    ).toHaveLength(0);
+      await Bun.sleep(400);
+      expect(getBatchWorkers(batchId)[0]?.terminal_status).toBe('running');
+      expect(
+        getRoomMessages('crew').filter(
+          (message) => message.to === 'lead-1' && message.from === 'system',
+        ),
+      ).toHaveLength(0);
 
-    expect(completeGoal('worker-a', room!.id)).toBe(true);
+      expect(completeGoal('worker-a', room!.id)).toBe(true);
 
-    await processHookEventInput(
-      JSON.stringify({
-        hook_event_name: 'Stop',
-        session_id: 'worker-goal-gated-batch-2',
-        last_assistant_message: 'single final',
-      }),
-      workerAPane,
-    );
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'worker-goal-gated-batch-2',
+          last_assistant_message: 'single final',
+        }),
+        workerAPane,
+      );
 
-    await Bun.sleep(1200);
-    expect(getBatchWorkers(batchId)[0]?.terminal_status).toBe('success');
-    const finalMessages = getRoomMessages('crew').filter(
-      (message) => message.to === 'lead-1' && message.kind === 'completion',
-    );
-    expect(finalMessages).toHaveLength(1);
-    expect(finalMessages[0]?.text).toContain('## worker-a');
-    expect(finalMessages[0]?.text).toContain('single final');
-  });
+      await Bun.sleep(1200);
+      expect(getBatchWorkers(batchId)[0]?.terminal_status).toBe('success');
+      const finalMessages = getRoomMessages('crew').filter(
+        (message) => message.to === 'lead-1' && message.from === 'system',
+      );
+      expect(finalMessages).toHaveLength(1);
+      expect(finalMessages[0]?.text).toContain('## worker-a');
+      expect(finalMessages[0]?.text).toContain('single final');
+    },
+  );
 
-  test.serial('leader goal reminder arms after non-batch queue drain and fires on next Stop', async () => {
-    const room = getRoom('crew');
-    expect(room).toBeDefined();
-    setGoal('lead-1', room!.id, 'Review inbound results', { pane: leaderPane });
+  test.serial(
+    'leader goal reminder arms after non-batch queue drain and fires on next Stop',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
+      setGoal('lead-1', room!.id, 'Review inbound results', {
+        pane: leaderPane,
+      });
 
-    await deliverMessage(
-      'worker-a',
-      'crew',
-      'plain completion',
-      'lead-1',
-      'pull',
-      'completion',
-    );
+      await deliverMessage('worker-a', 'crew', 'plain completion', 'lead-1');
 
-    await Bun.sleep(300);
-    expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(0);
-    expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(1);
+      await Bun.sleep(300);
+      expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(0);
+      expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(1);
 
-    await processHookEventInput(
-      JSON.stringify({ hook_event_name: 'Stop', session_id: 'lead-stop-1' }),
-      leaderPane,
-    );
+      await processHookEventInput(
+        JSON.stringify({ hook_event_name: 'Stop', session_id: 'lead-stop-1' }),
+        leaderPane,
+      );
 
-    expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(1);
-    expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(0);
+      expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(1);
+      expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(0);
 
-    await processHookEventInput(
-      JSON.stringify({ hook_event_name: 'Stop', session_id: 'lead-stop-1' }),
-      leaderPane,
-    );
-    expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(1);
-  });
+      await processHookEventInput(
+        JSON.stringify({ hook_event_name: 'Stop', session_id: 'lead-stop-1' }),
+        leaderPane,
+      );
+      expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(1);
+    },
+  );
 
-  test.serial('leader goal reminder arms after batch final queue drain and fires on next Stop', async () => {
-    const room = getRoom('crew');
-    expect(room).toBeDefined();
-    setGoal('lead-1', room!.id, 'Review batch results', { pane: leaderPane });
+  test.serial(
+    'leader goal reminder arms after batch final queue drain and fires on next Stop',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
+      setGoal('lead-1', room!.id, 'Review batch results', { pane: leaderPane });
 
-    const batchId = makeBatchId('goal-arm-batch');
-    createMessageBatch({
-      batchId,
-      roomId: room!.id,
-      leaderName: 'lead-1',
-      hintAfterSeconds: null,
-      workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
-    });
+      const batchId = makeBatchId('goal-arm-batch');
+      createMessageBatch({
+        batchId,
+        roomId: room!.id,
+        leaderName: 'lead-1',
+        hintAfterSeconds: null,
+        workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
+      });
 
-    await deliverMessage(
-      'lead-1',
-      'crew',
-      'single task',
-      'worker-a',
-      'pull',
-      'task',
-      undefined,
-      {
-        batch_id: batchId,
-        worker_name: 'worker-a',
-        prompt_file: 'prompts/a.md',
-        manifest_order: 0,
-      },
-    );
-    await deliverMessage(
-      'worker-a',
-      'crew',
-      'single final',
-      'lead-1',
-      'pull',
-      'completion',
-      undefined,
-      { batch_id: batchId },
-    );
+      await deliverMessage(
+        'lead-1',
+        'crew',
+        'single task',
+        'worker-a',
+        undefined,
+        {
+          batch_id: batchId,
+          worker_name: 'worker-a',
+          prompt_file: 'prompts/a.md',
+          manifest_order: 0,
+        },
+      );
+      await deliverMessage(
+        'worker-a',
+        'crew',
+        'single final',
+        'lead-1',
+        undefined,
+        { batch_id: batchId },
+      );
 
-    await Bun.sleep(2000);
-    expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(0);
-    expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(1);
+      await Bun.sleep(2000);
+      expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(0);
+      expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(1);
 
-    await processHookEventInput(
-      JSON.stringify({ hook_event_name: 'Stop', session_id: 'lead-stop-batch' }),
-      leaderPane,
-    );
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'lead-stop-batch',
+        }),
+        leaderPane,
+      );
 
-    expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(1);
-    expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(0);
-  });
+      expect(getGoalByAgent('lead-1', room!.id)?.turn_count).toBe(1);
+      expect(getGoalByAgent('lead-1', room!.id)?.leader_reminder_armed).toBe(0);
+    },
+  );
 
   test.serial(
     'explicit batch-tagged completion falls back safely when batch recording fails',
@@ -382,163 +387,162 @@ describe('batch completion rendering', () => {
         'crew',
         'orphaned completion',
         'lead-1',
-        'pull',
-        'completion',
         undefined,
         { batch_id: 'missing-batch' },
       );
 
       await Bun.sleep(300);
       const fallbackMessages = getRoomMessages('crew').filter(
-        (message) => message.to === 'lead-1' && message.kind === 'completion',
+        (message) => message.to === 'lead-1' && message.from === 'worker-a',
       );
       expect(fallbackMessages).toHaveLength(1);
       expect(fallbackMessages[0]?.text).toContain('orphaned completion');
     },
   );
 
-  test.serial('duplicate stop after batch finalization does not fall through to legacy notification', async () => {
-    const room = getRoom('crew');
-    expect(room).toBeDefined();
+  test.serial(
+    'duplicate stop after batch finalization does not fall through to legacy notification',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
 
-    const batchId = makeBatchId('stop-idempotent');
-    createMessageBatch({
-      batchId,
-      roomId: room!.id,
-      leaderName: 'lead-1',
-      hintAfterSeconds: null,
-      workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
-    });
+      const batchId = makeBatchId('stop-idempotent');
+      createMessageBatch({
+        batchId,
+        roomId: room!.id,
+        leaderName: 'lead-1',
+        hintAfterSeconds: null,
+        workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
+      });
 
-    await deliverMessage(
-      'lead-1',
-      'crew',
-      'single task',
-      'worker-a',
-      'pull',
-      'task',
-      undefined,
-      {
+      await deliverMessage(
+        'lead-1',
+        'crew',
+        'single task',
+        'worker-a',
+        undefined,
+        {
+          batch_id: batchId,
+          worker_name: 'worker-a',
+          prompt_file: 'prompts/a.md',
+          manifest_order: 0,
+        },
+      );
+
+      await deliverMessage(
+        'worker-a',
+        'crew',
+        'single final',
+        'lead-1',
+        undefined,
+        { batch_id: batchId },
+      );
+
+      await Bun.sleep(1000);
+      const beforeStop = getRoomMessages('crew').filter(
+        (message) => message.from === 'system',
+      );
+      expect(beforeStop).toHaveLength(1);
+
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'stop-worker-a',
+          last_assistant_message: 'single final',
+        }),
+        workerAPane,
+      );
+
+      await Bun.sleep(200);
+      const afterStop = getRoomMessages('crew').filter(
+        (message) => message.from === 'system',
+      );
+      expect(afterStop).toHaveLength(1);
+    },
+  );
+
+  test.serial(
+    'non-batch stop after a newer turn is not suppressed by matching batch text',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
+
+      const batchId = makeBatchId('same-text-later-turn');
+      createMessageBatch({
+        batchId,
+        roomId: room!.id,
+        leaderName: 'lead-1',
+        hintAfterSeconds: null,
+        workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
+      });
+
+      await deliverMessage(
+        'lead-1',
+        'crew',
+        'batch task',
+        'worker-a',
+        undefined,
+        {
+          batch_id: batchId,
+          worker_name: 'worker-a',
+          prompt_file: 'prompts/a.md',
+          manifest_order: 0,
+        },
+      );
+
+      await deliverMessage('worker-a', 'crew', 'done', 'lead-1', undefined, {
         batch_id: batchId,
-        worker_name: 'worker-a',
-        prompt_file: 'prompts/a.md',
-        manifest_order: 0,
-      },
-    );
+      });
 
-    await deliverMessage(
-      'worker-a',
-      'crew',
-      'single final',
-      'lead-1',
-      'pull',
-      'completion',
-      undefined,
-      { batch_id: batchId },
-    );
+      await Bun.sleep(1000);
+      expect(
+        getRoomMessages('crew').filter(
+          (message) => message.to === 'lead-1' && message.from === 'system',
+        ),
+      ).toHaveLength(1);
 
-    await Bun.sleep(1000);
-    const beforeStop = getRoomMessages('crew').filter(
-      (message) => message.kind === 'completion',
-    );
-    expect(beforeStop).toHaveLength(1);
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'UserPromptSubmit',
+          session_id: 'later-turn-submit',
+        }),
+        workerAPane,
+      );
 
-    await processHookEventInput(
-      JSON.stringify({
-        hook_event_name: 'Stop',
-        session_id: 'stop-worker-a',
-        last_assistant_message: 'single final',
-      }),
-      workerAPane,
-    );
+      const leaderDelivery = await waitForPaneOutput(
+        leaderPane,
+        /\[worker-a@crew\] completed:/,
+        7000,
+        async () => {
+          await processHookEventInput(
+            JSON.stringify({
+              hook_event_name: 'Stop',
+              session_id: 'later-turn-stop',
+              last_assistant_message: 'done',
+            }),
+            workerAPane,
+          );
+        },
+      );
 
-    await Bun.sleep(200);
-    const afterStop = getRoomMessages('crew').filter(
-      (message) => message.kind === 'completion',
-    );
-    expect(afterStop).toHaveLength(1);
-  });
+      expect(leaderDelivery.matched).toBe(true);
+      expect(leaderDelivery.seen).toContain('[worker-a@crew] completed:');
 
-  test.serial('non-batch stop after a newer turn is not suppressed by matching batch text', async () => {
-    const room = getRoom('crew');
-    expect(room).toBeDefined();
+      await Bun.sleep(500);
+      const leaderCapture = await captureFromPane(leaderPane);
+      expect(leaderCapture).toContain('done');
 
-    const batchId = makeBatchId('same-text-later-turn');
-    createMessageBatch({
-      batchId,
-      roomId: room!.id,
-      leaderName: 'lead-1',
-      hintAfterSeconds: null,
-      workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
-    });
+      const batchFinalMessages = getRoomMessages('crew').filter(
+        (message) => message.from === 'system',
+      );
+      expect(batchFinalMessages).toHaveLength(1);
 
-    await deliverMessage(
-      'lead-1',
-      'crew',
-      'batch task',
-      'worker-a',
-      'pull',
-      'task',
-      undefined,
-      {
-        batch_id: batchId,
-        worker_name: 'worker-a',
-        prompt_file: 'prompts/a.md',
-        manifest_order: 0,
-      },
-    );
-
-    await deliverMessage(
-      'worker-a',
-      'crew',
-      'done',
-      'lead-1',
-      'pull',
-      'completion',
-      undefined,
-      { batch_id: batchId },
-    );
-
-    await Bun.sleep(1000);
-    expect(
-      getRoomMessages('crew').filter(
-        (message) => message.to === 'lead-1' && message.kind === 'completion',
-      ),
-    ).toHaveLength(1);
-
-    await processHookEventInput(
-      JSON.stringify({
-        hook_event_name: 'UserPromptSubmit',
-        session_id: 'later-turn-submit',
-      }),
-      workerAPane,
-    );
-
-    const leaderDelivery = await waitForPaneOutput(
-      leaderPane,
-      /\[worker-a@crew\] completed:/,
-      7000,
-      async () => {
-        await processHookEventInput(
-          JSON.stringify({
-            hook_event_name: 'Stop',
-            session_id: 'later-turn-stop',
-            last_assistant_message: 'done',
-          }),
-          workerAPane,
-        );
-      },
-    );
-
-    expect(leaderDelivery.matched).toBe(true);
-    expect(leaderDelivery.seen).toContain('[worker-a@crew] completed:');
-    expect(leaderDelivery.seen).toContain('done');
-
-    const completionMessages = getRoomMessages('crew').filter(
-      (message) => message.kind === 'completion',
-    );
-    expect(completionMessages).toHaveLength(2);
-  });
+      const stopCompletionMessages = getRoomMessages('crew').filter(
+        (message) => message.from === 'worker-a' && message.to === null,
+      );
+      expect(stopCompletionMessages).toHaveLength(1);
+    },
+  );
 
   test.serial(
     'stop hook prefers persisted batch metadata over a newer same-name open batch',
@@ -568,8 +572,6 @@ describe('batch completion rendering', () => {
         'crew',
         'batch-one task',
         'worker-a',
-        'pull',
-        'task',
         undefined,
         {
           batch_id: batchOne,
@@ -593,55 +595,58 @@ describe('batch completion rendering', () => {
     },
   );
 
-  test.serial('stop-hook batch completions suppress per-worker leader notifications', async () => {
-    const room = getRoom('crew');
-    expect(room).toBeDefined();
+  test.serial(
+    'stop-hook batch completions suppress per-worker leader notifications',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
 
-    const batchId = makeBatchId('stop');
-    createMessageBatch({
-      batchId,
-      roomId: room!.id,
-      leaderName: 'lead-1',
-      hintAfterSeconds: null,
-      workers: [
-        { workerName: 'worker-a', promptFile: 'prompts/a.md' },
-        { workerName: 'worker-b', promptFile: 'prompts/b.md' },
-      ],
-    });
+      const batchId = makeBatchId('stop');
+      createMessageBatch({
+        batchId,
+        roomId: room!.id,
+        leaderName: 'lead-1',
+        hintAfterSeconds: null,
+        workers: [
+          { workerName: 'worker-a', promptFile: 'prompts/a.md' },
+          { workerName: 'worker-b', promptFile: 'prompts/b.md' },
+        ],
+      });
 
-    await processHookEventInput(
-      JSON.stringify({
-        hook_event_name: 'Stop',
-        session_id: 'stop-worker-b',
-        last_assistant_message: 'worker-b finished',
-      }),
-      workerBPane,
-    );
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'stop-worker-b',
+          last_assistant_message: 'worker-b finished',
+        }),
+        workerBPane,
+      );
 
-    await Bun.sleep(200);
-    const interim = await captureFromPane(leaderPane);
-    expect(interim).not.toContain('worker-b finished');
+      await Bun.sleep(200);
+      const interim = await captureFromPane(leaderPane);
+      expect(interim).not.toContain('worker-b finished');
 
-    await processHookEventInput(
-      JSON.stringify({
-        hook_event_name: 'Stop',
-        session_id: 'stop-worker-a',
-        last_assistant_message: 'worker-a finished',
-      }),
-      workerAPane,
-    );
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'stop-worker-a',
+          last_assistant_message: 'worker-a finished',
+        }),
+        workerAPane,
+      );
 
-    await Bun.sleep(1000);
-    const finalMessages = getRoomMessages('crew').filter(
-      (message) => message.to === 'lead-1' && message.kind === 'completion',
-    );
-    expect(finalMessages).toHaveLength(1);
-    expect(finalMessages[0]?.text).toContain('## worker-a');
-    expect(finalMessages[0]?.text).toContain('## worker-b');
-    expect(finalMessages[0]?.text.indexOf('## worker-a') ?? -1).toBeLessThan(
-      finalMessages[0]?.text.indexOf('## worker-b') ?? -1,
-    );
-  });
+      await Bun.sleep(1000);
+      const finalMessages = getRoomMessages('crew').filter(
+        (message) => message.to === 'lead-1' && message.from === 'system',
+      );
+      expect(finalMessages).toHaveLength(1);
+      expect(finalMessages[0]?.text).toContain('## worker-a');
+      expect(finalMessages[0]?.text).toContain('## worker-b');
+      expect(finalMessages[0]?.text.indexOf('## worker-a') ?? -1).toBeLessThan(
+        finalMessages[0]?.text.indexOf('## worker-b') ?? -1,
+      );
+    },
+  );
 
   test.serial('empty batch messages still render headings', async () => {
     const room = getRoom('crew');
@@ -656,72 +661,66 @@ describe('batch completion rendering', () => {
       workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
     });
 
-    await deliverMessage(
-      'worker-a',
-      'crew',
-      '',
-      'lead-1',
-      'pull',
-      'completion',
-      undefined,
-      { batch_id: batchId },
-    );
+    await deliverMessage('worker-a', 'crew', '', 'lead-1', undefined, {
+      batch_id: batchId,
+    });
 
     await Bun.sleep(200);
     const output = getRoomMessages('crew').filter(
-      (message) => message.to === 'lead-1' && message.kind === 'completion',
+      (message) => message.to === 'lead-1' && message.from === 'system',
     );
     expect(output).toHaveLength(1);
     expect(output[0]?.text).toContain('## worker-a');
   });
 
-  test.serial('duplicate terminal events do not duplicate the final batch message', async () => {
-    const room = getRoom('crew');
-    expect(room).toBeDefined();
+  test.serial(
+    'duplicate terminal events do not duplicate the final batch message',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
 
-    const batchId = makeBatchId('dedupe');
-    createMessageBatch({
-      batchId,
-      roomId: room!.id,
-      leaderName: 'lead-1',
-      hintAfterSeconds: null,
-      workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
-    });
+      const batchId = makeBatchId('dedupe');
+      createMessageBatch({
+        batchId,
+        roomId: room!.id,
+        leaderName: 'lead-1',
+        hintAfterSeconds: null,
+        workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
+      });
 
-    await deliverMessage(
-      'worker-a',
-      'crew',
-      'single final',
-      'lead-1',
-      'pull',
-      'completion',
-      undefined,
-      { batch_id: batchId },
-    );
+      await deliverMessage(
+        'worker-a',
+        'crew',
+        'single final',
+        'lead-1',
+        undefined,
+        { batch_id: batchId },
+      );
 
-    await Bun.sleep(200);
-    const firstRender = getRoomMessages('crew').filter(
-      (message) => message.to === 'lead-1' && message.kind === 'completion',
-    );
-    expect(firstRender).toHaveLength(1);
-    expect(firstRender[0]?.text.match(/## worker-a/g)?.length ?? 0).toBe(1);
+      await Bun.sleep(200);
+      const firstRender = getRoomMessages('crew').filter(
+        (message) => message.to === 'lead-1' && message.from === 'system',
+      );
+      expect(firstRender).toHaveLength(1);
+      expect(firstRender[0]?.text.match(/## worker-a/g)?.length ?? 0).toBe(1);
 
-    await deliverMessage(
-      'worker-a',
-      'crew',
-      'single final',
-      'lead-1',
-      'pull',
-      'completion',
-      undefined,
-      { batch_id: batchId },
-    );
+      await deliverMessage(
+        'worker-a',
+        'crew',
+        'single final',
+        'lead-1',
+        undefined,
+        { batch_id: batchId },
+      );
 
-    await Bun.sleep(200);
-    const afterDuplicate = getRoomMessages('crew').filter(
-      (message) => message.to === 'lead-1' && message.kind === 'completion',
-    );
-    expect(afterDuplicate).toHaveLength(1);
-    expect(afterDuplicate[0]?.text.match(/## worker-a/g)?.length ?? 0).toBe(1);
-  });
+      await Bun.sleep(200);
+      const afterDuplicate = getRoomMessages('crew').filter(
+        (message) => message.to === 'lead-1' && message.from === 'system',
+      );
+      expect(afterDuplicate).toHaveLength(1);
+      expect(afterDuplicate[0]?.text.match(/## worker-a/g)?.length ?? 0).toBe(
+        1,
+      );
+    },
+  );
 });

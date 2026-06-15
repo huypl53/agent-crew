@@ -61,15 +61,13 @@ describe('task runtime removal', () => {
     await cleanupAllTestSessions(getCallerTestTag());
   });
 
-  test('send_message with kind=task no longer returns task_id', async () => {
+  test('send_message does not return task_id', async () => {
     const result = await handleSendMessage({
       room: 'crew',
       text: 'Implement auth flow',
       to: 'wk-1',
-      mode: 'pull',
       name: 'lead-1',
-      kind: 'task',
-    });
+    } as any);
 
     const data = JSON.parse(result.content[0]!.text);
     expect(result.isError).toBeUndefined();

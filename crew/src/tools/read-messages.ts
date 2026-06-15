@@ -6,7 +6,6 @@ interface ReadMessagesParams {
   name: string;
   room?: string;
   since_sequence?: number;
-  kinds?: string[];
   limit?: number;
 }
 
@@ -16,10 +15,8 @@ function mapMsg(m: {
   room_id: number;
   to: string | null;
   text: string;
-  kind: string;
   timestamp: string;
   sequence: number;
-  mode: string;
 }) {
   return {
     message_id: m.message_id,
@@ -27,17 +24,15 @@ function mapMsg(m: {
     room_id: m.room_id,
     to: m.to,
     text: m.text,
-    kind: m.kind,
     timestamp: m.timestamp,
     sequence: m.sequence,
-    mode: m.mode,
   };
 }
 
 export async function handleReadMessages(
   params: ReadMessagesParams,
 ): Promise<ToolResult> {
-  const { name, room, since_sequence, kinds, limit } = params;
+  const { name, room, since_sequence, limit } = params;
 
   if (!name) {
     return err('Missing required param: name');
@@ -50,7 +45,7 @@ export async function handleReadMessages(
 
   if (room) {
     // Read from room log with cursor (advances cursor automatically)
-    const result = readRoomMessages(name, room, kinds, limit);
+    const result = readRoomMessages(name, room, limit);
     return ok({
       messages: result.messages.map(mapMsg),
       next_sequence: result.next_sequence,
@@ -60,9 +55,7 @@ export async function handleReadMessages(
   // Fallback: legacy inbox read
   const result = readMessages(name, undefined, since_sequence);
   return ok({
-    messages: result.messages.map((m) =>
-      mapMsg({ ...m, kind: m.kind ?? 'chat' }),
-    ),
+    messages: result.messages.map(mapMsg),
     next_sequence: result.next_sequence,
   });
 }
