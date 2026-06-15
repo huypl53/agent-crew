@@ -241,7 +241,10 @@ export async function resolveAgentLiveStatus(
   try {
     let result = await getPaneStatus(agent.tmux_target);
     if (result.status === 'unknown') {
-      await Bun.sleep(3500);
+      const retryMs = Number(process.env.CREW_STATUS_RETRY_MS);
+      await Bun.sleep(
+        Number.isFinite(retryMs) && retryMs >= 0 ? retryMs : 3500,
+      );
       result = await getPaneStatus(agent.tmux_target);
     }
     if (result.contentChanged) {

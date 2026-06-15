@@ -511,7 +511,7 @@ describe('batch completion rendering', () => {
 
       const leaderDelivery = await waitForPaneOutput(
         leaderPane,
-        /\[worker-a@crew\] completed:/,
+        /\[worker-a@crew\] completed:[\s\S]*done/,
         7000,
         async () => {
           await processHookEventInput(
