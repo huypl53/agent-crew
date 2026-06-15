@@ -1312,24 +1312,27 @@ function notifyLeadersOnWorkerStop(
   // their last UserPromptSubmit, crew send handled it — Stop hook should skip.
   if (alreadyNotifiedThisTurn(agent.room_id, agentName)) return;
 
-  // Truncate response for notification
+  // Pane previews are capped (notifyMaxChars) to avoid overwhelming the
+  // leader's tmux pane, but the FULL response is stored in the DB so that
+  // `crew read` returns the complete report — the leader no longer needs a
+  // follow-up `crew inspect` just to recover capped content.
   const truncated = truncateForNotification(response, config.notifyMaxChars);
   const room = getRoom(agent.room_id);
   const roomName = room?.name ?? 'unknown';
 
-  // Record completion message in DB (always, even if leader has no pane)
+  // Record the FULL completion message in DB (always, even if leader has no pane)
   const msg = addMessage(
     roomName,
     agentName,
     roomName,
-    truncated,
+    response,
     'push',
     null, // broadcast to room
     'completion',
   );
 
-  // Deliver to leaders with tmux panes via the shared queue so queue-drain
-  // semantics stay consistent with other leader-targeted crew messages.
+  // Deliver a CAPPED preview to leaders' tmux panes via the shared queue so
+  // queue-drain semantics stay consistent with other leader-targeted messages.
   const leaders = getRoomMembers(agent.room_id).filter(
     (m) => m.role === 'leader' && m.tmux_target,
   );

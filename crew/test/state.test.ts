@@ -913,6 +913,30 @@ describe('state module', () => {
       expect(completions[0].text).toContain('Finished work!');
     });
 
+    test('Stop hook stores FULL completion text even when response exceeds notifyMaxChars', () => {
+      const room = mkRoom('stop-store-full-trunc');
+      addAgent('lead-trunc', 'leader', room.id, '%920');
+      addAgent('w-trunc', 'worker', room.id, '%921');
+
+      addHookEvent('w-trunc', 'UserPromptSubmit', 's-trunc', 'do a long task');
+
+      // Response longer than notifyMaxChars (default 5000) with a unique tail
+      // marker past the cap. `crew read` must return the full text including
+      // this tail — only the leader's pane preview should be capped.
+      const longResponse = `${'x'.repeat(6000)}UNIQUE_TAIL_MARKER_PAST_5000`;
+      expect(longResponse.length).toBeGreaterThan(5000);
+      const payload = JSON.stringify({ last_assistant_message: longResponse });
+      addHookEvent('w-trunc', 'Stop', 's-trunc', payload);
+
+      const completions = getRoomMessages('stop-store-full-trunc').filter(
+        (m: any) => m.kind === 'completion',
+      );
+      expect(completions.length).toBe(1);
+      // Full text stored — tail marker survives the notifyMaxChars boundary
+      expect(completions[0].text).toContain('UNIQUE_TAIL_MARKER_PAST_5000');
+      expect(completions[0].text.length).toBe(longResponse.length);
+    });
+
     test('Stop hook suppresses completion while worker goal is active and allows next Stop after goal done', async () => {
       const room = mkRoom('goal-gated-stop-done');
       addAgent('lead-4', 'leader', room.id, '%930');
