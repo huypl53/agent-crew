@@ -5,7 +5,10 @@ import {
   getAgentByRoomAndName,
   getGoal,
   getGoalByAgent,
+  getGoalById,
+  getGoalHistory,
   getRoom,
+  getRoomGoalOverview,
   setGoal,
   unsetGoal,
   updateGoalDescription,
@@ -230,4 +233,153 @@ export async function handleGoalLookup(params: {
 
   const goal = getGoalByAgent(target.agentName, target.roomId);
   return ok({ ok: true, goal: goal ?? null });
+}
+
+/** Resolve a room from --room or the caller's pane. Used by room-scoped goal ops. */
+function resolveRoom(params: { room?: string }): { roomName: string; roomId: number } | { error: string } {
+  const explicitRoomName = params.room;
+  if (explicitRoomName) {
+    const room = getRoom(explicitRoomName);
+    if (!room) return { error: `Room not found: ${explicitRoomName}` };
+    return { roomName: room.name, roomId: room.id };
+  }
+  // Auto-detect from registered pane
+  const pane = process.env.TMUX_PANE ?? null;
+  const paneAgent = pane ? getAgentByPane(pane) : undefined;
+  if (paneAgent) {
+    return { roomName: paneAgent.room_name, roomId: paneAgent.room_id };
+  }
+  return {
+    error: 'No registered agent found for current pane. Pass --room explicitly (or run from a registered agent pane).',
+  };
+}
+
+/** Room goal overview (default `crew goal`). Shows each member's latest goal. */
+export async function handleGoalOverview(params: {
+  room?: string;
+}): Promise<ToolResult> {
+  initDb();
+
+  const room = resolveRoom(params);
+  if ('error' in room) {
+    logServer('WARN', `[goal:handleGoalOverview] resolve failed: ${room.error}`);
+    return err(room.error);
+  }
+
+  const overview = getRoomGoalOverview(room.roomId);
+  return ok({
+    ok: true,
+    overview: true,
+    room: room.roomName,
+    goals: overview.map((o) => ({
+      agent_name: o.goal.agent_name,
+      description: o.goal.description,
+      status: o.goal.status,
+      turn_count: o.goal.turn_count,
+      updated_at: o.goal.updated_at,
+    })),
+  });
+}
+
+/** List recent goal history for a room (optionally one agent). Usage: crew goal history [--agent X --room Y] */
+export async function handleGoalHistory(params: {
+  agent?: string;
+  room?: string;
+}): Promise<ToolResult> {
+  initDb();
+
+  const room = resolveRoom(params);
+  if ('error' in room) {
+    logServer('WARN', `[goal:handleGoalHistory] resolve failed: ${room.error}`);
+    return err(room.error);
+  }
+
+  const history = getGoalHistory(room.roomId, { agentName: params.agent });
+  return ok({
+    ok: true,
+    history: true,
+    room: room.roomName,
+    agent: params.agent ?? null,
+    goals: history.map((g) => ({
+      id: g.id,
+      agent_name: g.agent_name,
+      description: g.description,
+      status: g.status,
+      turn_count: g.turn_count,
+      updated_at: g.updated_at,
+    })),
+  });
+}
+
+/** Reactivate an old goal by id. Usage: crew goal redo <id> [--room Y] */
+export async function handleGoalRedo(params: {
+  id?: string;
+  room?: string;
+}): Promise<ToolResult> {
+  initDb();
+
+  const idNum = params.id ? parseInt(params.id, 10) : NaN;
+  if (!Number.isInteger(idNum) || idNum <= 0) {
+    return err('Goal id is required. Example: crew goal redo 5 (see `crew goal history` for ids)');
+  }
+
+  const room = resolveRoom(params);
+  if ('error' in room) {
+    logServer('WARN', `[goal:handleGoalRedo] resolve failed: ${room.error}`);
+    return err(room.error);
+  }
+
+  const goal = getGoalById(idNum);
+  if (!goal) {
+    return err(`No goal found with id ${idNum}`);
+  }
+  // Ownership guard: the goal must belong to the resolved room
+  if (goal.room_id !== room.roomId) {
+    logServer('WARN', `[goal:handleGoalRedo] id ${idNum} room ${goal.room_id} != ${room.roomId}`);
+    return err(`Goal ${idNum} does not belong to room ${room.roomName}`);
+  }
+  // No-op if this goal is already active — avoid retiring+re-inserting a duplicate.
+  if (goal.status === 'active') {
+    return ok({
+      ok: true,
+      goal: {
+        agent_name: goal.agent_name,
+        room_name: room.roomName,
+        description: goal.description,
+        status: goal.status,
+        turn_count: goal.turn_count,
+        redone_from: idNum,
+      },
+      message: `Goal ${idNum} is already active for ${goal.agent_name} in ${room.roomName}`,
+    });
+  }
+
+  const pane = process.env.TMUX_PANE ?? null;
+  const paneAgent = pane ? getAgentByPane(pane) : undefined;
+  const setBy = paneAgent && paneAgent.name !== goal.agent_name ? paneAgent.name : 'self';
+
+  // Bind the reactivated goal to the TARGET agent's pane (not the caller's),
+  // so pane-driven lookups (getGoal, tickGoalTurnCount) resolve correctly.
+  // Mirrors handleGoalSet's `agent.tmux_target ?? pane` precedence.
+  const targetAgent = getAgentByRoomAndName(goal.room_id, goal.agent_name);
+  const goalPane = targetAgent?.tmux_target ?? pane ?? undefined;
+
+  const reactivated = setGoal(goal.agent_name, goal.room_id, goal.description, {
+    pane: goalPane,
+    setBy,
+  });
+
+  logServer('INFO', `[goal:handleGoalRedo] reactivated id=${idNum} agent=${goal.agent_name} room=${room.roomName} setBy=${setBy}`);
+  return ok({
+    ok: true,
+    goal: {
+      agent_name: reactivated.agent_name,
+      room_name: room.roomName,
+      description: reactivated.description,
+      status: reactivated.status,
+      turn_count: reactivated.turn_count,
+      redone_from: idNum,
+    },
+    message: `Reactivated goal ${idNum} for ${reactivated.agent_name} in ${room.roomName}`,
+  });
 }

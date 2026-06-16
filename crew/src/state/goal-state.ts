@@ -3,6 +3,7 @@ import {
   bumpChangeLog,
   getAgentByPane,
   getAgentByRoomAndName,
+  getRoomMembers,
 } from './index.ts';
 import { logServer } from '../shared/server-log.ts';
 
@@ -50,7 +51,7 @@ function rowToGoal(row: Record<string, unknown>): GoalRecord {
 
 // --- CRUD ---
 
-/** Set a goal for an agent. DELETE + INSERT in a transaction. */
+/** Set a goal for an agent. Abandon any prior active goal (preserve history) + INSERT in a transaction. */
 export function setGoal(
   agentName: string,
   roomId: number,
@@ -66,10 +67,23 @@ export function setGoal(
   const setBy = options?.setBy ?? 'self';
 
   const id = db.transaction(() => {
-    db.run('DELETE FROM agent_goals WHERE agent_name = ? AND room_id = ?', [
-      agentName,
-      roomId,
-    ]);
+    // Preserve history: retire every prior goal for this agent/room so the new
+    // active goal can claim the pane/session unique-index slots. We move the
+    // pane to a per-row sentinel (`__retired:<id>`) instead of NULLing it,
+    // because the schema CHECK requires at least one of pane/session non-null.
+    // The sentinel is globally unique (keyed by row id), so it never collides
+    // with the new row's real pane or with another retired row. Active goals
+    // become 'abandoned'; done goals keep their status (history only).
+    db.run(
+      `UPDATE agent_goals
+       SET pane_bootstrap = '__retired:' || id,
+           session_id = NULL,
+           status = CASE WHEN status = 'active' THEN 'abandoned' ELSE status END,
+           completed_at = CASE WHEN status = 'active' THEN ? ELSE completed_at END,
+           updated_at = ?
+       WHERE agent_name = ? AND room_id = ?`,
+      [ts, ts, agentName, roomId],
+    );
     const stmt = db.run(
       `INSERT INTO agent_goals (agent_name, room_id, description, status, pane_bootstrap, session_id, set_by, turn_count, created_at, updated_at)
        VALUES (?, ?, ?, 'active', ?, NULL, ?, 0, ?, ?)`,
@@ -145,6 +159,61 @@ export function getGoalByAgent(
   const row = db.query(sql).get(...params) as Record<string, unknown> | null;
   if (!row) return null;
   return rowToGoal(row);
+}
+
+/** Get a single goal by id (any status). Used by `goal redo <id>`. */
+export function getGoalById(id: number): GoalRecord | null {
+  const db = getDb();
+  const row = db
+    .query('SELECT * FROM agent_goals WHERE id = ?')
+    .get(id) as Record<string, unknown> | null;
+  if (!row) return null;
+  return rowToGoal(row);
+}
+
+/**
+ * Recent goal history for a room (all statuses), newest first.
+ * Optionally filtered by agent. Re-use pool = abandoned + done.
+ */
+export function getGoalHistory(
+  roomId: number,
+  options?: { agentName?: string; limit?: number },
+): GoalRecord[] {
+  const db = getDb();
+  const limit = Math.max(1, Math.min(options?.limit ?? 20, 200));
+  let sql = 'SELECT * FROM agent_goals WHERE room_id = ?';
+  const params: (string | number)[] = [roomId];
+  if (options?.agentName) {
+    sql += ' AND agent_name = ?';
+    params.push(options.agentName);
+  }
+  sql += ' ORDER BY updated_at DESC, id DESC LIMIT ?';
+  params.push(limit);
+  const rows = db.query(sql).all(...params) as Record<string, unknown>[];
+  return rows.map(rowToGoal);
+}
+
+/**
+ * Latest goal per member of a room (active/done/abandoned), for the
+ * `crew goal` room overview. Members without any goal are omitted.
+ */
+export function getRoomGoalOverview(
+  roomId: number,
+): Array<{ goal: GoalRecord }> {
+  const members = getRoomMembers(roomId);
+  const overview: Array<{ goal: GoalRecord }> = [];
+  for (const m of members) {
+    const latest = getGoalByAgent(m.name, roomId);
+    if (latest) overview.push({ goal: latest });
+  }
+  // Active goals first, then newest updated
+  overview.sort((a, b) => {
+    const ai = a.goal.status === 'active' ? 0 : 1;
+    const bi = b.goal.status === 'active' ? 0 : 1;
+    if (ai !== bi) return ai - bi;
+    return b.goal.updated_at.localeCompare(a.goal.updated_at);
+  });
+  return overview;
 }
 
 /** Mark goal as done. Sets status='done', completed_at=now. */

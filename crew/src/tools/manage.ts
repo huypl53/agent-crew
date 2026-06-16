@@ -4,9 +4,21 @@ import { selectMultiple, selectOne } from '../cli/interactive.ts';
 import type { Agent, Room, ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
 import { getDb } from '../state/db.ts';
-import { getAgent, getAgentByRoomAndName, getRoomMembers } from '../state/index.ts';
+import {
+  getAgent,
+  getAgentByRoomAndName,
+  getGoalHistory,
+  getRoomGoalOverview,
+  getRoomMembers,
+} from '../state/index.ts';
 import { handleClearWorkerSession } from './clear-worker-session.ts';
 import { handleDeleteRoom } from './delete-room.ts';
+import {
+  handleGoalDone,
+  handleGoalLookup,
+  handleGoalSet,
+  handleGoalUnset,
+} from './goal.ts';
 import { handleInterruptWorker } from './interrupt-worker.ts';
 import { handleLeaveRoom } from './leave-room.ts';
 import { handleReassignTask } from './reassign-task.ts';
@@ -31,6 +43,17 @@ function promptText(
       resolve(null);
     });
   });
+}
+
+/** Unwrap an error message from a ToolResult, defaulting to a generic string. */
+function resultError(result: ToolResult, fallback: string): string {
+  const text = result.content[0]?.text;
+  if (!text) return fallback;
+  try {
+    return JSON.parse(text).error ?? fallback;
+  } catch {
+    return text;
+  }
 }
 
 interface ManageParams {
@@ -165,6 +188,9 @@ async function manageRoomMenu(
         : []),
       ...(callerName ? [{ value: 'leave', label: 'Leave room' }] : []),
       ...(isLeader ? [{ value: 'delete', label: 'Delete room' }] : []),
+      // Goal overview is read-only oversight — keep it last (before Back) so it
+      // doesn't shift the indices of the action items the existing tests drive.
+      { value: 'goals', label: 'View all goals (overview)' },
       { value: 'back', label: 'Back' },
     ];
 
@@ -231,12 +257,33 @@ async function manageRoomMenu(
           stdout.write(`Successfully updated topic for room "${room.name}"\n`);
         }
       }
+    } else if (action === 'goals') {
+      await viewRoomGoals(room, stdin, stdout);
     } else if (action === 'members') {
       await manageMembersMenu(room, effectiveCallerName, stdin, stdout, isOperator);
     } else if (action === 'bulk-members') {
       await manageBulkMembersMenu(room, effectiveCallerName, stdin, stdout, isOperator);
     }
   }
+}
+
+/** Room-level goal overview: print each member's latest goal. */
+async function viewRoomGoals(
+  room: Room,
+  _stdin: Readable,
+  stdout: Writable,
+): Promise<void> {
+  const overview = getRoomGoalOverview(room.id);
+
+  stdout.write(`\nGoals in room "${room.name}":\n`);
+  if (overview.length === 0) {
+    stdout.write('  (no goals set)\n');
+  }
+  for (const { goal: g } of overview) {
+    const mark = g.status === 'active' ? '🎯' : '  ';
+    stdout.write(`  ${mark} ${g.agent_name}: "${g.description}" (${g.status}, turn ${g.turn_count})\n`);
+  }
+  stdout.write('\n');
 }
 
 async function manageMembersMenu(
@@ -280,6 +327,13 @@ async function manageMembersMenu(
           ]
         : []),
       { value: 'remove', label: 'Remove from Room' },
+      // Goal actions are clustered last (before Back) so they don't shift the
+      // indices of the existing worker/control actions the tests navigate to.
+      { value: 'view-goal', label: 'View goal' },
+      { value: 'set-goal', label: 'Set goal' },
+      { value: 'redo-goal', label: 'Reactivate goal from history' },
+      { value: 'done-goal', label: 'Mark goal done' },
+      { value: 'unset-goal', label: 'Unset goal' },
       { value: 'back', label: 'Back' },
     ];
 
@@ -357,8 +411,69 @@ async function manageMembersMenu(
           );
         }
       }
+    } else if (action === 'view-goal') {
+      const r = await handleGoalLookup({ agent: selectedMember.name, room: room.name });
+      const d = JSON.parse(r.content[0]?.text ?? '{}');
+      stdout.write(
+        d.goal
+          ? `  🎯 ${selectedMember.name}: "${d.goal.description}" (${d.goal.status}, turn ${d.goal.turn_count ?? 0})\n`
+          : `  ${selectedMember.name} has no goal.\n`,
+      );
+    } else if (action === 'set-goal') {
+      const desc = await promptText(stdin, stdout, 'Enter goal description: ');
+      if (desc !== null) {
+        const r = await handleGoalSet({ agent: selectedMember.name, room: room.name, message: desc });
+        stdout.write(r.isError ? `Error: ${resultError(r, 'set goal failed')}\n` : `Goal set for ${selectedMember.name}\n`);
+      }
+    } else if (action === 'redo-goal') {
+      await reactivateGoalMenu(room, selectedMember.name, stdin, stdout);
+    } else if (action === 'done-goal') {
+      const r = await handleGoalDone({ agent: selectedMember.name, room: room.name });
+      stdout.write(r.isError ? `Error: ${resultError(r, 'done goal failed')}\n` : `Goal marked done for ${selectedMember.name}\n`);
+    } else if (action === 'unset-goal') {
+      const r = await handleGoalUnset({ agent: selectedMember.name, room: room.name });
+      stdout.write(r.isError ? `Error: ${resultError(r, 'unset goal failed')}\n` : `Goal removed for ${selectedMember.name}\n`);
     }
   }
+}
+
+/** Interactive picker: reactivate one of the member's past goals. */
+async function reactivateGoalMenu(
+  room: Room,
+  agentName: string,
+  stdin: Readable,
+  stdout: Writable,
+): Promise<void> {
+  const history = getGoalHistory(room.id, { agentName, limit: 50 });
+  if (history.length === 0) {
+    stdout.write(`  No goal history for ${agentName}.\n`);
+    return;
+  }
+  type GoalRow = (typeof history)[number];
+  const items: Array<{ value: GoalRow | null; label: string }> = history.map((g) => ({
+    value: g as GoalRow,
+    label: `[${g.id}] "${g.description}" (${g.status}, turn ${g.turn_count ?? 0})`,
+  }));
+  items.push({ value: null, label: 'Cancel' });
+
+  const picked = await selectOne<GoalRow | null>({
+    title: `Reactivate a past goal for ${agentName}`,
+    items,
+    stdin,
+    stdout,
+  });
+  if (!picked) return;
+
+  const r = await handleGoalSet({
+    agent: agentName,
+    room: room.name,
+    message: picked.description,
+  });
+  stdout.write(
+    r.isError
+      ? `Error: ${resultError(r, 'reactivate failed')}\n`
+      : `Reactivated goal #${picked.id} for ${agentName}\n`,
+  );
 }
 
 async function manageBulkMembersMenu(

@@ -260,4 +260,148 @@ describe('goal feature e2e — CLI', () => {
     );
     expect(JSON.parse(lookup.out).goal).toBeNull();
   });
+
+  // 12. Default `crew goal` (no subcommand) shows room overview
+  test('crew goal (no subcommand) shows room overview', async () => {
+    // Seed a fresh goal so there is something to show
+    await runCli(
+      ['goal', 'set', 'Overview seed goal', '--agent', 'wk-1', '--room', 'goal-room'],
+      env(),
+    );
+
+    const { out, exitCode } = await runCli(
+      ['goal', '--room', 'goal-room', '--json'],
+      env(),
+    );
+    expect(exitCode).toBe(0);
+    const data = JSON.parse(out);
+    expect(data.overview).toBe(true);
+    expect(data.room).toBe('goal-room');
+    const wkGoal = data.goals.find((g: any) => g.agent_name === 'wk-1');
+    expect(wkGoal).toBeDefined();
+    expect(wkGoal.description).toBe('Overview seed goal');
+  });
+
+  // 13. `crew goal history` lists past goals with ids
+  test('crew goal history lists goals with ids', async () => {
+    const { out, exitCode } = await runCli(
+      ['goal', 'history', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
+      env(),
+    );
+    expect(exitCode).toBe(0);
+    const data = JSON.parse(out);
+    expect(data.history).toBe(true);
+    expect(Array.isArray(data.goals)).toBe(true);
+    expect(data.goals.length).toBeGreaterThan(0);
+    // Every history entry carries an id (needed for `goal redo`)
+    for (const g of data.goals) {
+      expect(typeof g.id).toBe('number');
+    }
+  });
+
+  // 14. `crew goal redo <id>` reactivates a past goal by id
+  test('crew goal redo reactivates a past goal by id', async () => {
+    // First, complete the current goal so we have something non-active to redo
+    await runCli(
+      ['goal', 'done', '--agent', 'wk-1', '--room', 'goal-room'],
+      env(),
+    );
+
+    // Fetch an id from history
+    const hist = await runCli(
+      ['goal', 'history', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
+      env(),
+    );
+    const doneGoal = JSON.parse(hist.out).goals.find(
+      (g: any) => g.status !== 'active',
+    );
+    expect(doneGoal).toBeDefined();
+
+    // Redo it
+    const { out, exitCode } = await runCli(
+      ['goal', 'redo', String(doneGoal.id), '--room', 'goal-room', '--json'],
+      env(),
+    );
+    expect(exitCode).toBe(0);
+    const data = JSON.parse(out);
+    expect(data.goal.status).toBe('active');
+    expect(data.goal.redone_from).toBe(doneGoal.id);
+    expect(data.goal.description).toBe(doneGoal.description);
+  });
+
+  // 15. `crew goal redo` rejects an unknown id
+  test('crew goal redo rejects unknown id', async () => {
+    // goal id 999999 won't exist at all → not found, exitCode 1
+    const { out, err, exitCode } = await runCli(
+      ['goal', 'redo', '999999', '--room', 'goal-room', '--json'],
+      env(),
+    );
+    expect(exitCode).toBe(1);
+    const blob = (out || err || '').toLowerCase();
+    expect(blob).toContain('999999'); // echoes the offending id
+  });
+
+  // 16. `crew goal redo` binds the reactivated goal to the TARGET agent's pane,
+  // not the caller's pane (regression: H1 — redo used to leak the operator pane).
+  test('crew goal redo binds to target agent pane, not caller pane', async () => {
+    // Seed + complete a goal for the worker so we have a redo candidate
+    await runCli(
+      ['goal', 'set', 'Pane-binding redo', '--agent', 'wk-1', '--room', 'goal-room'],
+      env(),
+    );
+    await runCli(['goal', 'done', '--agent', 'wk-1', '--room', 'goal-room'], env());
+
+    const hist = await runCli(
+      ['goal', 'history', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
+      env(),
+    );
+    const candidate = JSON.parse(hist.out).goals.find(
+      (g: any) => g.description === 'Pane-binding redo' && g.status !== 'active',
+    );
+    expect(candidate).toBeDefined();
+
+    // Redo it FROM the LEADER's pane (not the worker's). The reactivated goal
+    // must be bound to the worker's pane, not the leader's.
+    await runCli(
+      ['goal', 'redo', String(candidate.id), '--room', 'goal-room'],
+      { ...env(), TMUX_PANE: leaderSession.pane },
+    );
+
+    // Lookup the worker's goal by agent → its pane must be the worker's pane
+    const { out } = await runCli(
+      ['goal', 'lookup', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
+      env(),
+    );
+    const goal = JSON.parse(out).goal;
+    expect(goal.pane_bootstrap).toBe(workerSession.pane);
+    expect(goal.pane_bootstrap).not.toBe(leaderSession.pane);
+  });
+
+  // 17. `crew goal redo` on an already-active goal is a no-op (no history churn)
+  test('crew goal redo on active goal is a no-op', async () => {
+    // wk-1 currently has an active goal from the previous test
+    const before = await runCli(
+      ['goal', 'history', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
+      env(),
+    );
+    const activeGoal = JSON.parse(before.out).goals.find(
+      (g: any) => g.status === 'active',
+    );
+    expect(activeGoal).toBeDefined();
+    const countBefore = JSON.parse(before.out).goals.length;
+
+    const { out, exitCode } = await runCli(
+      ['goal', 'redo', String(activeGoal.id), '--room', 'goal-room', '--json'],
+      env(),
+    );
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(out).goal.status).toBe('active');
+
+    // History count unchanged — no retired+re-inserted duplicate
+    const after = await runCli(
+      ['goal', 'history', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
+      env(),
+    );
+    expect(JSON.parse(after.out).goals.length).toBe(countBefore);
+  });
 });
