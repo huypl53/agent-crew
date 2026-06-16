@@ -12,7 +12,41 @@ const argv = process.argv.slice(2);
 const parsed = parseArgs(argv);
 
 if (parsed.command === 'help' || parsed.flags.help) {
-  console.log(formatHelp());
+  initDb();
+  if (!parsed.flags.name) {
+    const envName = process.env.CREW_AGENT_NAME?.trim();
+    if (envName) {
+      parsed.flags.name = envName;
+    } else {
+      const pane = process.env.TMUX_PANE;
+      if (pane) {
+        try {
+          const { getAgentByPane } = await import('./state/index.ts');
+          const paneAgent = getAgentByPane(pane);
+          if (paneAgent) {
+            parsed.flags.name = paneAgent.name;
+          }
+        } catch (_e) {
+          // ignore state import/error; fallback to unregistered scope
+        }
+      }
+    }
+  }
+
+  let helpRole: 'leader' | 'worker' | 'user' = 'user';
+  if (parsed.flags.name) {
+    try {
+      const { getAgent } = await import('./state/index.ts');
+      const agent = getAgent(parsed.flags.name);
+      if (agent?.role === 'leader' || agent?.role === 'worker') {
+        helpRole = agent.role;
+      }
+    } catch (_e) {
+      // ignore and keep unregistered role
+    }
+  }
+
+  console.log(formatHelp(helpRole));
   process.exit(0);
 }
 
