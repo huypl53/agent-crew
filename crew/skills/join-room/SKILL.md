@@ -10,15 +10,15 @@ Register yourself in a crew coordination room.
 
 ## Instructions
 
-1. Parse arguments: `--role <role>` (required), `--name <name>` (optional), `--room <room>` (optional)
+1. Parse arguments: `--role <role>` (required), `--name <name>` (optional), `--room <room>`/`--room-id <id>` (required one)
 2. Run via Bash:
    ```bash
-   crew join --role <role>
-   # Or with explicit name/room:
+   crew join --role <role> --room <room>
+   # Or with explicit name/room-id:
    crew join --role <role> --name <name> --room <room>
+   crew join --role <role> --name <name> --room-id 12
    ```
 3. **Defaults:**
-   - `--room` defaults to current directory basename
    - `--name` auto-generated if not provided (e.g., `worker-abc123`)
    - Tmux pane auto-detected from `$TMUX_PANE`
 

@@ -34,22 +34,20 @@ When you see a `[name@room]:` message, this is an assignment from your leader. E
 ### On Success
 
 ```bash
-crew send --room your-room --to leader-name --text "Task complete: Created Login.tsx with form validation" --name your-name --mode pull --kind completion
+crew send --room your-room --to leader-name --text "Task complete: Created Login.tsx with form validation" --name your-name
 ```
 
 ### On Error
 
 ```bash
-crew send --room your-room --to leader-name --text "Error: Can't resolve dependency X" --name your-name --mode pull --kind error
+crew send --room your-room --to leader-name --text "Error: Can't resolve dependency X" --name your-name
 ```
 
 ### If You Need Help
 
 ```bash
-crew send --room your-room --to leader-name --text "Question: Should I use REST or GraphQL?" --name your-name --mode pull --kind question
+crew send --room your-room --to leader-name --text "Question: Should I use REST or GraphQL?" --name your-name
 ```
-
-**Always include `--kind completion/error/question`** — this triggers the push notification to your leader.
 
 ## No Task Lifecycle Commands
 
@@ -83,7 +81,7 @@ crew members --room your-room
 1. Execute the task your leader gives you — that's your primary job
 2. **ALWAYS send completion/error message** — this updates your status and notifies leader
 3. **DO NOT poll for tasks** — tasks are pushed to your pane automatically
-4. Use `--kind completion/error/question` — triggers push notification to leader
+4. Use explicit status prefixes in message text (`Task complete`, `Error`, `Question`) so leader can parse outcome
 5. One assignment at a time — finish what you have before asking for more
 6. Stay in your lane — work within your assigned room and scope
 

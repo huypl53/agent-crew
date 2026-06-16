@@ -37,7 +37,7 @@ Once you have work, repeat this cycle:
 4. Wait for push notification    → workers auto-notify on completion/error
 5. Read full message             → crew read --name <self> --room <project>
 6. Review result, give feedback  → crew send if rework needed
-7. Report milestone to human     → crew send --room company --kind completion
+7. Report milestone to human     → crew send --room company --text "Frontend milestone reached" --name your-name
 8. Go to step 1
 ```
 
@@ -48,13 +48,13 @@ Once you have work, repeat this cycle:
 Send tasks to workers via push messages. The message is delivered directly to their tmux pane with Enter key automatically included — you do NOT need to send Enter separately.
 
 ```bash
-crew send --room your-room --to builder-1 --text "Create the login component in src/components/Login.tsx with email/password fields and form validation" --name your-name --mode push --kind task
+crew send --room your-room --to builder-1 --text "Create the login component in src/components/Login.tsx with email/password fields and form validation" --name your-name
 ```
 
 For long or structured task briefs, write the task to a file and use `--file` instead of shell `cat` substitution:
 
 ```bash
-crew send --room your-room --to builder-1 --file /tmp/task-brief.txt --name your-name --mode push --kind task
+crew send --room your-room --to builder-1 --file /tmp/task-brief.txt --name your-name
 ```
 
 `--file` reads UTF-8 text exactly as written and preserves newlines.
@@ -66,7 +66,7 @@ crew send --room your-room --to builder-1 --file /tmp/task-brief.txt --name your
 Use `crew send-batch` with a manifest file:
 
 ```bash
-crew send-batch --room your-room --name your-name --manifest /tmp/batch.json --mode push
+crew send-batch --room your-room --name your-name --manifest /tmp/batch.json
 ```
 
 Manifest shape:
@@ -159,7 +159,7 @@ This interrupts the worker input flow and sends a fresh assignment message.
 - Worker busy and you need conversational context → `crew inspect`
 - Worker hanging too long → `crew interrupt`, then send new instructions
 - Wrong assignment in progress → `crew reassign` with corrected text
-- Worker idle → normal `crew send` with `--kind task`
+- Worker idle → normal `crew send` task update with `--text`/`--file`
 
 ### Clearing Worker Sessions
 
@@ -218,7 +218,7 @@ If the brief is long enough that quoting becomes awkward, prefer `crew send --fi
 
 ## Push Notifications (Primary)
 
-Workers automatically push notifications to your pane when they send `completion`, `error`, or `question` messages.
+Workers automatically push notifications to your pane when they send completion messages with outcome cues (`Task complete`, `Error`, `Question`).
 
 For `crew send-batch`, this changes slightly:
 - normal per-worker completion/error pushes are suppressed while the batch is in progress
@@ -305,7 +305,7 @@ Report to the human in the company room when:
 - You're blocked on something
 
 ```bash
-crew send --room company --text "Frontend auth system complete. All 3 components built and tested." --name your-name --mode push --kind completion
+crew send --room company --text "Frontend auth system complete. All 3 components built and tested." --name your-name
 ```
 
 ## Party Mode (Group Discussions)
