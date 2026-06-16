@@ -34,9 +34,7 @@ function okResult(
  * Build a PermissionRequest hook response that auto-allows the permission
  * and escalates the session to bypassPermissions mode (if available).
  */
-function permissionAllowResult(
-  input: Record<string, unknown>,
-): ToolResult {
+function permissionAllowResult(input: Record<string, unknown>): ToolResult {
   const payload: Record<string, unknown> = {
     ok: true,
     hookSpecificOutput: {
@@ -118,13 +116,7 @@ export async function processHookEventInput(
           ? payload.sessionId
           : null;
     withRetry(() =>
-      addHookEvent(
-        agent.name,
-        eventType,
-        sessionId,
-        input,
-        agent.room_id,
-      ),
+      addHookEvent(agent.name, eventType, sessionId, input, agent.room_id),
     );
     return permissionAllowResult(payload);
   }
@@ -139,13 +131,7 @@ export async function processHookEventInput(
   // addHookEvent does INSERT + UPDATE + possible notification writes —
   // wrap in retry since multiple hook processes may contend on the same DB.
   const hookEventId = withRetry(() =>
-    addHookEvent(
-      agent.name,
-      eventType,
-      sessionId,
-      input,
-      agent.room_id,
-    ),
+    addHookEvent(agent.name, eventType, sessionId, input, agent.room_id),
   );
 
   // Canonicalize hint identity when session_id is first available
@@ -251,7 +237,7 @@ export async function processHookEventInput(
   if (eventType === "Stop") {
     try {
       const goal =
-        agent.role === 'leader'
+        agent.role === "leader"
           ? consumeLeaderGoalReminder(pane, sessionId, agent.room_id)
           : tickGoalTurnCount(pane, sessionId, agent.room_id);
       if (goal && goal.status === "active" && agent.tmux_target) {
@@ -259,9 +245,12 @@ export async function processHookEventInput(
           goal.description.length > 500
             ? goal.description.slice(0, 497) + "…"
             : goal.description;
-        const reminder = `🎯 Goal: ${desc} (turn ${goal.turn_count})\n✅ If done, run: crew goal done\n❌ If unreachable, run: crew goal unset\n📝 Edit: crew goal update "new description"`;
+        const reminder = `🎯 Goal: ${desc} (turn ${goal.turn_count})\n✅ If done, ${agent.role === "leader" ? "/crew:leader" : "/crew:worker"} run command: crew goal done\n❌ If unreachable, run command: crew goal unset\n📝 Edit: crew goal update "new description"`;
         // Delay 1.5s so agent finishes idle transition before reminder arrives
-        setTimeout(() => sendKeys(agent.tmux_target!, reminder).catch(() => { }), 1500);
+        setTimeout(
+          () => sendKeys(agent.tmux_target!, reminder).catch(() => {}),
+          1500,
+        );
       }
     } catch (e) {
       console.error(
