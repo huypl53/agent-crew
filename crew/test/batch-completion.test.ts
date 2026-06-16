@@ -4,6 +4,7 @@ import { closeDb, initDb } from '../src/state/db.ts';
 import {
   completeGoal,
   createMessageBatch,
+  flushGoalCompletionIfReady,
   getBatchWorkers,
   getGoalByAgent,
   getRoom,
@@ -287,6 +288,435 @@ describe('batch completion rendering', () => {
       expect(finalMessages).toHaveLength(1);
       expect(finalMessages[0]?.text).toContain('## worker-a');
       expect(finalMessages[0]?.text).toContain('single final');
+    },
+  );
+
+  test.serial(
+    'multi-worker batch with active goals blocks finalization until all goals done',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
+      setGoal('worker-a', room!.id, 'Gated batch worker-a', {
+        pane: workerAPane,
+      });
+      setGoal('worker-b', room!.id, 'Gated batch worker-b', {
+        pane: workerBPane,
+      });
+
+      const batchId = makeBatchId('multi-goal-gated');
+      createMessageBatch({
+        batchId,
+        roomId: room!.id,
+        leaderName: 'lead-1',
+        hintAfterSeconds: null,
+        workers: [
+          { workerName: 'worker-a', promptFile: 'prompts/a.md' },
+          { workerName: 'worker-b', promptFile: 'prompts/b.md' },
+        ],
+      });
+
+      await deliverMessage(
+        'lead-1',
+        'crew',
+        'task for both',
+        'worker-a',
+        undefined,
+        {
+          batch_id: batchId,
+          worker_name: 'worker-a',
+          prompt_file: 'prompts/a.md',
+          manifest_order: 0,
+        },
+      );
+      await deliverMessage(
+        'lead-1',
+        'crew',
+        'task for both',
+        'worker-b',
+        undefined,
+        {
+          batch_id: batchId,
+          worker_name: 'worker-b',
+          prompt_file: 'prompts/b.md',
+          manifest_order: 1,
+        },
+      );
+
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'multi-goal-stop-a',
+          last_assistant_message: 'worker-a done',
+        }),
+        workerAPane,
+      );
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'multi-goal-stop-b',
+          last_assistant_message: 'worker-b done',
+        }),
+        workerBPane,
+      );
+
+      await Bun.sleep(500);
+      const workersAfterStops = getBatchWorkers(batchId).map((worker) => worker);
+      expect(workersAfterStops).toHaveLength(2);
+      expect(
+        workersAfterStops.every((worker) => worker.terminal_status === 'running'),
+      ).toBe(true);
+
+      expect(
+        getRoomMessages('crew').filter(
+          (message) => message.to === 'lead-1' && message.from === 'system',
+        ),
+      ).toHaveLength(0);
+
+      expect(completeGoal('worker-a', room!.id)).toBe(true);
+      flushGoalCompletionIfReady('worker-a', room!.id);
+      await Bun.sleep(500);
+      expect(
+        getBatchWorkers(batchId).find((worker) => worker.worker_name === 'worker-a')
+          ?.terminal_status,
+      ).toBe('success');
+      expect(
+        getBatchWorkers(batchId).find((worker) => worker.worker_name === 'worker-b')
+          ?.terminal_status,
+      ).toBe('running');
+      expect(
+        getRoomMessages('crew').filter(
+          (message) => message.to === 'lead-1' && message.from === 'system',
+        ),
+      ).toHaveLength(0);
+
+      expect(completeGoal('worker-b', room!.id)).toBe(true);
+      flushGoalCompletionIfReady('worker-b', room!.id);
+      await Bun.sleep(1200);
+
+      const finalMessages = getRoomMessages('crew').filter(
+        (message) => message.to === 'lead-1' && message.from === 'system',
+      );
+      expect(finalMessages).toHaveLength(1);
+      expect(finalMessages[0]?.text).toContain('## worker-a');
+      expect(finalMessages[0]?.text).toContain('## worker-b');
+      expect(finalMessages[0]?.text).toContain('worker-a done');
+      expect(finalMessages[0]?.text).toContain('worker-b done');
+    },
+  );
+
+  test.serial(
+    'batch with mixed goal and non-goal workers waits only for goaled worker',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
+      setGoal('worker-a', room!.id, 'Only gate worker-a', {
+        pane: workerAPane,
+      });
+
+      const batchId = makeBatchId('mixed-goal-batch');
+      createMessageBatch({
+        batchId,
+        roomId: room!.id,
+        leaderName: 'lead-1',
+        hintAfterSeconds: null,
+        workers: [
+          { workerName: 'worker-a', promptFile: 'prompts/a.md' },
+          { workerName: 'worker-b', promptFile: 'prompts/b.md' },
+        ],
+      });
+
+      await deliverMessage(
+        'lead-1',
+        'crew',
+        'task for a',
+        'worker-a',
+        undefined,
+        {
+          batch_id: batchId,
+          worker_name: 'worker-a',
+          prompt_file: 'prompts/a.md',
+          manifest_order: 0,
+        },
+      );
+      await deliverMessage(
+        'lead-1',
+        'crew',
+        'task for b',
+        'worker-b',
+        undefined,
+        {
+          batch_id: batchId,
+          worker_name: 'worker-b',
+          prompt_file: 'prompts/b.md',
+          manifest_order: 1,
+        },
+      );
+
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'mixed-goal-stop-b',
+          last_assistant_message: 'worker-b quick done',
+        }),
+        workerBPane,
+      );
+
+      await Bun.sleep(250);
+      expect(
+        getBatchWorkers(batchId).find((worker) => worker.worker_name === 'worker-b')
+          ?.terminal_status,
+      ).toBe('success');
+      expect(
+        getBatchWorkers(batchId).find((worker) => worker.worker_name === 'worker-a')
+          ?.terminal_status,
+      ).toBe('running');
+
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'mixed-goal-stop-a',
+          last_assistant_message: 'worker-a gated done',
+        }),
+        workerAPane,
+      );
+
+      await Bun.sleep(250);
+      expect(
+        getBatchWorkers(batchId).find((worker) => worker.worker_name === 'worker-a')
+          ?.terminal_status,
+      ).toBe('running');
+      expect(
+        getRoomMessages('crew').filter(
+          (message) => message.to === 'lead-1' && message.from === 'system',
+        ),
+      ).toHaveLength(0);
+
+      expect(completeGoal('worker-a', room!.id)).toBe(true);
+      flushGoalCompletionIfReady('worker-a', room!.id);
+      await Bun.sleep(1200);
+
+      const finalMessages = getRoomMessages('crew').filter(
+        (message) => message.to === 'lead-1' && message.from === 'system',
+      );
+      expect(finalMessages).toHaveLength(1);
+      expect(finalMessages[0]?.text).toContain('worker-a gated done');
+      expect(finalMessages[0]?.text).toContain('worker-b quick done');
+    },
+  );
+
+  test.serial(
+    'goaled worker keeps only latest Stop message before goal done',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
+      setGoal('worker-a', room!.id, 'Keep latest stop message', {
+        pane: workerAPane,
+      });
+
+      const batchId = makeBatchId('latest-stop-goal');
+      createMessageBatch({
+        batchId,
+        roomId: room!.id,
+        leaderName: 'lead-1',
+        hintAfterSeconds: null,
+        workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
+      });
+
+      await deliverMessage(
+        'lead-1',
+        'crew',
+        'single task',
+        'worker-a',
+        undefined,
+        {
+          batch_id: batchId,
+          worker_name: 'worker-a',
+          prompt_file: 'prompts/a.md',
+          manifest_order: 0,
+        },
+      );
+
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'goal-stop-old',
+          last_assistant_message: 'old final',
+        }),
+        workerAPane,
+      );
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'goal-stop-new',
+          last_assistant_message: 'new final',
+        }),
+        workerAPane,
+      );
+
+      await Bun.sleep(300);
+      expect(
+        getBatchWorkers(batchId)[0]?.terminal_status,
+      ).toBe('running');
+      expect(completeGoal('worker-a', room!.id)).toBe(true);
+      flushGoalCompletionIfReady('worker-a', room!.id);
+      await Bun.sleep(1200);
+
+      const finalMessages = getRoomMessages('crew').filter(
+        (message) => message.to === 'lead-1' && message.from === 'system',
+      );
+      expect(finalMessages).toHaveLength(1);
+      expect(finalMessages[0]?.text).toContain('new final');
+      expect(finalMessages[0]?.text).not.toContain('old final');
+    },
+  );
+
+  test.serial(
+    'parallel Stop and goal done across goaled workers converges to one final batch message',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
+      setGoal('worker-a', room!.id, 'Gate worker-a', { pane: workerAPane });
+      setGoal('worker-b', room!.id, 'Gate worker-b', { pane: workerBPane });
+
+      const batchId = makeBatchId('parallel-goal-race');
+      createMessageBatch({
+        batchId,
+        roomId: room!.id,
+        leaderName: 'lead-1',
+        hintAfterSeconds: null,
+        workers: [
+          { workerName: 'worker-a', promptFile: 'prompts/a.md' },
+          { workerName: 'worker-b', promptFile: 'prompts/b.md' },
+        ],
+      });
+
+      await deliverMessage(
+        'lead-1',
+        'crew',
+        'parallel task',
+        'worker-a',
+        undefined,
+        {
+          batch_id: batchId,
+          worker_name: 'worker-a',
+          prompt_file: 'prompts/a.md',
+          manifest_order: 0,
+        },
+      );
+      await deliverMessage(
+        'lead-1',
+        'crew',
+        'parallel task',
+        'worker-b',
+        undefined,
+        {
+          batch_id: batchId,
+          worker_name: 'worker-b',
+          prompt_file: 'prompts/b.md',
+          manifest_order: 1,
+        },
+      );
+
+      await Promise.all([
+        processHookEventInput(
+          JSON.stringify({
+            hook_event_name: 'Stop',
+            session_id: 'parallel-goal-stop-a',
+            last_assistant_message: 'a final',
+          }),
+          workerAPane,
+        ),
+        processHookEventInput(
+          JSON.stringify({
+            hook_event_name: 'Stop',
+            session_id: 'parallel-goal-stop-b',
+            last_assistant_message: 'b final',
+          }),
+          workerBPane,
+        ),
+      ]);
+
+      await Bun.sleep(250);
+      expect(
+        getBatchWorkers(batchId).every(
+          (worker) => worker.terminal_status === 'running',
+        ),
+      ).toBe(true);
+
+      await Promise.all([
+        Promise.resolve().then(() => {
+          expect(completeGoal('worker-a', room!.id)).toBe(true);
+          flushGoalCompletionIfReady('worker-a', room!.id);
+        }),
+        Promise.resolve().then(() => {
+          expect(completeGoal('worker-b', room!.id)).toBe(true);
+          flushGoalCompletionIfReady('worker-b', room!.id);
+        }),
+      ]);
+
+      await Bun.sleep(1200);
+      const finalMessages = getRoomMessages('crew').filter(
+        (message) => message.to === 'lead-1' && message.from === 'system',
+      );
+      expect(finalMessages).toHaveLength(1);
+      expect(finalMessages[0]?.text).toContain('## worker-a');
+      expect(finalMessages[0]?.text).toContain('## worker-b');
+      expect(finalMessages[0]?.text).toContain('a final');
+      expect(finalMessages[0]?.text).toContain('b final');
+    },
+  );
+
+  test.serial(
+    'late Stop after goal-done for a goaled worker does not create duplicate final render',
+    async () => {
+      const room = getRoom('crew');
+      expect(room).toBeDefined();
+      setGoal('worker-a', room!.id, 'Gate single worker', {
+        pane: workerAPane,
+      });
+
+      const batchId = makeBatchId('late-stop-no-duplicate');
+      createMessageBatch({
+        batchId,
+        roomId: room!.id,
+        leaderName: 'lead-1',
+        hintAfterSeconds: null,
+        workers: [{ workerName: 'worker-a', promptFile: 'prompts/a.md' }],
+      });
+
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'late-stop-race-initial',
+          last_assistant_message: 'stale final',
+        }),
+        workerAPane,
+      );
+      await Bun.sleep(250);
+
+      expect(completeGoal('worker-a', room!.id)).toBe(true);
+      flushGoalCompletionIfReady('worker-a', room!.id);
+      await Bun.sleep(1200);
+      const afterDone = getRoomMessages('crew').filter(
+        (message) => message.to === 'lead-1' && message.from === 'system',
+      );
+      expect(afterDone).toHaveLength(1);
+      expect(afterDone[0]?.text).toContain('stale final');
+
+      await processHookEventInput(
+        JSON.stringify({
+          hook_event_name: 'Stop',
+          session_id: 'late-stop-race-initial',
+          last_assistant_message: 'late final',
+        }),
+        workerAPane,
+      );
+      await Bun.sleep(500);
+      const afterLate = getRoomMessages('crew').filter(
+        (message) => message.to === 'lead-1' && message.from === 'system',
+      );
+      expect(afterLate).toHaveLength(1);
+      expect(afterLate[0]?.text).not.toContain('late final');
     },
   );
 

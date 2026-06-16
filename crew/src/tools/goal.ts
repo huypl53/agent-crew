@@ -1,6 +1,7 @@
 import { initDb } from '../state/db.ts';
 import {
   completeGoal,
+  flushGoalCompletionIfReady,
   getAgentByPane,
   getAgentByRoomAndName,
   getGoal,
@@ -129,6 +130,8 @@ export async function handleGoalDone(params: {
     logServer('DEBUG', `[goal:handleGoalDone] no active goal for ${target.agentName} in ${target.roomName}`);
     return err(`No active goal found for ${target.agentName} in ${target.roomName}`);
   }
+
+  flushGoalCompletionIfReady(target.agentName, target.roomId);
 
   return ok({
     ok: true,
