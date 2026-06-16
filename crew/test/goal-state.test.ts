@@ -9,7 +9,10 @@ import {
   consumeLeaderGoalReminder,
   getGoal,
   getGoalByAgent,
+  getGoalById,
+  getGoalHistory,
   getOrCreateRoom,
+  getRoomGoalOverview,
   setGoal,
   tickGoalTurnCount,
   unsetGoal,
@@ -76,20 +79,46 @@ describe('goal tracking', () => {
       expect(goal.set_by).toBe('leader-1');
     });
 
-    test('replaces existing goal (DELETE+INSERT)', () => {
+    test('preserves history: abandons prior goal + inserts new (retires pane slot)', () => {
       clearState();
       const room = mkRoom('room-1');
       addAgent('worker-1', 'worker', room.id, '%104');
 
-      setGoal('worker-1', room.id, 'First goal', { pane: '%104' });
+      const first = setGoal('worker-1', room.id, 'First goal', { pane: '%104' });
       const goal = setGoal('worker-1', room.id, 'Second goal', { pane: '%104' });
 
       expect(goal.description).toBe('Second goal');
 
-      // Only one goal for this agent
+      // Latest lookup returns the new active goal
       const lookup = getGoalByAgent('worker-1', room.id);
       expect(lookup).not.toBeNull();
       expect(lookup!.description).toBe('Second goal');
+      expect(lookup!.status).toBe('active');
+
+      // Prior goal is preserved as abandoned (history not deleted)
+      const prior = getGoalById(first.id);
+      expect(prior).not.toBeNull();
+      expect(prior!.status).toBe('abandoned');
+      expect(prior!.description).toBe('First goal');
+
+      // The prior goal no longer owns the live pane slot
+      expect(getGoal('%104', null, room.id)?.description).toBe('Second goal');
+    });
+
+    test('releases slot held by a done goal when setting a fresh goal', () => {
+      clearState();
+      const room = mkRoom('room-1');
+      addAgent('worker-1', 'worker', room.id, '%105');
+
+      const done = setGoal('worker-1', room.id, 'Done goal', { pane: '%105' });
+      completeGoal('worker-1', room.id);
+      // A done goal still holds pane %105 until setGoal retires it
+      const next = setGoal('worker-1', room.id, 'Fresh goal', { pane: '%105' });
+
+      expect(next.status).toBe('active');
+      expect(next.description).toBe('Fresh goal');
+      expect(getGoal('%105', null, room.id)?.description).toBe('Fresh goal');
+      expect(getGoalById(done.id)?.status).toBe('done'); // history preserved
     });
 
     test('throws if agent not found', () => {
@@ -169,6 +198,98 @@ describe('goal tracking', () => {
       addAgent('worker-1', 'worker', room.id, '%211');
 
       expect(getGoalByAgent('worker-1', room.id)).toBeNull();
+    });
+  });
+
+  describe('getGoalById', () => {
+    test('returns a goal by id regardless of status', () => {
+      clearState();
+      const room = mkRoom('room-1');
+      addAgent('worker-1', 'worker', room.id, '%212');
+      const active = setGoal('worker-1', room.id, 'Active', { pane: '%212' });
+      setGoal('worker-1', room.id, 'Newer', { pane: '%212' }); // abandons prior
+
+      const prior = getGoalById(active.id);
+      expect(prior).not.toBeNull();
+      expect(prior!.description).toBe('Active');
+      expect(prior!.status).toBe('abandoned');
+    });
+
+    test('returns null for unknown id', () => {
+      clearState();
+      expect(getGoalById(99999)).toBeNull();
+    });
+  });
+
+  describe('getGoalHistory', () => {
+    test('returns goals newest-first, all statuses', () => {
+      clearState();
+      const room = mkRoom('room-1');
+      addAgent('worker-1', 'worker', room.id, '%213');
+      setGoal('worker-1', room.id, 'Old', { pane: '%213' });
+      setGoal('worker-1', room.id, 'Newer', { pane: '%213' });
+
+      const history = getGoalHistory(room.id);
+      expect(history).toHaveLength(2);
+      expect(history[0]!.description).toBe('Newer');
+      expect(history[1]!.description).toBe('Old');
+      expect(history.map((g) => g.status)).toEqual(
+        expect.arrayContaining(['abandoned', 'active']),
+      );
+    });
+
+    test('filters by agent and respects limit', () => {
+      clearState();
+      const room = mkRoom('room-1');
+      addAgent('worker-1', 'worker', room.id, '%214');
+      addAgent('worker-2', 'worker', room.id, '%215');
+      setGoal('worker-1', room.id, 'W1', { pane: '%214' });
+      setGoal('worker-2', room.id, 'W2', { pane: '%215' });
+
+      const onlyW1 = getGoalHistory(room.id, { agentName: 'worker-1' });
+      expect(onlyW1).toHaveLength(1);
+      expect(onlyW1[0]!.description).toBe('W1');
+
+      const limited = getGoalHistory(room.id, { limit: 1 });
+      expect(limited).toHaveLength(1);
+    });
+
+    test('clamps limit to [1, 200]', () => {
+      clearState();
+      const room = mkRoom('room-1');
+      addAgent('worker-1', 'worker', room.id, '%216');
+      setGoal('worker-1', room.id, 'Only one', { pane: '%216' });
+      // limit 0 → clamped to 1 (returns the single row, not empty)
+      expect(getGoalHistory(room.id, { limit: 0 })).toHaveLength(1);
+    });
+  });
+
+  describe('getRoomGoalOverview', () => {
+    test('returns latest goal per member, active first', () => {
+      clearState();
+      const room = mkRoom('room-1');
+      addAgent('lead-1', 'leader', room.id, '%217');
+      addAgent('worker-1', 'worker', room.id, '%218');
+      setGoal('lead-1', room.id, 'Lead goal', { pane: '%217' });
+      setGoal('worker-1', room.id, 'Worker goal', { pane: '%218' });
+      completeGoal('worker-1', room.id); // worker's latest is done
+
+      const overview = getRoomGoalOverview(room.id);
+      expect(overview).toHaveLength(2);
+      // Active (lead) sorts before done (worker)
+      expect(overview[0]!.goal.status).toBe('active');
+      expect(overview[1]!.goal.status).toBe('done');
+    });
+
+    test('omits members with no goal', () => {
+      clearState();
+      const room = mkRoom('room-1');
+      addAgent('worker-1', 'worker', room.id, '%219');
+      addAgent('worker-2', 'worker', room.id, '%2190');
+      setGoal('worker-1', room.id, 'Has goal', { pane: '%219' });
+
+      const overview = getRoomGoalOverview(room.id);
+      expect(overview.map((o) => o.goal.agent_name)).toEqual(['worker-1']);
     });
   });
 
