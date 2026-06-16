@@ -449,6 +449,7 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     if (d.removed) return d.message ?? 'Goal removed';
     if (d.goal)
       return `🎯 ${d.goal.agent_name}: "${d.goal.description}" (${d.goal.status}, turn ${d.goal.turn_count ?? 0})`;
+
     return '(no goal)';
   },
   'hook-event': (d) => {

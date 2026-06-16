@@ -271,6 +271,22 @@ describe('CLI formatter', () => {
     expect(unmuteOut).toContain('notifications unmuted');
   });
 
+  test('formats goal update output with confirmed goal details', () => {
+    const out = formatResult('goal', {
+      ok: true,
+      goal: {
+        agent_name: 'wk-01',
+        description: 'Fix bug in auth.ts',
+        status: 'active',
+        turn_count: 3,
+      },
+      message: 'Goal updated for wk-01 in crew',
+    });
+
+    expect(out).toBe('🎯 wk-01: "Fix bug in auth.ts" (active, turn 3)');
+    expect(out).not.toContain('undefined');
+  });
+
   test('formats polling status outputs', () => {
     const data = {
       paused: true,

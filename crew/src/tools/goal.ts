@@ -158,9 +158,20 @@ export async function handleGoalUpdate(params: {
     return err(`No active goal found for ${target.agentName} in ${target.roomName}`);
   }
 
+  const goal = getGoalByAgent(target.agentName, target.roomId);
+  if (!goal) {
+    return err(`Goal updated but could not reload the active goal for ${target.agentName} in ${target.roomName}`);
+  }
+
   return ok({
     ok: true,
-    goal: { description: params.message.trim() },
+    goal: {
+      agent_name: goal.agent_name,
+      room_name: target.roomName,
+      description: goal.description,
+      status: goal.status,
+      turn_count: goal.turn_count,
+    },
     message: `Goal updated for ${target.agentName} in ${target.roomName}`,
   });
 }

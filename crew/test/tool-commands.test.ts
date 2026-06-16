@@ -286,8 +286,14 @@ describe('goal tool handlers', () => {
     const room = getOrCreateRoom('/tmp/g', 'dev');
     addAgent('w1', 'worker', room.id, '%10');
     setGoal('w1', room.id, 'Old desc');
-    const result = parseResult(await handleGoalUpdate({ agent: 'w1', room: 'dev', message: 'New desc' }));
+    const result = parseResult(
+      await handleGoalUpdate({ agent: 'w1', room: 'dev', message: 'New desc' }),
+    );
     expect(result.ok).toBe(true);
+    expect((result.goal as any).agent_name).toBe('w1');
+    expect((result.goal as any).description).toBe('New desc');
+    expect((result.goal as any).status).toBe('active');
+    expect((result.goal as any).turn_count).toBe(0);
     expect(getGoalByAgent('w1', room.id)?.description).toBe('New desc');
   });
 
