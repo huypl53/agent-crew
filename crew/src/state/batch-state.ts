@@ -297,6 +297,116 @@ export function areAllBatchWorkersTerminal(batchId: string): boolean {
   return Boolean(row && row.total > 0 && row.done === row.total);
 }
 
+function hasActiveBatchWorkerGoals(
+  db: ReturnType<typeof getDb>,
+  batchId: string,
+): boolean {
+  const row = db
+    .query(
+      `SELECT SUM(CASE WHEN EXISTS (
+                SELECT 1
+                FROM agent_goals g
+                WHERE g.agent_name = w.worker_name
+                  AND g.room_id = b.room_id
+                  AND g.status = 'active'
+              ) THEN 1 ELSE 0 END) AS active_goal_count
+       FROM message_batch_workers w
+       JOIN message_batches b ON b.batch_id = w.batch_id
+       WHERE w.batch_id = ? AND b.status = 'running' AND b.completed_at IS NULL`,
+    )
+    .get(batchId) as { active_goal_count: number | null } | null;
+
+  return (row?.active_goal_count ?? 0) > 0;
+}
+
+export function evaluateBatchFinalization(batchId: string): {
+  batchId: string;
+  leaderName: string;
+  roomId: number;
+  shouldFinalize: boolean;
+} | null {
+  const row = getDb()
+    .query(
+      `SELECT b.batch_id, b.leader_name, b.room_id
+       FROM message_batches b
+       WHERE b.batch_id = ? AND b.status = 'running' AND b.completed_at IS NULL`,
+    )
+    .get(batchId) as
+    { batch_id: string; leader_name: string; room_id: number } | null;
+
+  if (!row) return null;
+
+  const workerStatus = getDb()
+    .query(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN terminal_status = 'running' THEN 0 ELSE 1 END) AS done
+       FROM message_batch_workers
+       WHERE batch_id = ?`,
+    )
+    .get(batchId) as { total: number; done: number | null } | null;
+
+  if (!workerStatus || workerStatus.total <= 0 || workerStatus.done !== workerStatus.total) {
+    return {
+      batchId: row.batch_id,
+      leaderName: row.leader_name,
+      roomId: row.room_id,
+      shouldFinalize: false,
+    };
+  }
+
+  const hasActiveGoals = hasActiveBatchWorkerGoals(getDb(), batchId);
+  if (hasActiveGoals) {
+    return {
+      batchId: row.batch_id,
+      leaderName: row.leader_name,
+      roomId: row.room_id,
+      shouldFinalize: false,
+    };
+  }
+
+  const ts = now();
+  getDb().run(
+    `UPDATE message_batches
+     SET status = 'completed', completed_at = ?
+     WHERE batch_id = ? AND completed_at IS NULL`,
+    [ts, batchId],
+  );
+
+  return {
+    batchId: row.batch_id,
+    leaderName: row.leader_name,
+    roomId: row.room_id,
+    shouldFinalize: true,
+  };
+}
+
+function shouldFinalizeBatch(
+  db: ReturnType<typeof getDb>,
+  batchId: string,
+): boolean {
+  const counts = db
+    .query(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN terminal_status = 'running' THEN 0 ELSE 1 END) AS done
+       FROM message_batch_workers
+       WHERE batch_id = ?`,
+    )
+    .get(batchId) as { total: number; done: number | null } | null;
+
+  if (!counts || counts.total <= 0 || counts.done !== counts.total) return false;
+  if (hasActiveBatchWorkerGoals(db, batchId)) return false;
+
+  const ts = now();
+  const result = db.run(
+    `UPDATE message_batches
+     SET status = 'completed', completed_at = ?
+     WHERE batch_id = ? AND completed_at IS NULL`,
+    [ts, batchId],
+  );
+
+  return result.changes > 0;
+}
+
 export interface OpenBatchForWorker {
   batchId: string;
   leaderName: string;
@@ -542,26 +652,7 @@ export function recordBatchWorkerTerminalMessage(input: {
       ],
     );
 
-    const counts = db
-      .query(
-        `SELECT COUNT(*) AS total,
-                SUM(CASE WHEN terminal_status = 'running' THEN 0 ELSE 1 END) AS done
-         FROM message_batch_workers
-         WHERE batch_id = ?`,
-      )
-      .get(resolvedBatch.batchId) as { total: number; done: number | null } | null;
-    const shouldFinalize = Boolean(
-      counts && counts.total > 0 && counts.done === counts.total,
-    );
-
-    if (shouldFinalize) {
-      db.run(
-        `UPDATE message_batches
-         SET status = 'completed', completed_at = ?
-         WHERE batch_id = ? AND completed_at IS NULL`,
-        [ts, resolvedBatch.batchId],
-      );
-    }
+    const shouldFinalize = shouldFinalizeBatch(db, resolvedBatch.batchId);
 
     return {
       batchId: resolvedBatch.batchId,

@@ -137,19 +137,16 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
       }
     }
     try {
+      const shouldArm = shouldArmLeaderGoalReminder(
+        agent,
+        senderAgent,
+        ctx.metadata,
+      );
       await getQueue(agent.tmux_target, { role: agent.role }).enqueue({
         type: 'paste',
         text: fullText,
-        onQueueDrain: shouldArmLeaderGoalReminder(
-          agent,
-          senderAgent,
-          ctx.metadata,
-        )
-          ? () => {
-              armLeaderGoalReminder(agent.name, agent.room_id);
-            }
-          : undefined,
       });
+      if (shouldArm) armLeaderGoalReminder(agent.name, agent.room_id);
       incrementRoomReminderDispatchCount(roomName);
       advancePushCursor(agent.name, msg.sequence);
       return {
@@ -327,16 +324,6 @@ export async function flushPushQueueForAgent(agent: Agent): Promise<number> {
     unknown
   >[];
 
-  const lastLeaderArmableSequence =
-    agent.role === 'leader'
-      ? rows.reduce<number | null>((last, row) => {
-          const senderRole = String(row.sender_role ?? '');
-          return senderRole === 'worker' || row.batch_id != null
-            ? Number(row.id)
-            : last;
-        }, null)
-      : null;
-
   let delivered = 0;
   for (const row of rows) {
     const sequence = Number(row.id);
@@ -348,14 +335,10 @@ export async function flushPushQueueForAgent(agent: Agent): Promise<number> {
       await getQueue(pane, { role: agent.role }).enqueue({
         type: 'paste',
         text: pushText,
-        onQueueDrain:
-          lastLeaderArmableSequence !== null &&
-          sequence === lastLeaderArmableSequence
-            ? () => {
-                armLeaderGoalReminder(agent.name, agent.room_id);
-              }
-            : undefined,
       });
+      const senderRole = String(row.sender_role ?? '');
+      const shouldArm = senderRole === 'worker' || row.batch_id != null;
+      if (shouldArm) armLeaderGoalReminder(agent.name, agent.room_id);
       delivered++;
     } catch (e) {
       if (e instanceof PaneDeliveryError && e.code === 'PANE_BLOCKED_INPUT') {

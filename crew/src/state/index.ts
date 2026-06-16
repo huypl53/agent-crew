@@ -29,6 +29,7 @@ import {
   getMessageBatch,
   getOpenBatchForWorker,
   getRenderableBatchWorkers,
+  evaluateBatchFinalization,
   listHintableBatches,
   listIncompleteBatches,
   markBatchCompleted,
@@ -48,6 +49,8 @@ import {
   getGoalByAgent,
   getGoalById,
   getGoalHistory,
+  consumeGoalPendingCompletion,
+  setGoalPendingCompletion,
   getRoomGoalOverview,
   setGoal,
   tickGoalTurnCount,
@@ -77,11 +80,14 @@ export {
   getActiveDialogForWorker,
   getBatchWorkers,
   getDialogById,
+  evaluateBatchFinalization,
   getGoal,
   getGoalByAgent,
   getGoalById,
   getGoalHistory,
   getLatestBatchAssociationForWorker,
+  consumeGoalPendingCompletion,
+  setGoalPendingCompletion,
   getRoomGoalOverview,
   getLatestBatchForWorker,
   getMessageBatch,
@@ -1242,6 +1248,64 @@ export async function queueBatchFinalDelivery(
   });
 }
 
+export function flushGoalCompletionIfReady(
+  agentName: string,
+  roomId: number,
+): void {
+  const pending = consumeGoalPendingCompletion(agentName, roomId);
+  if (!pending) return;
+
+  const normalizedBatchId = pending.batchId?.trim() || null;
+  const batchTerminal = normalizedBatchId
+    ? recordBatchWorkerTerminalMessage({
+        workerName: agentName,
+        roomId,
+        batchId: normalizedBatchId,
+        terminalStatus: 'success',
+        finalMessage: pending.message,
+      })
+    : null;
+
+  if (batchTerminal?.shouldFinalize) {
+    const rendered = renderBatchFinalMessage(
+      getRenderableBatchWorkers(batchTerminal.batchId),
+    );
+    void queueBatchFinalDelivery(
+      batchTerminal.batchId,
+      batchTerminal.leaderName,
+      batchTerminal.roomId,
+      rendered,
+    ).catch((e) => {
+      console.error(
+        `[crew batch] final delivery failed for ${batchTerminal.batchId}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    });
+    return;
+  }
+
+  if (batchTerminal === null && normalizedBatchId) {
+    const batchFinalization = evaluateBatchFinalization(normalizedBatchId);
+    if (batchFinalization?.shouldFinalize) {
+      const rendered = renderBatchFinalMessage(
+        getRenderableBatchWorkers(batchFinalization.batchId),
+      );
+      void queueBatchFinalDelivery(
+        batchFinalization.batchId,
+        batchFinalization.leaderName,
+        batchFinalization.roomId,
+        rendered,
+      ).catch((e) => {
+        console.error(
+          `[crew batch] final delivery failed for ${batchFinalization.batchId}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      });
+      return;
+    }
+  }
+
+  sendWorkerCompletionToLeaders(agentName, roomId, pending.message);
+}
+
 /**
  * Auto-notify leaders when worker completes (room mode, not party mode).
  * Fire-and-forget: doesn't block hook processing.
@@ -1271,14 +1335,11 @@ function notifyLeadersOnWorkerStop(
     return;
   }
 
-  // Active worker goals are a completion gate: Stop reminders still fire for
-  // the worker, but leader-facing completion delivery waits until the goal is
-  // explicitly done or unset.
-  try {
-    const goal = getGoalByAgent(agentName, agent.room_id);
-    if (goal?.status === 'active') return;
-  } catch {
-    // Fail-open: don't block completion delivery on goal lookup errors
+  const goal = getGoalByAgent(agentName, agent.room_id);
+  if (goal?.status === 'active') {
+    const activeBatch = getOpenBatchForWorker(agentName, agent.room_id);
+    setGoalPendingCompletion(agentName, agent.room_id, response, activeBatch?.batchId);
+    return;
   }
 
   const batchTerminal = recordBatchWorkerTerminalMessage({
@@ -1287,6 +1348,7 @@ function notifyLeadersOnWorkerStop(
     terminalStatus: 'success',
     finalMessage: response,
   });
+
   if (batchTerminal) {
     if (batchTerminal.shouldFinalize) {
       const rendered = renderBatchFinalMessage(
@@ -1327,26 +1389,30 @@ function notifyLeadersOnWorkerStop(
   // their last UserPromptSubmit, crew send handled it — Stop hook should skip.
   if (alreadyNotifiedThisTurn(agent.room_id, agentName)) return;
 
-  // Pane previews are capped (notifyMaxChars) to avoid overwhelming the
-  // leader's tmux pane, but the FULL response is stored in the DB so that
-  // `crew read` returns the complete report — the leader no longer needs a
-  // follow-up `crew inspect` just to recover capped content.
-  const truncated = truncateForNotification(response, config.notifyMaxChars);
-  const room = getRoom(agent.room_id);
+  sendWorkerCompletionToLeaders(agentName, agent.room_id, response);
+}
+
+function sendWorkerCompletionToLeaders(
+  agentName: string,
+  roomId: number,
+  response: string,
+): void {
+  if (!response.trim()) return;
+
+  // Turn-scoped dedup: if worker already sent a notifiable message since
+  // their last UserPromptSubmit, crew send handled it — Stop hook should skip.
+  if (alreadyNotifiedThisTurn(roomId, agentName)) return;
+
+  const room = getRoom(roomId);
   const roomName = room?.name ?? 'unknown';
+  const truncated = truncateForNotification(response, config.notifyMaxChars);
 
   // Record the FULL completion message in DB (always, even if leader has no pane)
-  const msg = addMessage(
-    roomName,
-    agentName,
-    roomName,
-    response,
-    null, // broadcast to room
-  );
+  const msg = addMessage(roomName, agentName, roomName, response, null); // broadcast
 
   // Deliver a CAPPED preview to leaders' tmux panes via the shared queue so
   // queue-drain semantics stay consistent with other leader-targeted messages.
-  const leaders = getRoomMembers(agent.room_id).filter(
+  const leaders = getRoomMembers(roomId).filter(
     (m) => m.role === 'leader' && m.tmux_target,
   );
   const message = `[${agentName}@${roomName}] completed:\n${truncated}`;
@@ -1396,10 +1462,8 @@ async function deliverWithRetry(
         type: 'paste',
         text: message,
         skipLeaderPacing: true,
-        onQueueDrain: () => {
-          armLeaderGoalReminder(leader.name, leader.room_id);
-        },
       });
+      armLeaderGoalReminder(leader.name, leader.room_id);
       advancePushCursor(leader.name, sequence);
       return;
     } catch {

@@ -512,6 +512,21 @@ export function initDb(path?: string): void {
   const goalCols = _db.query('PRAGMA table_info(agent_goals)').all() as Array<{
     name: string;
   }>;
+  if (!goalCols.some((c) => c.name === 'pending_completion_message')) {
+    _db.exec(
+      'ALTER TABLE agent_goals ADD COLUMN pending_completion_message TEXT',
+    );
+  }
+  if (!goalCols.some((c) => c.name === 'pending_completion_batch_id')) {
+    _db.exec(
+      'ALTER TABLE agent_goals ADD COLUMN pending_completion_batch_id TEXT',
+    );
+  }
+  if (!goalCols.some((c) => c.name === 'pending_completion_created_at')) {
+    _db.exec(
+      'ALTER TABLE agent_goals ADD COLUMN pending_completion_created_at TEXT',
+    );
+  }
   if (!goalCols.some((c) => c.name === 'leader_reminder_armed')) {
     _db.exec(
       'ALTER TABLE agent_goals ADD COLUMN leader_reminder_armed INTEGER NOT NULL DEFAULT 0',

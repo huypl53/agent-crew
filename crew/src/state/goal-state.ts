@@ -23,6 +23,9 @@ export interface GoalRecord {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  pending_completion_message: string | null;
+  pending_completion_batch_id: string | null;
+  pending_completion_created_at: string | null;
 }
 
 // --- Helpers ---
@@ -46,6 +49,85 @@ function rowToGoal(row: Record<string, unknown>): GoalRecord {
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
     completed_at: (row.completed_at as string | null) ?? null,
+    pending_completion_message: (row.pending_completion_message as string | null) ?? null,
+    pending_completion_batch_id: (row.pending_completion_batch_id as string | null) ?? null,
+    pending_completion_created_at:
+      (row.pending_completion_created_at as string | null) ?? null,
+  };
+}
+
+export interface GoalPendingCompletion {
+  message: string;
+  batchId: string | null;
+}
+
+export function setGoalPendingCompletion(
+  agentName: string,
+  roomId: number,
+  message: string,
+  batchId?: string | null,
+): boolean {
+  const trimmed = message.trim();
+  if (!trimmed) return false;
+
+  const db = getDb();
+  const ts = now();
+  const result = db.run(
+    `UPDATE agent_goals
+     SET pending_completion_message = ?,
+         pending_completion_batch_id = ?,
+         pending_completion_created_at = ?,
+         updated_at = ?
+     WHERE agent_name = ? AND room_id = ? AND status = 'active'`,
+    [
+      trimmed,
+      batchId?.trim() || null,
+      ts,
+      ts,
+      agentName,
+      roomId,
+    ],
+  );
+  if (result.changes > 0) {
+    bumpChangeLog('goals');
+    logServer(
+      'DEBUG',
+      `[goal] pending-completion-set: ${agentName} room=${roomId} batch=${batchId ?? 'null'}`,
+    );
+  }
+  return result.changes > 0;
+}
+
+export function consumeGoalPendingCompletion(
+  agentName: string,
+  roomId: number,
+): GoalPendingCompletion | null {
+  const db = getDb();
+  const row = db
+    .query(
+      `SELECT id, pending_completion_message, pending_completion_batch_id
+       FROM agent_goals
+       WHERE agent_name = ? AND room_id = ?
+         AND pending_completion_message IS NOT NULL
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .get(agentName, roomId) as
+    | { id: number; pending_completion_message: string; pending_completion_batch_id: string | null }
+    | null;
+  if (!row) return null;
+
+  db.run(
+    `UPDATE agent_goals
+     SET pending_completion_message = NULL,
+         pending_completion_batch_id = NULL,
+         pending_completion_created_at = NULL
+     WHERE id = ?`,
+    [row.id],
+  );
+
+  return {
+    message: row.pending_completion_message,
+    batchId: row.pending_completion_batch_id,
   };
 }
 
