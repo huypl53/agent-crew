@@ -1,6 +1,6 @@
 {
   "name": "stop-goal-description-truncated",
-  "description": "Goal description > 100 chars gets truncated with ellipsis",
+  "description": "Goal description > 500 chars gets truncated with ellipsis",
   "seed": {
     "room": {
       "name": "dev",
@@ -16,7 +16,7 @@
     "goals": [
       {
         "agent": "w1",
-        "description": "This is a very long goal description that exceeds one hundred characters in length and should be truncated with an ellipsis when displayed"
+        "description": "This is a very long goal description that exceeds five hundred characters in total length so that the goal reminder shown in the tmux pane after the worker Stop hook fires must truncate it down to fit using a trailing ellipsis character; this test verifies that very verbose objective text is shortened for readability while still preserving the opening context so the agent understands what it is working toward during this session of autonomous crew work today, tomorrow, and onward into the next iteration of the project roadmap delivery cycle"
       }
     ]
   },

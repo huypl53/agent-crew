@@ -236,7 +236,7 @@ The fixture runner intercepts all tmux exports via `mock.module()`, recording `s
 | `stop-leader-no-armed-goal` | Leader with unarmed goal → no reminder |
 | `stop-leader-armed-goal` | Leader with armed goal → reminder fires, then disarms |
 | `stop-done-goal-no-reminder` | Completed goal → no reminder on Stop |
-| `stop-goal-truncation` | Long goal description truncated at 100 chars |
+| `stop-goal-truncation` | Long goal description truncated at 500 chars |
 | `stop-worker-turn-count` | Turn count increments on Stop |
 | `same-agent-rapid-stop` | Two rapid Stops on same agent → turn 1, turn 2 |
 | `session-id-canonicalization` | session_id in payload triggers canonicalization + reminder |

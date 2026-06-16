@@ -8,7 +8,7 @@
     "crew": "src/cli.ts"
   },
   "scripts": {
-    "test": "bun test --timeout 15000",
+    "test": "bun test --isolate --timeout 15000",
     "postinstall": "bash scripts/patch-string-width.sh",
     "lint": "bunx biome check src/ test/ scripts/",
     "lint:fix": "bunx biome check --write src/ test/ scripts/",

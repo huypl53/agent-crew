@@ -181,7 +181,7 @@ describe('batch state primitives', () => {
 
     markBatchWorkerSent('batch-late', 'worker-a');
     markBatchWorkerDispatchFailed('batch-late', 'worker-a', 'retry later');
-    completeBatchWorker('batch-late', 'worker-a', 'error', 'late overwrite');
+    completeBatchWorker('batch-late', 'worker-a', 'interrupted', 'late overwrite');
 
     expect(getBatchWorkers('batch-late')[0]).toEqual(before);
     expect(areAllBatchWorkersTerminal('batch-late')).toBe(true);

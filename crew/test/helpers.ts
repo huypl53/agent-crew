@@ -15,6 +15,45 @@ function ensureTestTmuxSocketEnv(): void {
   process.env.CREW_TMUX_SOCKET = getSocketName();
 }
 
+/**
+ * tmux defaults to `exit-empty on`, which destroys the ENTIRE server the moment
+ * the last session on a socket is killed. bun runs every test file in ONE
+ * process sharing ONE `crew-test-<pid>` socket, so when one file's afterAll
+ * empties the socket, the server dies — and the next `new-session` resurrects a
+ * fresh server whose monotonic pane IDs reset to %0. Any other file still
+ * holding pane IDs now references the wrong (reused) panes: paneExists(%0)
+ * returns true but getPaneCwd(%0) reads a different pane (often a node process
+ * with an unreadable CWD) → cascading NO_CWD join_room failures.
+ *
+ * Setting `exit-empty off` once per process keeps the server alive for the whole
+ * run so pane IDs stay stable. Guarded so we only spawn tmux a single time.
+ */
+let serverPersistsEnsured = false;
+function ensureServerPersists(): void {
+  if (serverPersistsEnsured) return;
+  serverPersistsEnsured = true;
+  Bun.spawnSync([
+    'tmux',
+    ...getSocketArgs(),
+    'set-option',
+    '-s',
+    'exit-empty',
+    'off',
+  ]);
+}
+
+// Kill the test server when the process exits so we don't accumulate stale
+// `crew-test-<pid>` servers across runs (exit-empty is now off, so it would
+// otherwise linger). Synchronous spawnSync runs fine inside 'exit'.
+let exitCleanupRegistered = false;
+function registerExitCleanup(): void {
+  if (exitCleanupRegistered) return;
+  exitCleanupRegistered = true;
+  process.on('exit', () => {
+    Bun.spawnSync(['tmux', ...getSocketArgs(), 'kill-server']);
+  });
+}
+
 export function getCallerTestTag(): string {
   const stack = new Error().stack ?? '';
   const line = stack
@@ -65,6 +104,11 @@ export async function createTestSession(
     },
   );
   await proc.exited;
+
+  // A server now exists for this socket — make it persist (exit-empty off) and
+  // arrange cleanup at process exit. Idempotent across the whole test process.
+  ensureServerPersists();
+  registerExitCleanup();
 
   // Get the pane ID
   const paneProc = Bun.spawn(
