@@ -85,12 +85,12 @@ function buildHookFallback(
   );
   const turns = assistantText
     ? [
-        {
-          role: 'assistant' as const,
-          text: assistantText,
-          timestamp: latestRelevantEvent?.created_at ?? null,
-        },
-      ]
+      {
+        role: 'assistant' as const,
+        text: assistantText,
+        timestamp: latestRelevantEvent?.created_at ?? null,
+      },
+    ]
     : [];
   const status =
     latestEvent?.event_type === 'Stop'
@@ -128,7 +128,7 @@ export async function inspectWorkerTurns(
     throw new Error('inspect currently supports only claude-code workers');
   }
 
-  const limit = params.turns && params.turns > 0 ? params.turns : 6;
+  const limit = params.turns && params.turns > 0 ? params.turns : 2;
 
   const sessionResolver =
     deps.sessionResolver ??

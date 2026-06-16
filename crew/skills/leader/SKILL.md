@@ -120,7 +120,7 @@ Response is pane/liveness oriented; use `crew inspect` for actual worker context
 
 When a worker is active but `crew status` is too coarse, inspect the recent worker conversation tail:
 ```bash
-crew inspect --worker builder-1 --room frontend --name your-name --turns 6
+crew inspect --worker builder-1 --room frontend --name your-name --turns 2
 ```
 
 This is a read-only leader tool. It shows recent normalized `user`/`assistant` turns for Claude Code workers, plus:
