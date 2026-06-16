@@ -161,6 +161,11 @@ const HELP_GROUPS: HelpGroup[] = [
       { name: 'hint unset', usage: '', desc: 'Clear registered agent hint' },
       { name: 'hint lookup', usage: '', desc: 'Show registered agent hint' },
       {
+        name: 'goal',
+        usage: '[--room <name>]',
+        desc: 'Show all goals in a room (overview)',
+      },
+      {
         name: 'goal set',
         usage: '"description" [--agent <name> --room <name>]',
         desc: 'Set agent goal',
@@ -184,6 +189,16 @@ const HELP_GROUPS: HelpGroup[] = [
         name: 'goal lookup',
         usage: '[--agent <name> | --session <id>]',
         desc: 'Show agent goal',
+      },
+      {
+        name: 'goal history',
+        usage: '[--agent <name> --room <name>]',
+        desc: 'List past goals (with ids to reuse)',
+      },
+      {
+        name: 'goal redo',
+        usage: '<id> [--room <name>]',
+        desc: 'Reactivate a past goal by id',
       },
       {
         name: 'dialog pending',
@@ -462,8 +477,35 @@ const FORMATTERS: Record<string, (data: any) => string> = {
     if (d.goal_status)
       return `Goal ${d.goal_status}${d.message ? ` — ${d.message}` : ''}`;
     if (d.removed) return d.message ?? 'Goal removed';
+    // Room overview (`crew goal` with no subcommand)
+    if (d.overview) {
+      if (!d.goals || d.goals.length === 0)
+        return `No goals set in room "${d.room}".`;
+      const lines = [`Goals in room "${d.room}":`];
+      for (const g of d.goals) {
+        const mark = g.status === 'active' ? '🎯' : '  ';
+        lines.push(
+          `${mark} ${g.agent_name}: "${g.description}" (${g.status}, turn ${g.turn_count ?? 0})`,
+        );
+      }
+      return lines.join('\n');
+    }
+    // History list (`crew goal history`)
+    if (d.history) {
+      if (!d.goals || d.goals.length === 0)
+        return `No goal history in room "${d.room}"${d.agent ? ` for ${d.agent}` : ''}.`;
+      const lines = [
+        `Goal history in room "${d.room}"${d.agent ? ` · ${d.agent}` : ''}:`,
+      ];
+      for (const g of d.goals) {
+        lines.push(
+          `  [${g.id}] ${g.agent_name}: "${g.description}" (${g.status}, turn ${g.turn_count ?? 0})`,
+        );
+      }
+      return lines.join('\n');
+    }
     if (d.goal)
-      return `🎯 ${d.goal.agent_name}: "${d.goal.description}" (${d.goal.status}, turn ${d.goal.turn_count ?? 0})`;
+      return `🎯 ${d.goal.agent_name}: "${d.goal.description}" (${d.goal.status}, turn ${d.goal.turn_count ?? 0})${d.redone_from ? ` — redone from #${d.redone_from}` : ''}`;
 
     return '(no goal)';
   },

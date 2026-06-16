@@ -13,7 +13,10 @@ import {
 import { handleGetStatus } from '../tools/get-status.ts';
 import {
   handleGoalDone,
+  handleGoalHistory,
   handleGoalLookup,
+  handleGoalOverview,
+  handleGoalRedo,
   handleGoalSet,
   handleGoalUnset,
   handleGoalUpdate,
@@ -300,13 +303,17 @@ export const COMMANDS: Record<
   goal: {
     handler: async (p) => {
       const subcommand = p.subcommand;
+      // No subcommand → room overview (show whether goals are set)
+      if (!subcommand) return handleGoalOverview(p);
       if (subcommand === 'set') return handleGoalSet(p);
       if (subcommand === 'done') return handleGoalDone(p);
       if (subcommand === 'update') return handleGoalUpdate(p);
       if (subcommand === 'unset') return handleGoalUnset(p);
       if (subcommand === 'lookup') return handleGoalLookup(p);
+      if (subcommand === 'history') return handleGoalHistory(p);
+      if (subcommand === 'redo') return handleGoalRedo(p);
       return err(
-        `Unknown goal subcommand: '${subcommand ?? ''}'. Use: set, done, update, unset, lookup`,
+        `Unknown goal subcommand: '${subcommand ?? ''}'. Use: set, done, update, unset, lookup, history, redo`,
       );
     },
     buildParams: (f, p) => ({
@@ -314,6 +321,8 @@ export const COMMANDS: Record<
       agent: f.agent,
       room: f.room,
       message: p.slice(1).join(' ') || undefined,
+      // `crew goal redo <id>` — first positional after the subcommand
+      id: p[1],
       session: typeof f.session === 'string' ? f.session : undefined,
       pane: f.pane,
     }),
