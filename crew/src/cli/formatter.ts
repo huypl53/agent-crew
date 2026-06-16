@@ -185,6 +185,21 @@ const HELP_GROUPS: HelpGroup[] = [
         usage: '[--agent <name> | --session <id>]',
         desc: 'Show agent goal',
       },
+      {
+        name: 'dialog pending',
+        usage: '[--room <name>]',
+        desc: 'List pending worker dialogs',
+      },
+      {
+        name: 'dialog answer',
+        usage: '<worker> --pick N[,M] [--room <name>]',
+        desc: 'Drive worker AskUserQuestion',
+      },
+      {
+        name: 'dialog approve',
+        usage: '<worker> [--room <name>]',
+        desc: 'Approve worker plan (Enter)',
+      },
     ],
   },
   {
@@ -451,6 +466,33 @@ const FORMATTERS: Record<string, (data: any) => string> = {
       return `🎯 ${d.goal.agent_name}: "${d.goal.description}" (${d.goal.status}, turn ${d.goal.turn_count ?? 0})`;
 
     return '(no goal)';
+  },
+  dialog: (d) => {
+    if (d.error) return `Error: ${d.error}`;
+    if (Array.isArray(d.dialogs)) {
+      if (d.dialogs.length === 0) return `(no pending dialogs in ${d.room})`;
+      return d.dialogs
+        .map((dg: any) => {
+          const head = `#${dg.id} ${dg.worker} [${dg.type}]${dg.header ? ` ${dg.header}` : ''}`;
+          const q = dg.question ? `    ${dg.question}` : '';
+          const opts = (dg.options ?? [])
+            .map((o: any) => `    [${o.n}] ${o.label}`)
+            .join('\n');
+          const cmd =
+            dg.type === 'plan_approval'
+              ? `    → crew dialog approve ${dg.worker}`
+              : dg.multi_select
+                ? `    → crew dialog answer ${dg.worker} --pick ${dg.options.map((o: any) => o.n).join(',')}`
+                : `    → crew dialog answer ${dg.worker} --pick N`;
+          return [head, q, opts, cmd].filter(Boolean).join('\n');
+        })
+        .join('\n\n');
+    }
+    if (d.approved)
+      return `Approved plan for ${d.worker} (dialog #${d.dialog_id})`;
+    if (Array.isArray(d.picks))
+      return `Answered ${d.worker} (dialog #${d.dialog_id}): picks [${d.picks.join(',')}] keys: ${d.keys ?? ''}`;
+    return JSON.stringify(d);
   },
   'hook-event': (d) => {
     // Hook stdout is injected into Claude Code conversations.

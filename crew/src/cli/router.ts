@@ -5,6 +5,11 @@ import { handleClearWorkerSession } from '../tools/clear-worker-session.ts';
 import { handleCompactWorker } from '../tools/compact-worker.ts';
 import { handleCreateRoom } from '../tools/create-room.ts';
 import { handleDeleteRoom } from '../tools/delete-room.ts';
+import {
+  handleDialogAnswer,
+  handleDialogApprove,
+  handleDialogPending,
+} from '../tools/dialog.ts';
 import { handleGetStatus } from '../tools/get-status.ts';
 import {
   handleGoalDone,
@@ -316,5 +321,22 @@ export const COMMANDS: Record<
   'auto-self': {
     handler: async (p) => handleAutoSelf(p),
     buildParams: (f, p) => ({ name: f.name, action: p[0] ?? 'on' }),
+  },
+  dialog: {
+    handler: async (p) => {
+      const subcommand = p.subcommand;
+      if (subcommand === 'pending') return handleDialogPending(p);
+      if (subcommand === 'answer') return handleDialogAnswer(p);
+      if (subcommand === 'approve') return handleDialogApprove(p);
+      return err(
+        `Unknown dialog subcommand: '${subcommand ?? ''}'. Use: pending, answer, approve`,
+      );
+    },
+    buildParams: (f, p) => ({
+      subcommand: p[0],
+      worker: f.worker ?? p[1],
+      room: f.room,
+      pick: f.pick,
+    }),
   },
 };

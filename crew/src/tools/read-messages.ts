@@ -1,11 +1,10 @@
 import type { ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
-import { getAgent, readMessages, readRoomMessages } from '../state/index.ts';
+import { getAgent, readRoomMessages } from '../state/index.ts';
 
 interface ReadMessagesParams {
   name: string;
   room?: string;
-  since_sequence?: number;
   limit?: number;
 }
 
@@ -32,7 +31,7 @@ function mapMsg(m: {
 export async function handleReadMessages(
   params: ReadMessagesParams,
 ): Promise<ToolResult> {
-  const { name, room, since_sequence, limit } = params;
+  const { name, room, limit } = params;
 
   if (!name) {
     return err('Missing required param: name');
@@ -43,17 +42,13 @@ export async function handleReadMessages(
     return err(`Agent "${name}" is not registered`);
   }
 
-  if (room) {
-    // Read from room log with cursor (advances cursor automatically)
-    const result = readRoomMessages(name, room, limit);
-    return ok({
-      messages: result.messages.map(mapMsg),
-      next_sequence: result.next_sequence,
-    });
-  }
-
-  // Fallback: legacy inbox read
-  const result = readMessages(name, undefined, since_sequence);
+  // Always read from the room log. `--room` selects which room; when omitted we
+  // resolve it from the agent's own room. The room path includes broadcasts
+  // (worker completions) gated by role and advances the read cursor, matching
+  // the push delivery path. The legacy inbox read (recipient-only, no
+  // broadcasts, no cursor) diverged from `crew inspect`, so it is gone.
+  const roomName = room ?? agent.room_name;
+  const result = readRoomMessages(name, roomName, limit);
   return ok({
     messages: result.messages.map(mapMsg),
     next_sequence: result.next_sequence,

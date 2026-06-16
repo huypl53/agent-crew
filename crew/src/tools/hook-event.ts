@@ -11,6 +11,7 @@ import {
   canonicalizeHintIdentity,
   clearArmedInputBlock,
   consumeLeaderGoalReminder,
+  createLeaderDialog,
   getAgentByPane,
   getAgentInputBlockMode,
   getGoalByAgent,
@@ -19,6 +20,10 @@ import {
   tickGoalTurnCount,
   tickHintCadence,
 } from "../state/index.ts";
+import {
+  extractDialogFromPermission,
+  formatLeaderNotice,
+} from "./dialog-notice.ts";
 import { sendKeys } from "../tmux/index.ts";
 
 function okResult(
@@ -117,7 +122,7 @@ export async function processHookEventInput(
         : typeof payload.sessionId === "string"
           ? payload.sessionId
           : null;
-    withRetry(() =>
+    const hookEventId = withRetry(() =>
       addHookEvent(
         agent.name,
         eventType,
@@ -126,6 +131,52 @@ export async function processHookEventInput(
         agent.room_id,
       ),
     );
+
+    // Leader ↔ worker dialog bridge: AskUserQuestion / ExitPlanMode are genuine
+    // decision points — record a pending dialog and immediately notify the
+    // room's leader (immediate interrupt) so it can answer by driving the
+    // worker's pane. The UI still renders (allow); the leader answers async.
+    const extracted = extractDialogFromPermission(payload);
+    if (extracted) {
+      try {
+        const leader = getRoomMembers(agent.room_id).find(
+          (m) => m.role === "leader" && m.tmux_target,
+        );
+        const dialog = createLeaderDialog({
+          roomId: agent.room_id,
+          workerName: agent.name,
+          workerPane: agent.tmux_target,
+          leaderName: leader?.name ?? null,
+          dialogType: extracted.dialogType,
+          toolName: extracted.toolName,
+          sessionId,
+          questions: extracted.questions,
+          sourceHookEventId: hookEventId,
+        });
+        if (leader?.tmux_target) {
+          const notice = formatLeaderNotice({
+            workerName: agent.name,
+            dialogType: extracted.dialogType,
+            questions: extracted.questions,
+          });
+          // Delay so the worker UI finishes rendering before the leader is
+          // interrupted; fire-and-forget (must not block the hook return).
+          setTimeout(
+            () =>
+              sendKeys(
+                leader.tmux_target!,
+                `(dialog #${dialog.id}) ${notice}`,
+              ).catch(() => {}),
+            1500,
+          );
+        }
+      } catch (e) {
+        console.error(
+          `[crew dialog] hook record error: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
     return permissionAllowResult(payload);
   }
 

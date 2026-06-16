@@ -51,6 +51,13 @@ import {
   unsetGoal,
   updateGoalDescription,
 } from './goal-state.ts';
+import {
+  createLeaderDialog,
+  getActiveDialogForWorker,
+  getDialogById,
+  listPendingDialogs,
+  markDialogAnswered,
+} from './dialog-state.ts';
 
 export type { GoalRecord } from './goal-state.ts';
 // Re-export for callers
@@ -62,8 +69,11 @@ export {
   completeBatchWorker,
   completeGoal,
   consumeLeaderGoalReminder,
+  createLeaderDialog,
   createMessageBatch,
+  getActiveDialogForWorker,
   getBatchWorkers,
+  getDialogById,
   getGoal,
   getGoalByAgent,
   getLatestBatchAssociationForWorker,
@@ -74,10 +84,12 @@ export {
   initDb,
   listHintableBatches,
   listIncompleteBatches,
+  listPendingDialogs,
   markBatchCompleted,
   markBatchHintSent,
   markBatchWorkerDispatchFailed,
   markBatchWorkerSent,
+  markDialogAnswered,
   recordBatchWorkerTerminalMessage,
   renderBatchPendingHint,
   setGoal,
@@ -834,11 +846,30 @@ export function readRoomMessages(
     return { messages: [], next_sequence: cursor };
   }
 
-  // Return messages addressed to this agent AND broadcast messages (recipient IS NULL)
-  // within this room. Broadcasts include stop-hook completion messages from workers.
-  const sql =
-    'SELECT * FROM messages WHERE room_id = ? AND id > ? AND (recipient = ? OR (recipient IS NULL AND sender != ?)) ORDER BY id';
-  const params: unknown[] = [roomObj.id, cursor, agentName, agentName];
+  // Return messages addressed to this agent AND broadcast messages (recipient IS
+  // NULL) within this room. Broadcasts include stop-hook completion messages
+  // from workers. Broadcast visibility must mirror the push path
+  // (delivery/index.ts `flushPushQueueForAgent`): a worker broadcast is
+  // leader-audience only ("messages flow up the hierarchy"); a leader broadcast
+  // is a room announcement everyone sees. A reader never sees its own broadcast.
+  const reader = getAgentByRoomAndName(roomObj.id, agentName);
+  const readerRole = reader?.role ?? 'leader';
+  const sql = `
+    SELECT m.* FROM messages m
+    LEFT JOIN agents s ON s.name = m.sender AND s.room_id = m.room_id
+    WHERE m.room_id = ? AND m.id > ? AND (
+      m.recipient = ?
+      OR (m.recipient IS NULL AND m.sender != ?
+          AND (s.role IS NULL OR s.role != 'worker' OR ? = 'leader'))
+    )
+    ORDER BY m.id`;
+  const params: unknown[] = [
+    roomObj.id,
+    cursor,
+    agentName,
+    agentName,
+    readerRole,
+  ];
   const allMsgs = (
     db.query(sql).all(...params) as Record<string, unknown>[]
   ).map(rowToMessage);
@@ -1940,6 +1971,6 @@ function rowToHint(row: Record<string, unknown>): HintRecord {
 export function clearState(): void {
   const db = getDb();
   db.exec(
-    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM party_responses; DELETE FROM hook_events; DELETE FROM agent_hints; DELETE FROM agent_goals; DELETE FROM messages; DELETE FROM message_batch_workers; DELETE FROM message_batches; DELETE FROM cursors; DELETE FROM push_cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
+    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM party_responses; DELETE FROM hook_events; DELETE FROM agent_hints; DELETE FROM agent_goals; DELETE FROM leader_dialogs; DELETE FROM messages; DELETE FROM message_batch_workers; DELETE FROM message_batches; DELETE FROM cursors; DELETE FROM push_cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
   );
 }

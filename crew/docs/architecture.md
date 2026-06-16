@@ -126,7 +126,27 @@ rooms              agents              messages
          │ payload      │
          │ created_at   │
          └──────────────┘
+
+         leader_dialogs
+         ┌──────────────┐
+         │ id (PK)      │
+         │ room_id (FK) │
+         │ worker_name  │
+         │ worker_pane  │
+         │ leader_name  │
+         │ dialog_type  │  ask_question | plan_approval
+         │ tool_name    │
+         │ session_id   │
+         │ questions    │  JSON
+         │ status       │  pending | answered | expired
+         │ answer       │  JSON
+         │ created_at   │
+         │ answered_at  │
+         │ source_hook_ │→ hook_events(id)
+         └──────────────┘
 ```
+
+**`leader_dialogs`** — pending worker decision points (AskUserQuestion / ExitPlanMode) escalated to the room leader. Only one `pending` row per worker/room; creating a new one expires the prior. Indexed by `(room_id, status)` and `worker_name`. See flow **8. Leader ↔ Worker Dialog Bridge**.
 
 ### Key Enums
 
@@ -237,10 +257,19 @@ handleReadMessages()
 readRoomMessages() [state/index.ts]
   1. Get cursor for (agentName, room) — last read message ID
   2. Query messages WHERE room_id = X AND id > cursor
-  3. Filter: messages addressed to this agent OR broadcasts (no recipient)
-  4. Filter by kinds if specified
-  5. advanceCursor() — update cursor to latest read ID
-  6. Return messages + next_sequence
+  3. Filter: addressed to this agent OR broadcasts (recipient IS NULL), where a
+     broadcast is visible only when its sender is not a worker OR the reader is
+     a leader — i.e. a worker's broadcast (stop-hook completion) is
+     leader-audience only; a leader's broadcast is a room announcement. A reader
+     never sees its own broadcast. This mirrors the push path
+     (delivery/index.ts flushPushQueueForAgent) so `crew read` and delivery
+     agree on broadcast visibility.
+  4. advanceCursor() — update cursor to latest read ID
+  5. Return messages + next_sequence
+
+`crew read` always takes this path: `--room` selects the room, otherwise it is
+resolved from the agent's own room (the legacy inbox-only read that excluded
+broadcasts and did not advance the cursor is removed).
 ```
 
 ### 4. Hook-Driven Idle Detection
@@ -426,6 +455,46 @@ collectAllTokens()
 
       unknown → try claude-code first, then codex
 ```
+
+### 8. Leader ↔ Worker Dialog Bridge
+
+When a worker renders a decision UI — `AskUserQuestion` (single/multi-select) or `ExitPlanMode` (plan approval) — the `PermissionRequest` hook intercepts it *before* the UI shows, records a pending `leader_dialogs` row, and immediately interrupts the room's leader so it can answer by driving the worker's pane. Ordinary permission requests are still auto-allowed and do not create a dialog.
+
+```
+worker calls AskUserQuestion/ExitPlanMode
+  │
+  ▼ PermissionRequest hook (tools/hook-event.ts)
+  ├─ addHookEvent (audit)
+  ├─ extractDialogFromPermission(payload)
+  │     tool_name ∈ {AskUserQuestion, ExitPlanMode}?  else → null (no dialog)
+  │     ask_question with no parseable questions → null (not actionable)
+  ├─ if extracted:
+  │     leader = getRoomMembers(room).find(role=leader, has tmux_target)
+  │     createLeaderDialog({ …expires prior pending for worker… })
+  │     setTimeout(1.5s) → sendKeys(leader_pane, "(dialog #N) <notice>")
+  │         notice = formatLeaderNotice: numbered options + answer command
+  └─ return permissionAllowResult(payload)   ← UI still renders on worker
+
+leader answers (tools/dialog.ts, driven via crew CLI)
+  crew dialog pending [--room R]            list pending w/ numbered options
+  crew dialog answer <worker> --pick N[,M]  drive AskUserQuestion
+  crew dialog approve <worker>             drive ExitPlanMode (Enter)
+      │
+      ▼ handleDialogAnswer / handleDialogApprove
+      ├─ resolve room (caller pane or --room), worker pane (getAgentByRoomAndName)
+      ├─ getActiveDialogForWorker → validate type matches command
+      ├─ stale-guard: capturePaneTail, abort if option label not visible
+      ├─ buildKeystrokes(picks) → tmux key names (tools/dialog-keystrokes.ts)
+      │     single-select : Down×i + Enter        (direct submit on focus)
+      │     multi-select  : walk picks (Down×Δ, Space), Down to submit, Enter
+      │     plan_approval : Enter
+      ├─ sendKey each (Down/Up/Space/Enter/Tab + 500ms settle)
+      └─ markDialogAnswered({ type, picks | approved })
+```
+
+**Key bindings** (spec-literal, configurable via `DialogKeyMap`): `Down`/`Up` move focus, `Space` selects/toggles, the bottom row is the submit button (reached by navigating past all options), `Enter` submits. The leader passes 1-based pick numbers (`--pick 2` or `--pick 1,3`); the builder converts to 0-based and the leader's answer is persisted on the dialog row.
+
+**Scope**: v1 handles one question per AskUserQuestion call (multi-question sequential driving is a follow-up) and single-select short-circuits to a direct submit. The full `sendKey`→pane path is exercised against a live tmux session; the DB lifecycle and keystroke translation are unit-tested in `test/dialog-*.test.ts`.
 
 ---
 

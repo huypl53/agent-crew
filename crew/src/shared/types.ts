@@ -348,6 +348,41 @@ export interface HookEvent {
   created_at: string;
 }
 
+/* ── Leader ↔ worker dialog bridge ─────────────────────── */
+
+export type LeaderDialogType = 'ask_question' | 'plan_approval';
+export type LeaderDialogStatus = 'pending' | 'answered' | 'expired';
+
+/** A single AskUserQuestion question (subset of the tool_input schema). */
+export interface DialogQuestion {
+  question: string;
+  header: string;
+  options: Array<{ label: string; description?: string; preview?: string }>;
+  multiSelect: boolean;
+}
+
+/** Answer payload stored as JSON in leader_dialogs.answer. */
+export type LeaderDialogAnswer =
+  | { type: 'ask_question'; picks: number[] }
+  | { type: 'plan_approval'; approved: boolean };
+
+export interface LeaderDialog {
+  id: number;
+  room_id: number;
+  worker_name: string;
+  worker_pane: string | null;
+  leader_name: string | null;
+  dialog_type: LeaderDialogType;
+  tool_name: string;
+  session_id: string | null;
+  questions: DialogQuestion[] | null;
+  status: LeaderDialogStatus;
+  answer: LeaderDialogAnswer | null;
+  created_at: string;
+  answered_at: string | null;
+  source_hook_event_id: number | null;
+}
+
 export type SweepBusyMode = 'auto' | 'manual_busy' | 'manual_free';
 
 export interface SweepControlState {

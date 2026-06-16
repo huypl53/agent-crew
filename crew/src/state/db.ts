@@ -480,6 +480,35 @@ export function initDb(path?: string): void {
     'CREATE INDEX IF NOT EXISTS idx_goals_agent_room ON agent_goals(agent_name, room_id)',
   );
 
+  // Leader ↔ worker dialog bridge: records a decision UI (AskUserQuestion or
+  // ExitPlanMode) raised on a worker pane so the room's leader can answer it.
+  _db.exec(`
+    CREATE TABLE IF NOT EXISTS leader_dialogs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+      worker_name TEXT NOT NULL,
+      worker_pane TEXT,
+      leader_name TEXT,
+      dialog_type TEXT NOT NULL DEFAULT 'ask_question'
+        CHECK (dialog_type IN ('ask_question', 'plan_approval')),
+      tool_name TEXT NOT NULL,
+      session_id TEXT,
+      questions TEXT,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'answered', 'expired')),
+      answer TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      answered_at TEXT,
+      source_hook_event_id INTEGER REFERENCES hook_events(id)
+    )
+  `);
+  _db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_leader_dialogs_room_status ON leader_dialogs(room_id, status)',
+  );
+  _db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_leader_dialogs_worker ON leader_dialogs(worker_name, room_id, status)',
+  );
+
   const goalCols = _db.query('PRAGMA table_info(agent_goals)').all() as Array<{
     name: string;
   }>;
