@@ -292,16 +292,26 @@ export async function processHookEventInput(
           ? consumeLeaderGoalReminder(pane, sessionId, agent.room_id)
           : tickGoalTurnCount(pane, sessionId, agent.room_id);
       if (goal && goal.status === "active" && agent.tmux_target) {
-        const desc =
-          goal.description.length > 500
-            ? goal.description.slice(0, 497) + "…"
-            : goal.description;
-        const reminder = `🎯 Goal: ${desc} (turn ${goal.turn_count})\n✅ If done, ${agent.role === "leader" ? "/crew:leader" : "/crew:worker"} run command: crew goal done\n❌ If unreachable, run command: crew goal unset\n📝 Edit: crew goal update "new description"`;
-        // Delay 1.5s so agent finishes idle transition before reminder arrives
-        setTimeout(
-          () => sendKeys(agent.tmux_target!, reminder).catch(() => {}),
-          1500,
-        );
+        // Delay 1.5s so agent finishes idle transition before reminder arrives.
+        // Re-check goal state before sending in case it changed while waiting.
+        setTimeout(async () => {
+          try {
+            const latestGoal = getGoalByAgent(agent.name, agent.room_id);
+            if (!latestGoal || latestGoal.status !== "active") return;
+
+            const latestDesc =
+              latestGoal.description.length > 500
+                ? latestGoal.description.slice(0, 497) + "…"
+                : latestGoal.description;
+            const latestReminder = `🎯 Goal: ${latestDesc} (turn ${latestGoal.turn_count})\n✅ If done, ${
+              agent.role === "leader" ? "/crew:leader" : "/crew:worker"
+            } run command: crew goal done\n❌ If unreachable, run command: crew goal unset\n📝 Edit: crew goal update "new description"`;
+
+            await sendKeys(agent.tmux_target!, latestReminder).catch(() => {});
+          } catch {
+            // fail-open: skip reminder if anything goes wrong in re-check
+          }
+        }, 1500);
       }
     } catch (e) {
       console.error(
