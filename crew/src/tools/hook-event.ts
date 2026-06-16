@@ -256,12 +256,12 @@ export async function processHookEventInput(
           : tickGoalTurnCount(pane, sessionId, agent.room_id);
       if (goal && goal.status === "active" && agent.tmux_target) {
         const desc =
-          goal.description.length > 100
-            ? goal.description.slice(0, 97) + "…"
+          goal.description.length > 500
+            ? goal.description.slice(0, 497) + "…"
             : goal.description;
         const reminder = `🎯 Goal: ${desc} (turn ${goal.turn_count})\n✅ If done, run: crew goal done\n❌ If unreachable, run: crew goal unset\n📝 Edit: crew goal update "new description"`;
         // Delay 1.5s so agent finishes idle transition before reminder arrives
-        setTimeout(() => sendKeys(agent.tmux_target!, reminder).catch(() => {}), 1500);
+        setTimeout(() => sendKeys(agent.tmux_target!, reminder).catch(() => { }), 1500);
       }
     } catch (e) {
       console.error(
