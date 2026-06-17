@@ -33,7 +33,7 @@ describe('worker inspection gateway', () => {
     closeDb();
   });
 
-  test('returns transcript-backed inspection for a Claude worker', async () => {
+  test('returns transcript-backed inspection for a worker', async () => {
     const snapshot = await inspectWorkerTurns(
       {
         workerName: 'worker-1',
@@ -127,7 +127,6 @@ describe('worker inspection gateway', () => {
 
     expect(snapshot.source).toBe('transcript');
     expect(snapshot.degraded).toBe(false);
-    expect(snapshot.provider).toBe('claude-code');
     expect(snapshot.turns).toEqual([
       {
         role: 'user',
@@ -270,17 +269,36 @@ describe('worker inspection gateway', () => {
     expect(snapshot.turns[0]?.text).toBe('Frontend room stop message.');
   });
 
-  test('rejects codex workers in v1', async () => {
+  test('supports codex workers via hook fallback when transcript is unavailable', async () => {
     addAgent('codex-lead', 'leader', mkRoom('codex-room').id, '%5', 'codex');
     addAgent('codex-worker', 'worker', mkRoom('codex-room').id, '%6', 'codex');
-
-    await expect(
-      inspectWorkerTurns({
-        workerName: 'codex-worker',
-        roomName: 'codex-room',
-        callerName: 'codex-lead',
-        turns: 4,
+    addHookEvent(
+      'codex-worker',
+      'Stop',
+      'sess-codex',
+      JSON.stringify({
+        hook_event_name: 'Stop',
+        session_id: 'sess-codex',
+        output: 'Codex worker completed quickly.',
       }),
-    ).rejects.toThrow('inspect currently supports only claude-code workers');
+    );
+
+    const snapshot = await inspectWorkerTurns({
+      workerName: 'codex-worker',
+      roomName: 'codex-room',
+      callerName: 'codex-lead',
+      turns: 4,
+    });
+
+    expect(snapshot.source).toBe('hook-events');
+    expect(snapshot.degraded).toBe(true);
+    expect(snapshot.provider).toBe('codex');
+    expect(snapshot.turns).toEqual([
+      {
+        role: 'assistant',
+        text: 'Codex worker completed quickly.',
+        timestamp: expect.any(String),
+      },
+    ]);
   });
 });

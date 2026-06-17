@@ -25,6 +25,7 @@ import {
   formatLeaderNotice,
 } from "./dialog-notice.ts";
 import { sendKeys } from "../tmux/index.ts";
+import { getRuntimeCommandPrefix } from "../shared/hook-runtime.ts";
 
 function okResult(
   payload: Record<string, unknown> = { ok: true, decision: "allow" },
@@ -303,9 +304,11 @@ export async function processHookEventInput(
               latestGoal.description.length > 500
                 ? latestGoal.description.slice(0, 497) + "…"
                 : latestGoal.description;
+            const rolePrefix = getRuntimeCommandPrefix(agent.agent_type);
+            const leaderPrefix = `${rolePrefix}crew:leader`;
             const latestReminder = `🎯 Goal: ${latestDesc} (turn ${latestGoal.turn_count})\n✅ If done, ${
-              agent.role === "leader" ? "/crew:leader" : "/crew:worker"
-            } run command: crew goal done\n❌ If unreachable, run command: crew goal unset\n📝 Edit: crew goal update "new description"`;
+              `${rolePrefix}crew:${agent.role === "leader" ? "leader" : "worker"}`
+            } run command: ${rolePrefix}crew goal done\n❌ If unreachable, run command: ${leaderPrefix} goal unset\n📝 Edit: crew goal update "new description"`;
 
             await sendKeys(agent.tmux_target!, latestReminder).catch(() => {});
           } catch {

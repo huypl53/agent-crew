@@ -1173,9 +1173,9 @@ export function addHookEvent(
 
   // Party mode integration: capture response on Stop
   if (eventType === 'Stop') {
-    capturePartyResponseIfActive(agentName, payload, eventId, roomId);
+    capturePartyResponseIfActive(agentName, payload, eventId, roomId, sessionId);
     // Room mode: auto-notify leaders (skips if party mode active)
-    notifyLeadersOnWorkerStop(agentName, payload, roomId);
+    notifyLeadersOnWorkerStop(agentName, payload, roomId, sessionId);
   }
 
   return eventId;
@@ -1186,6 +1186,7 @@ function capturePartyResponseIfActive(
   payload: string,
   hookEventId: number,
   roomId?: number,
+  sessionId: string | null = null,
 ): void {
   const agent =
     roomId !== undefined
@@ -1196,13 +1197,7 @@ function capturePartyResponseIfActive(
   const partyState = getPartyState(agent.room_id);
   if (!partyState?.active) return;
 
-  let response = '';
-  try {
-    const parsed = JSON.parse(payload) as { last_assistant_message?: string };
-    response = parsed.last_assistant_message ?? '';
-  } catch {
-    return;
-  }
+  const response = buildStopCompletionResponse(payload, sessionId);
 
   if (!response.trim()) return;
 
@@ -1315,6 +1310,7 @@ function notifyLeadersOnWorkerStop(
   agentName: string,
   payload: string,
   roomId?: number,
+  sessionId: string | null = null,
 ): void {
   const agent =
     roomId !== undefined
@@ -1327,13 +1323,9 @@ function notifyLeadersOnWorkerStop(
   if (partyState?.active) return;
 
   // Extract response
-  let response = '';
-  try {
-    const parsed = JSON.parse(payload) as { last_assistant_message?: string };
-    response = parsed.last_assistant_message ?? '';
-  } catch {
-    return;
-  }
+  const response = buildStopCompletionResponse(payload, sessionId);
+
+  if (!response.trim()) return;
 
   const goal = getGoalByAgent(agentName, agent.room_id);
   if (goal?.status === 'active') {
@@ -1390,6 +1382,80 @@ function notifyLeadersOnWorkerStop(
   if (alreadyNotifiedThisTurn(agent.room_id, agentName)) return;
 
   sendWorkerCompletionToLeaders(agentName, agent.room_id, response);
+}
+
+function buildStopCompletionResponse(
+  payload: string,
+  sessionId: string | null,
+): string {
+  const response = extractHookCompletionMessage(payload);
+  if (response.trim()) return response;
+  if (!sessionId) return '';
+  return `Task completed for session ${sessionId}`;
+}
+
+function extractHookCompletionMessage(payload: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return '';
+  }
+
+  if (!parsed || typeof parsed !== 'object') return '';
+
+  const obj = parsed as Record<string, unknown>;
+  const keys = [
+    'last_assistant_message',
+    'lastAssistantMessage',
+    'assistant_message',
+    'assistantMessage',
+    'assistant',
+    'message',
+    'output',
+    'response',
+    'result',
+    'final_message',
+    'finalMessage',
+    'text',
+    'content',
+  ];
+  for (const key of keys) {
+    const value = extractTextFromValue(obj[key]);
+    if (value) return value;
+  }
+
+  return '';
+}
+
+function extractTextFromValue(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const extracted = extractTextFromValue(item);
+      if (extracted) return extracted;
+    }
+    return null;
+  }
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if ('text' in obj) {
+      const text = extractTextFromValue(obj.text);
+      if (text) return text;
+    }
+    if ('content' in obj) {
+      const content = extractTextFromValue(obj.content);
+      if (content) return content;
+    }
+    if ('message' in obj) {
+      const message = extractTextFromValue(obj.message);
+      if (message) return message;
+    }
+  }
+  return null;
 }
 
 function sendWorkerCompletionToLeaders(

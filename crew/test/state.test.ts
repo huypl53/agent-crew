@@ -953,6 +953,21 @@ describe('state module', () => {
       expect(completions[0].text).toContain('Finished work!');
     });
 
+    test('Stop event without last_assistant_message still sends fallback completion', () => {
+      const room = mkRoom('stop-empty-payload');
+      addAgent('lead-empty', 'leader', room.id, '%912');
+      addAgent('w-empty', 'worker', room.id, '%913');
+
+      addHookEvent('w-empty', 'UserPromptSubmit', 's-empty', 'do minimal work');
+      addHookEvent('w-empty', 'Stop', 's-empty', '{}');
+
+      const completions = getRoomMessages('stop-empty-payload').filter(
+        (m: any) => m.to === null,
+      );
+      expect(completions).toHaveLength(1);
+      expect(completions[0]!.text).toBe('Task completed for session s-empty');
+    });
+
     test('Stop hook stores FULL completion text even when response exceeds notifyMaxChars', () => {
       const room = mkRoom('stop-store-full-trunc');
       addAgent('lead-trunc', 'leader', room.id, '%920');
