@@ -7,7 +7,7 @@ Multi-agent coordination for AI coding agents via tmux rooms. Works with **Claud
 ## How it works
 
 1. Start AI coding agent sessions in tmux panes
-2. Register each agent into a room: `/crew:join-room myproject --role worker --name builder-1`
+2. Register each agent into a room: `$crew:join-room myproject --role worker --name builder-1`
 3. Your own session acts as a leader — give natural language direction
 4. Leaders coordinate workers, workers execute assignments, everyone communicates through rooms
 5. Assignment delivery via pushed messages — leaders can interrupt or replace worker assignments
@@ -51,7 +51,7 @@ claude plugins install crew@crew-plugins
 claude --print "list skills" | grep crew
 ```
 
-The plugin provides behavioral skills (`/crew:join-room`, `/crew:refresh`, `leader`, `worker`). The CLI (`crew`) provides the actual commands that skills invoke.
+The plugin provides behavioral skills (`$crew:join-room`, `$crew:refresh`, `leader`, `worker`). The CLI (`crew`) provides the actual commands that skills invoke.
 
 ### Local Development
 
@@ -107,7 +107,7 @@ Then install the plugin in Codex (required):
 4. Select `Crew` and choose `Install plugin`
 5. Start a new thread (or restart Codex)
 
-Skills: `crew:join-room`, `crew:leader`, `crew:worker`, `crew:refresh`.
+Skills: `$crew:join-room`, `$crew:leader`, `$crew:worker`, `$crew:refresh`.
 
 #### Codex Sandbox Configuration (macOS)
 
@@ -119,6 +119,24 @@ approval_policy = "never"
 ```
 
 Without this configuration, agents will show as "dead" and messages will remain queued instead of delivered.
+
+#### Codex plugin smoke test notes (Crew + plugin)
+
+Recent validation notes for Codex plugin flow:
+
+- `crew join` is the reliable command path used for registration (via CLI).
+- `$join-room` is not a valid crew CLI subcommand here, and `/join-room` was observed to be inconsistent in direct interactive execution.
+- For deterministic verification, run through `codex exec` with explicit commands:
+
+  ```bash
+  codex exec "bun run --cwd crew src/cli.ts join --room smoke-live-cli --role leader --name leader-note-test"
+  codex exec "bun run --cwd crew src/cli.ts join --room smoke-live-cli --role worker --name worker-note-test"
+  codex exec "bun run --cwd crew src/cli.ts send --room smoke-live-cli --to worker-note-test --text \"Task: cập nhật ghi chú plugin test run\" --name leader-note-test"
+  codex exec "bun run --cwd crew src/cli.ts read --name worker-note-test --room smoke-live-cli"
+  ```
+
+- Live runs confirmed that leader/worker registration + direct `send/read` exchange works in smoke room.
+- If you inject directly into tmux, submit keys with `C-m`/Enter to avoid skipped input.
 
 ### Manual Install — Antigravity CLI
 
@@ -410,12 +428,12 @@ When `room` is provided, reads the full room conversation log (all members' mess
 
 ## Commands & Skills
 
-**Commands** (user-invoked via `/crew:<name>`):
+**Commands** (user-invoked via `$crew:<name>`):
 
 | Command | Description |
 |---------|-------------|
-| `/crew:join-room` | Register your agent in a room with a role |
-| `/crew:refresh` | Re-register after session resume |
+| `$crew:join-room` | Register your agent in a room with a role |
+| `$crew:refresh` | Re-register after session resume |
 
 **Skills** (auto-invoked by model after joining a room):
 
@@ -527,7 +545,7 @@ crew/                 # Crew plugin
     cli/              # CLI modules
     tools/            # Tool handlers
     ...
-  commands/           # 2 slash commands — /crew:{join-room,refresh}
+  commands/           # 2 skill commands — $crew:{join-room,refresh}
   skills/             # agent skills — leader, worker (model-invoked after join)
   test/               # Test suite
   ...
