@@ -27,13 +27,75 @@ interface InspectWorkerDeps {
 
 function parseLastAssistantMessage(payload: string | null): string | null {
   if (!payload) return null;
+  const text = extractHookCompletionMessage(payload);
+  return text ? text : null;
+}
+
+function extractHookCompletionMessage(payload: string): string {
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(payload) as { last_assistant_message?: string };
-    const text = parsed.last_assistant_message?.trim();
-    return text ? text : null;
+    parsed = JSON.parse(payload);
   } catch {
+    return '';
+  }
+
+  if (!parsed || typeof parsed !== 'object') return '';
+  const obj = parsed as Record<string, unknown>;
+  const keys = [
+    'last_assistant_message',
+    'lastAssistantMessage',
+    'assistant_message',
+    'assistantMessage',
+    'assistant',
+    'message',
+    'output',
+    'response',
+    'result',
+    'final_message',
+    'finalMessage',
+    'text',
+    'content',
+  ];
+
+  for (const key of keys) {
+    const value = extractTextFromValue(obj[key]);
+    if (value) return value;
+  }
+
+  return '';
+}
+
+function extractTextFromValue(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const extracted = extractTextFromValue(item);
+      if (extracted) return extracted;
+    }
     return null;
   }
+
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if ('text' in obj) {
+      const text = extractTextFromValue(obj.text);
+      if (text) return text;
+    }
+    if ('content' in obj) {
+      const content = extractTextFromValue(obj.content);
+      if (content) return content;
+    }
+    if ('message' in obj) {
+      const message = extractTextFromValue(obj.message);
+      if (message) return message;
+    }
+  }
+
+  return null;
 }
 
 function detectBlockHint(
@@ -124,10 +186,6 @@ export async function inspectWorkerTurns(
     params.callerName,
   );
 
-  if (worker.agent_type === 'codex') {
-    throw new Error('inspect currently supports only claude-code workers');
-  }
-
   const limit = params.turns && params.turns > 0 ? params.turns : 2;
 
   const sessionResolver =
@@ -171,7 +229,7 @@ export async function inspectWorkerTurns(
         return {
           agent_name: worker.name,
           room_name: worker.room_name,
-          provider: 'claude-code',
+          provider: worker.agent_type,
           session_id: resolvedSession.sessionId,
           status,
           updated_at: updatedAt,
