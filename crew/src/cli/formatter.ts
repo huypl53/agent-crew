@@ -22,6 +22,8 @@ interface HelpEntry {
   cont?: string[];
   /** Roles that can see this command in help. Defaults to all. */
   allowedRoles?: Array<'leader' | 'worker' | 'user'>;
+  /** Optional label shown in help when command has role restrictions */
+  hint?: string;
 }
 
 interface HelpGroup {
@@ -83,6 +85,7 @@ const HELP_GROUPS: HelpGroup[] = [
         usage: '--room <name> --manifest <path> --name <name>',
         desc: 'Send batch messages to workers',
         allowedRoles: ['leader'],
+        hint: 'leader',
       },
       {
         name: 'read',
@@ -141,18 +144,21 @@ const HELP_GROUPS: HelpGroup[] = [
         usage: '[--name <name>]',
         desc: 'Mute idle notifications (leader only)',
         allowedRoles: ['leader'],
+        hint: 'leader',
       },
       {
         name: 'unmute idle',
         usage: '[--name <name>]',
         desc: 'Unmute idle notifications',
         allowedRoles: ['leader'],
+        hint: 'leader',
       },
       {
         name: 'auto-self',
         usage: 'on|off [--name <leader>]',
         desc: 'Toggle auto --self on leader idle',
         allowedRoles: ['leader'],
+        hint: 'leader',
       },
     ],
   },
@@ -216,12 +222,14 @@ const HELP_GROUPS: HelpGroup[] = [
         usage: '<worker> --pick N[,M] [--room <name>]',
         desc: 'Drive worker AskUserQuestion',
         allowedRoles: ['leader'],
+        hint: 'leader',
       },
       {
         name: 'dialog approve',
         usage: '<worker> [--room <name>]',
         desc: 'Approve worker plan (Enter)',
         allowedRoles: ['leader'],
+        hint: 'leader',
       },
     ],
   },
@@ -234,30 +242,35 @@ const HELP_GROUPS: HelpGroup[] = [
         desc: 'Inspect worker session transcript',
         cont: ['[--room <name>] [--turns N]'],
         allowedRoles: ['leader'],
+        hint: 'leader',
       },
       {
         name: 'interrupt',
         usage: '--worker <name> --room <name> [--name <name>]',
         desc: 'Interrupt worker',
         allowedRoles: ['leader'],
+        hint: 'leader',
       },
       {
         name: 'clear',
         usage: '--worker <name> --room <name> [--name <name>]',
         desc: 'Clear worker session',
         allowedRoles: ['leader'],
+        hint: 'leader',
       },
       {
         name: 'compact',
         usage: '--worker <name> --room <name> [message] [--name <name>]',
         desc: 'Compact worker context (send /compact)',
         allowedRoles: ['leader'],
+        hint: 'leader',
       },
       {
         name: 'reassign',
         usage: '--worker <name> --room <name> --text <t> [--name <name>]',
         desc: 'Replace current assignment',
         allowedRoles: ['leader'],
+        hint: 'leader',
       },
     ],
   },
@@ -306,14 +319,15 @@ export function formatHelp(role: 'leader' | 'worker' | 'user' = 'user'): string 
     lines.push(group.heading);
     for (const e of entries) {
       const pad = ' '.repeat(INDENT);
+      const hint = e.hint ? ` [${e.hint}]` : '';
 
       if (!e.usage) {
         // Command with no flags: name then description
-        const nameField = e.name.padEnd(DESC_COL - INDENT);
+        const nameField = `${e.name}${hint}`.padEnd(DESC_COL - INDENT);
         lines.push(`${pad}${nameField}${e.desc}`);
       } else {
         // First line: name + usage
-        const nameField = e.name.padEnd(NAME_WIDTH - INDENT);
+        const nameField = `${e.name}${hint}`.padEnd(NAME_WIDTH - INDENT);
         const firstLine = `${pad}${nameField}${e.usage}`;
 
         if (firstLine.length + 2 <= DESC_COL) {
