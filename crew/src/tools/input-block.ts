@@ -76,12 +76,16 @@ export async function handleInputBlock(
     subcommand === 'disarm' ||
     subcommand === 'disable'
   ) {
+    const previousMode = getAgentInputBlockMode(target.name);
     const result = setAgentInputBlockMode(target.name, 'off');
 
-    // Flush pending push messages that accumulated while blocked
+    // Flush pending push messages that accumulated while blocked.
+    // If another path (UserPromptSubmit) already cleared armed mode,
+    // `previousMode` will be off and we skip duplicate flush.
     const agent = getAgent(target.name);
     if (agent?.tmux_target) {
-      const flushed = await flushPushQueueForAgent(agent);
+      const shouldFlush = previousMode !== 'off';
+      const flushed = shouldFlush ? await flushPushQueueForAgent(agent) : 0;
       return ok({
         name: target.name,
         room: target.room,

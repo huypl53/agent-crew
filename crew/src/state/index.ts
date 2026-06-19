@@ -885,6 +885,39 @@ export function getPushCursor(agentName: string): number {
   return row?.last_seq ?? 0;
 }
 
+export function claimPushCursor(
+  agentName: string,
+  expectedSequence: number,
+  nextSequence: number,
+): boolean {
+  const agent = getAgent(agentName);
+  if (!agent) return false;
+
+  const result = getDb().run(
+    `INSERT INTO push_cursors (agent_id, last_seq) VALUES (?, ?)
+     ON CONFLICT(agent_id) DO UPDATE SET last_seq = excluded.last_seq
+     WHERE push_cursors.last_seq = ?`,
+    [agent.agent_id, nextSequence, expectedSequence],
+  );
+  return result.changes > 0;
+}
+
+export function rollbackPushCursor(
+  agentName: string,
+  targetSequence: number,
+  currentSequence: number,
+): void {
+  const agent = getAgent(agentName);
+  if (!agent) return;
+
+  getDb().run(
+    `UPDATE push_cursors
+       SET last_seq = ?
+     WHERE agent_id = ? AND last_seq = ?`,
+    [targetSequence, agent.agent_id, currentSequence],
+  );
+}
+
 export function advancePushCursor(agentName: string, sequence: number): void {
   const agent = getAgent(agentName);
   if (!agent) return;

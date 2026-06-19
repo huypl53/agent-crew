@@ -6,6 +6,7 @@ import { resolveAgentRuntime } from '../shared/hook-runtime.ts';
 import {
   addMessage,
   advancePushCursor,
+  claimPushCursor,
   armLeaderGoalReminder,
   getAgent,
   getAgentByRoomAndName,
@@ -21,6 +22,7 @@ import {
   markAgentStale,
   queueBatchFinalDelivery,
   recordBatchWorkerTerminalMessage,
+  rollbackPushCursor,
 } from '../state/index.ts';
 import {
   capturePaneTail,
@@ -330,12 +332,18 @@ export async function flushPushQueueForAgent(agent: Agent): Promise<number> {
   >[];
 
   let delivered = 0;
+  let nextCursor = cursor;
   for (const row of rows) {
     const sequence = Number(row.id);
     const from = String(row.sender);
     const text = String(row.text);
     const roomName = String(row.room_name);
     const pushText = `[${from}@${roomName}]: ${text}`;
+
+    if (!claimPushCursor(agent.name, nextCursor, sequence)) {
+      break;
+    }
+
     try {
       await getQueue(pane, { role: agent.role }).enqueue({
         type: 'paste',
@@ -345,15 +353,15 @@ export async function flushPushQueueForAgent(agent: Agent): Promise<number> {
       const shouldArm = senderRole === 'worker' || row.batch_id != null;
       if (shouldArm) armLeaderGoalReminder(agent.name, agent.room_id);
       delivered++;
+      nextCursor = sequence;
     } catch (e) {
+      rollbackPushCursor(agent.name, nextCursor, sequence);
       if (e instanceof PaneDeliveryError && e.code === 'PANE_BLOCKED_INPUT') {
         break;
       }
       console.error(`Failed to push message ${sequence} to ${agent.name}:`, e);
       break;
     }
-
-    advancePushCursor(agent.name, sequence);
   }
 
   return delivered;
