@@ -167,6 +167,21 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_hook_events_type ON hook_events(agent_name, event_type);
   CREATE INDEX IF NOT EXISTS idx_hook_events_session ON hook_events(session_id) WHERE session_id IS NOT NULL;
 
+  CREATE TABLE IF NOT EXISTS agent_session_bindings (
+    agent_name TEXT NOT NULL,
+    room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL,
+    pane TEXT,
+    last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (session_id, room_id),
+    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_agent_session_bindings_agent_room
+    ON agent_session_bindings(agent_name, room_id);
+  CREATE INDEX IF NOT EXISTS idx_agent_session_bindings_session
+    ON agent_session_bindings(session_id, last_seen_at);
+
 
   CREATE TRIGGER IF NOT EXISTS trg_hook_events_insert AFTER INSERT ON hook_events
   BEGIN
@@ -497,6 +512,8 @@ export function initDb(path?: string): void {
       status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'answered', 'expired')),
       answer TEXT,
+      current_question_index INTEGER NOT NULL DEFAULT 0,
+      question_answers TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       answered_at TEXT,
       source_hook_event_id INTEGER REFERENCES hook_events(id)
@@ -508,6 +525,18 @@ export function initDb(path?: string): void {
   _db.exec(
     'CREATE INDEX IF NOT EXISTS idx_leader_dialogs_worker ON leader_dialogs(worker_name, room_id, status)',
   );
+
+  const dialogCols = _db
+    .query('PRAGMA table_info(leader_dialogs)')
+    .all() as Array<{ name: string }>;
+  if (!dialogCols.some((c) => c.name === 'current_question_index')) {
+    _db.exec(
+      'ALTER TABLE leader_dialogs ADD COLUMN current_question_index INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+  if (!dialogCols.some((c) => c.name === 'question_answers')) {
+    _db.exec('ALTER TABLE leader_dialogs ADD COLUMN question_answers TEXT');
+  }
 
   const goalCols = _db.query('PRAGMA table_info(agent_goals)').all() as Array<{
     name: string;

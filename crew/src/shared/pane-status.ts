@@ -72,6 +72,10 @@ const lastSeenEventId = new Map<string, number>();
 const paneWidthCache = new Map<string, { width: number; ts: number }>();
 const PANE_WIDTH_CACHE_TTL_MS = 30_000;
 
+function isCompletionHookEvent(eventType: string | null | undefined): boolean {
+  return eventType === 'Stop' || eventType === 'StopFailure';
+}
+
 function getTmuxSocketArgs(): string[] {
   const socket = process.env.CREW_TMUX_SOCKET;
   return socket ? ['-L', socket] : [];
@@ -184,7 +188,7 @@ export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
   }
 
   const status: PaneStatus =
-    latestEvent.event_type === 'Stop' ? 'idle' : 'busy';
+    isCompletionHookEvent(latestEvent.event_type) ? 'idle' : 'busy';
   const prevEventId = lastSeenEventId.get(target) ?? 0;
   const contentChanged = latestEvent.id !== prevEventId;
   lastSeenEventId.set(target, latestEvent.id);

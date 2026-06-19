@@ -138,7 +138,7 @@ export const COMMANDS: Record<
       worker_name: f.worker,
       room: f.room,
       name: f.name,
-      turns: f.turns ? parseInt(String(f.turns), 2) : undefined,
+      turns: f.turns ? parseInt(String(f.turns), 10) : undefined,
     }),
   },
   clear: {

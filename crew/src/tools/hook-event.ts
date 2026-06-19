@@ -15,13 +15,17 @@ import {
   canonicalizeGoalIdentity,
   canonicalizeHintIdentity,
   clearArmedInputBlock,
+  capturePartyResponseIfActive,
   consumeLeaderGoalReminder,
   createLeaderDialog,
+  getAllAgents,
   getAgentByPane,
+  getAgentBySessionId,
   getAgentInputBlockMode,
   getGoalByAgent,
   getRoomMembers,
   isAgentAutoSelfOnIdle,
+  notifyLeadersOnWorkerStop,
   tickGoalTurnCount,
   tickHintCadence,
 } from "../state/index.ts";
@@ -30,6 +34,68 @@ import {
   formatLeaderNotice,
 } from "./dialog-notice.ts";
 import { sendKeys } from "../tmux/index.ts";
+
+function extractString(
+  payload: Record<string, unknown>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.length > 0) return trimmed;
+    }
+  }
+  return null;
+}
+
+function extractSessionId(payload: Record<string, unknown>): string | null {
+  return extractString(payload, ["session_id", "sessionId"]);
+}
+
+function extractCwd(payload: Record<string, unknown>): string | null {
+  return extractString(payload, ["cwd"]);
+}
+
+function normalizePathForMatch(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) return "";
+  return trimmed.replace(/\/+$/, "");
+}
+
+function isPathMatchCandidate(roomPath: string, cwd: string): boolean {
+  const normalizedRoomPath = normalizePathForMatch(roomPath);
+  const normalizedCwd = normalizePathForMatch(cwd);
+  if (!normalizedRoomPath || !normalizedCwd) return false;
+  return (
+    normalizedCwd === normalizedRoomPath ||
+    normalizedCwd.startsWith(`${normalizedRoomPath}/`)
+  );
+}
+
+function resolveAgentForSessionOnlyFallback(
+  sessionId: string,
+  cwd: string | null,
+  eventType: string | null,
+): Agent | undefined {
+  const bound = getAgentBySessionId(sessionId);
+  if (bound) return bound;
+
+  if (!cwd) return undefined;
+
+  const candidates = getAllAgents().filter((agent) => {
+    if (!agent.tmux_target || !agent.room_path) return false;
+    return isPathMatchCandidate(agent.room_path, cwd);
+  });
+  if (candidates.length === 1) return candidates[0];
+
+  if (eventType === "Stop" || eventType === "StopFailure" || eventType === "UserPromptSubmit") {
+    const workerCandidates = candidates.filter((agent) => agent.role === "worker");
+    if (workerCandidates.length === 1) return workerCandidates[0];
+  }
+
+  return undefined;
+}
 
 function okResult(
   payload: Record<string, unknown> = { ok: true, decision: "allow" },
@@ -88,10 +154,6 @@ export async function processHookEventInput(
     return okResult();
   }
 
-  if (!pane) {
-    return okResult();
-  }
-
   // Use retry-aware init — concurrent hook processes all contend on the
   // same SQLite file, and schema migrations hold write locks.  The retry
   // wrapper handles SQLITE_BUSY with exponential backoff.
@@ -101,15 +163,45 @@ export async function processHookEventInput(
     initDbWithRetry();
   }
 
-  const agent = getAgentByPane(pane);
+  const sessionId = extractSessionId(payload);
+  const cwd = extractCwd(payload);
+
+  const eventType = resolveHookEventName(payload);
+
+  let agent =
+    getAgentByPane(pane) ??
+    (sessionId ? getAgentBySessionId(sessionId) : undefined);
+  if (!agent && !pane && sessionId) {
+    agent = resolveAgentForSessionOnlyFallback(sessionId, cwd, eventType);
+  }
   if (!agent) {
+    if (sessionId) {
+      console.error(
+        `[crew hook-event] could not resolve agent for pane ${pane} session ${sessionId} event ${eventType}`,
+      );
+    }
+    return okResult();
+  }
+
+  if (!pane) {
+    const hookEventId = withRetry(() =>
+      addHookEvent(agent.name, eventType, sessionId, input, agent.room_id),
+    );
+    if (eventType === "PermissionRequest") {
+      // No-pane hooks are valid for Codex; keep behavior permissive and
+      // still persist the event for postmortem/audit consistency.
+      return permissionAllowResult(payload);
+    }
+    // Session-only hook events can still be used for completion/instrumentation.
+    if (isStopLikeEvent(eventType)) {
+      capturePartyResponseIfActive(agent.name, payload, hookEventId, agent.room_id, sessionId);
+      notifyLeadersOnWorkerStop(agent.name, payload, agent.room_id, sessionId);
+    }
     return okResult();
   }
 
   // PermissionRequest: auto-allow all permission dialogs for crew agents.
   // This prevents agents from getting stuck waiting for user approval.
-  const eventType = resolveHookEventName(payload);
-
   if (eventType === "PermissionRequest") {
     // Record the event for audit trail
     try {
@@ -174,13 +266,6 @@ export async function processHookEventInput(
 
     return permissionAllowResult(payload);
   }
-
-  const sessionId =
-    typeof payload.session_id === "string"
-      ? payload.session_id
-      : typeof payload.sessionId === "string"
-        ? payload.sessionId
-        : null;
 
   // addHookEvent does INSERT + UPDATE + possible notification writes —
   // wrap in retry since multiple hook processes may contend on the same DB.
@@ -288,7 +373,7 @@ export async function processHookEventInput(
 
   // Goal reminder: workers remind on every Stop; leaders remind only after
   // the queue has drained and a prior crew delivery armed the reminder state.
-  if (eventType === "Stop") {
+  if (isStopLikeEvent(eventType)) {
     try {
       const goal =
         agent.role === "leader"
@@ -313,7 +398,7 @@ export async function processHookEventInput(
               agent.role === "leader"
                 ? `${commandPrefix}crew:leader`
                 : `${commandPrefix}crew:worker`
-            } run command: crew goal done\n❌ If unreachable, run command: crew goal unset\n📝 Edit: crew goal update "new description"`;
+            } run command: ${commandPrefix}crew goal done\n❌ If unreachable, run command: ${commandPrefix}crew goal unset\n📝 Edit: crew goal update "new description"`;
 
             await sendKeys(agent.tmux_target!, latestReminder).catch(() => {});
           } catch {
@@ -353,10 +438,14 @@ function checkAutoSelfTransition(
     )
     .get(agentName, currentEventId) as { event_type: string } | null;
 
-  // If previous was also a Stop, leader was already idle — skip
-  if (!prevEvent || prevEvent.event_type === "Stop") return false;
+  // If previous was also terminal, leader was already idle — skip
+  if (!prevEvent || isStopLikeEvent(prevEvent.event_type)) return false;
 
   return true;
+}
+
+function isStopLikeEvent(eventType: string): boolean {
+  return eventType === "Stop" || eventType === "StopFailure";
 }
 
 /**

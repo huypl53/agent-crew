@@ -6,6 +6,8 @@ import { err, generateRandomName, ok, randomSuffix } from '../shared/types.ts';
 import {
   detectAgentRuntimeFromPane,
   inferAgentTypeFromProcesses,
+  getRuntimeCommandPrefix,
+  resolveAgentRuntime,
 } from '../shared/hook-runtime.ts';
 import {
   addAgent,
@@ -131,13 +133,15 @@ export async function handleJoinRoom(
     });
   }
 
-  // Rename Claude Code session to agent name
+  // Rename agent session to current identity
   try {
-    if (target && agentType === 'claude-code') {
+    if (target) {
       const { getQueue } = await import('../delivery/pane-queue.ts');
+      const runtime = await resolveAgentRuntime(agentType, target);
+      const commandPrefix = getRuntimeCommandPrefix(runtime);
       await getQueue(target, { role: role as AgentRole }).enqueue({
         type: 'command',
-        text: `/rename ${name}@${roomObj.name}`,
+        text: `${commandPrefix}rename ${name}@${roomObj.name}`,
       });
     }
   } catch {

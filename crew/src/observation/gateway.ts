@@ -29,6 +29,19 @@ interface InspectWorkerDeps {
   paneLoader?: (tmuxTarget: string) => Promise<string | null>;
 }
 
+function isCompletionHookEvent(
+  eventType: string | null | undefined,
+): boolean {
+  return eventType === 'Stop' || eventType === 'StopFailure';
+}
+
+function deriveHookStatus(
+  latestEvent: { event_type?: string | null } | null,
+): 'idle' | 'busy' | 'unknown' {
+  if (!latestEvent) return 'unknown';
+  return isCompletionHookEvent(latestEvent.event_type) ? 'idle' : 'busy';
+}
+
 function detectBlockHint(
   status: InspectionSnapshot['status'],
   turns: InspectionTurn[],
@@ -69,9 +82,21 @@ async function buildHookFallback(
     scopedSessionId,
   );
   const latestStop = getLatestHookEvent(workerName, 'Stop', scopedSessionId);
+  const latestStopFailure = getLatestHookEvent(
+    workerName,
+    'StopFailure',
+    scopedSessionId,
+  );
+  const latestCompletionEvent =
+    latestStop && latestStopFailure
+      ? latestStop.id > latestStopFailure.id
+        ? latestStop
+        : latestStopFailure
+      : latestStop ?? latestStopFailure;
   const latestRelevantEvent =
-    latestStop && (!latestEvent || latestStop.id >= latestEvent.id)
-      ? latestStop
+    latestCompletionEvent &&
+    (!latestEvent || latestCompletionEvent.id >= latestEvent.id)
+      ? latestCompletionEvent
       : latestEvent;
   const assistantText = extractHookCompletionMessage(
     latestRelevantEvent?.payload ?? null,
@@ -86,11 +111,7 @@ async function buildHookFallback(
     ]
     : [];
   const status =
-    latestEvent?.event_type === 'Stop'
-      ? 'idle'
-      : latestEvent
-        ? 'busy'
-        : 'unknown';
+    deriveHookStatus(latestEvent);
 
   return {
     agent_name: workerName,
@@ -155,12 +176,7 @@ export async function inspectWorkerTurns(
           undefined,
           resolvedSession.sessionId,
         );
-        const status =
-          latestEvent?.event_type === 'Stop'
-            ? 'idle'
-            : latestEvent
-              ? 'busy'
-              : 'unknown';
+        const status = deriveHookStatus(latestEvent);
         return {
           agent_name: worker.name,
           room_name: worker.room_name,
@@ -215,7 +231,7 @@ export async function inspectWorkerTurns(
   const paneText = await paneLoader(worker.tmux_target);
   const trimmed = paneText?.trim();
   if (trimmed) {
-    const status = latestEvent?.event_type === 'Stop' ? 'idle' : 'busy';
+    const status = deriveHookStatus(latestEvent);
     const turns = [
       { role: 'assistant' as const, text: trimmed, timestamp: null },
     ];

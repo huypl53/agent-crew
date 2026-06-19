@@ -67,6 +67,7 @@ import {
   getDialogById,
   listPendingDialogs,
   markDialogAnswered,
+  markDialogStepAnswered,
 } from './dialog-state.ts';
 
 export type { GoalRecord } from './goal-state.ts';
@@ -98,6 +99,8 @@ export {
   getOpenBatchForWorker,
   getRenderableBatchWorkers,
   initDb,
+  capturePartyResponseIfActive,
+  notifyLeadersOnWorkerStop,
   listHintableBatches,
   listIncompleteBatches,
   listPendingDialogs,
@@ -106,6 +109,7 @@ export {
   markBatchWorkerDispatchFailed,
   markBatchWorkerSent,
   markDialogAnswered,
+  markDialogStepAnswered,
   recordBatchWorkerTerminalMessage,
   renderBatchPendingHint,
   setGoal,
@@ -478,6 +482,10 @@ export function removeAgent(name: string, room: string): boolean {
     'DELETE FROM agent_hints WHERE agent_name = ? AND room_id = ?',
     [name, roomObj.id],
   ).changes;
+  db.run('DELETE FROM agent_session_bindings WHERE agent_name = ? AND room_id = ?', [
+    name,
+    roomObj.id,
+  ]);
   const changes = db.run('DELETE FROM agents WHERE room_id = ? AND name = ?', [
     roomObj.id,
     name,
@@ -515,6 +523,7 @@ export function removeAgentFully(name: string): void {
   const hintChanges = db.run('DELETE FROM agent_hints WHERE agent_name = ?', [
     name,
   ]).changes;
+  db.run('DELETE FROM agent_session_bindings WHERE agent_name = ?', [name]);
   db.run('DELETE FROM agents WHERE name = ?', [name]);
   if (hintChanges > 0) bumpChangeLog('hints');
   for (const roomId of roomIds) {
@@ -544,6 +553,10 @@ export function removeAgentById(id: number): void {
     'DELETE FROM agent_hints WHERE agent_name = ? AND room_id = ?',
     [row.name, row.room_id],
   ).changes;
+  db.run(
+    'DELETE FROM agent_session_bindings WHERE agent_name = ? AND room_id = ?',
+    [row.name, row.room_id],
+  );
   db.run('DELETE FROM agents WHERE id = ?', [id]);
   if (hintChanges > 0) bumpChangeLog('hints');
 
@@ -665,6 +678,39 @@ export function getAgentByRoomAndName(
   return dbRowToAgent(row);
 }
 
+function getAgentBySessionBinding(sessionId: string): Agent | undefined {
+  const binding = getDb()
+    .query(
+      'SELECT room_id, agent_name FROM agent_session_bindings WHERE session_id = ? ORDER BY last_seen_at DESC LIMIT 1',
+    )
+    .get(sessionId) as
+    | { room_id: number; agent_name: string }
+    | null;
+  if (!binding) return undefined;
+
+  return (
+    getAgentByRoomAndName(binding.room_id, binding.agent_name) ??
+    getAgent(binding.agent_name)
+  );
+}
+
+export function upsertAgentSessionBinding(
+  sessionId: string,
+  roomId: number,
+  agentName: string,
+  pane?: string | null,
+): void {
+  getDb().run(
+    `INSERT INTO agent_session_bindings (session_id, room_id, agent_name, pane, last_seen_at)
+     VALUES (?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(session_id, room_id) DO UPDATE SET
+       agent_name = excluded.agent_name,
+       pane = COALESCE(excluded.pane, agent_session_bindings.pane),
+       last_seen_at = datetime('now')`,
+    [sessionId, roomId, agentName, pane ?? null],
+  );
+}
+
 export function getAgentByPane(pane: string): Agent | undefined {
   const db = getDb();
   const row = db
@@ -683,6 +729,9 @@ export function getAgentByPane(pane: string): Agent | undefined {
 }
 
 export function getAgentBySessionId(sessionId: string): Agent | undefined {
+  const boundAgent = getAgentBySessionBinding(sessionId);
+  if (boundAgent) return boundAgent;
+
   const db = getDb();
   const row = db
     .query(
@@ -690,7 +739,11 @@ export function getAgentBySessionId(sessionId: string): Agent | undefined {
     )
     .get(sessionId) as { agent_name: string } | null;
   if (!row) return undefined;
-  return getAgent(row.agent_name);
+  const agent = getAgent(row.agent_name);
+  if (agent) {
+    upsertAgentSessionBinding(sessionId, agent.room_id, agent.name, agent.tmux_target);
+  }
+  return agent;
 }
 
 export function getRoomMembers(roomId: number): Agent[] {
@@ -1167,23 +1220,32 @@ export function addHookEvent(
     [agentName, eventType, sessionId, payload],
   );
   const eventId = Number(stmt.lastInsertRowid);
-  const newStatus: 'idle' | 'busy' = eventType === 'Stop' ? 'idle' : 'busy';
+  const isCompletionEvent = eventType === 'Stop' || eventType === 'StopFailure';
+  const newStatus: 'idle' | 'busy' = isCompletionEvent ? 'idle' : 'busy';
   const resolvedAgent =
     roomId !== undefined
       ? (getAgentByRoomAndName(roomId, agentName) ?? getAgent(agentName))
       : getAgent(agentName);
   if (resolvedAgent) {
+    if (sessionId) {
+      upsertAgentSessionBinding(
+        sessionId,
+        resolvedAgent.room_id,
+        agentName,
+        resolvedAgent.tmux_target,
+      );
+    }
     db.run('UPDATE agents SET status = ? WHERE id = ?', [
       newStatus,
       resolvedAgent.agent_id,
     ]);
   }
 
-  // Party mode integration: capture response on Stop
-  if (eventType === 'Stop') {
-    capturePartyResponseIfActive(agentName, payload, eventId, roomId);
-    // Room mode: auto-notify leaders (skips if party mode active)
-    notifyLeadersOnWorkerStop(agentName, payload, roomId);
+  // Party mode integration: capture response on completion events
+  if (isCompletionEvent) {
+    capturePartyResponseIfActive(agentName, payload, eventId, roomId, sessionId);
+  // Room mode: auto-notify leaders (skips if party mode active)
+  notifyLeadersOnWorkerStop(agentName, payload, roomId, sessionId);
   }
 
   return eventId;
@@ -1194,6 +1256,7 @@ function capturePartyResponseIfActive(
   payload: string,
   hookEventId: number,
   roomId?: number,
+  sessionId?: string | null,
 ): void {
   const agent =
     roomId !== undefined
@@ -1204,7 +1267,9 @@ function capturePartyResponseIfActive(
   const partyState = getPartyState(agent.room_id);
   if (!partyState?.active) return;
 
-  const response = extractHookCompletionMessage(payload);
+  const response =
+    extractHookCompletionMessage(payload) ||
+    (sessionId ? `Task completed for session ${sessionId}` : "");
 
   if (!response.trim()) return;
 
@@ -1317,6 +1382,7 @@ function notifyLeadersOnWorkerStop(
   agentName: string,
   payload: string,
   roomId?: number,
+  sessionId?: string | null,
 ): void {
   const agent =
     roomId !== undefined
@@ -1329,7 +1395,9 @@ function notifyLeadersOnWorkerStop(
   if (partyState?.active) return;
 
   // Extract response
-  const response = extractHookCompletionMessage(payload);
+  const response =
+    extractHookCompletionMessage(payload) ||
+    (sessionId ? `Task completed for session ${sessionId}` : "");
 
   const goal = getGoalByAgent(agentName, agent.room_id);
   if (goal?.status === 'active') {
@@ -1554,7 +1622,9 @@ export function getAgentHookStatus(
 ): 'idle' | 'busy' | 'unknown' {
   const event = getLatestHookEvent(agentName);
   if (!event) return 'unknown';
-  return event.event_type === 'Stop' ? 'idle' : 'busy';
+  return event.event_type === 'Stop' || event.event_type === 'StopFailure'
+    ? 'idle'
+    : 'busy';
 }
 
 export function getRecentHookEvents(
@@ -2037,6 +2107,6 @@ function rowToHint(row: Record<string, unknown>): HintRecord {
 export function clearState(): void {
   const db = getDb();
   db.exec(
-    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM party_responses; DELETE FROM hook_events; DELETE FROM agent_hints; DELETE FROM agent_goals; DELETE FROM leader_dialogs; DELETE FROM messages; DELETE FROM message_batch_workers; DELETE FROM message_batches; DELETE FROM cursors; DELETE FROM push_cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
+    "DELETE FROM token_usage; DELETE FROM pricing; DELETE FROM party_responses; DELETE FROM hook_events; DELETE FROM agent_session_bindings; DELETE FROM agent_hints; DELETE FROM agent_goals; DELETE FROM leader_dialogs; DELETE FROM messages; DELETE FROM message_batch_workers; DELETE FROM message_batches; DELETE FROM cursors; DELETE FROM push_cursors; DELETE FROM room_templates; DELETE FROM rooms; DELETE FROM agents; UPDATE sweep_control SET delivery_paused = 0, pause_reason = NULL, busy_mode = 'auto', updated_at = datetime('now') WHERE id = 1;",
   );
 }

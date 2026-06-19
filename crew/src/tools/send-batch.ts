@@ -35,6 +35,7 @@ type NormalizedSendBatchManifest = SendBatchManifest & {
 interface SendBatchWorkerResult {
   name: string;
   dispatch_status: MessageBatchWorkerDispatchStatus;
+  error?: string;
 }
 
 function generateBatchId(): string {
@@ -301,25 +302,40 @@ export async function handleSendBatch(
           markBatchWorkerSent(batchId, worker.name);
           workers.push({ name: worker.name, dispatch_status: 'sent' });
         } catch (error) {
+          const errorText =
+            error instanceof Error ? error.message : String(error);
           markBatchWorkerDispatchFailed(
             batchId,
             worker.name,
-            error instanceof Error ? error.message : String(error),
+            errorText,
           );
-          workers.push({ name: worker.name, dispatch_status: 'failed' });
+          workers.push({
+            name: worker.name,
+            dispatch_status: 'failed',
+            error: errorText,
+          });
         }
       } else {
         const errorText = result?.error ?? 'Dispatch failed';
         markBatchWorkerDispatchFailed(batchId, worker.name, errorText);
-        workers.push({ name: worker.name, dispatch_status: 'failed' });
+        workers.push({
+          name: worker.name,
+          dispatch_status: 'failed',
+          error: errorText,
+        });
       }
     } catch (error) {
+      const errorText = error instanceof Error ? error.message : String(error);
       markBatchWorkerDispatchFailed(
         batchId,
         worker.name,
-        error instanceof Error ? error.message : String(error),
+        errorText,
       );
-      workers.push({ name: worker.name, dispatch_status: 'failed' });
+      workers.push({
+        name: worker.name,
+        dispatch_status: 'failed',
+        error: errorText,
+      });
     }
   }
 

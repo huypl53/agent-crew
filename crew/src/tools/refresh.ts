@@ -9,6 +9,7 @@ import {
   refreshAgent,
 } from '../state/index.ts';
 import { getPaneCwd, paneExists } from '../tmux/index.ts';
+import { getRuntimeCommandPrefix, resolveAgentRuntime } from '../shared/hook-runtime.ts';
 
 interface RefreshParams {
   name: string;
@@ -69,12 +70,14 @@ export async function handleRefresh(
     );
   }
 
-  // Rename Claude Code session(s)
+  // Rename agent session(s)
   try {
     const { getQueue } = await import('../delivery/pane-queue.ts');
 
-    if (oldPane && oldPane !== target && agent.agent_type === 'claude-code') {
+    if (oldPane && oldPane !== target) {
       const staleName = `${name}-stale-${randomSuffix()}`;
+      const staleRuntime = await resolveAgentRuntime(agent.agent_type, oldPane);
+      const stalePrefix = getRuntimeCommandPrefix(staleRuntime);
       void getQueue(oldPane, { role: agent.role })
         .enqueue({
           type: 'paste',
@@ -84,19 +87,19 @@ export async function handleRefresh(
       void getQueue(oldPane, { role: agent.role })
         .enqueue({
           type: 'command',
-          text: `/rename ${staleName}@${agent.room_name}`,
+          text: `${stalePrefix}rename ${staleName}@${agent.room_name}`,
         })
         .catch(() => undefined);
     }
 
-    if (agent.agent_type === 'claude-code') {
-      void getQueue(target, { role: agent.role })
-        .enqueue({
-          type: 'command',
-          text: `/rename ${name}@${agent.room_name}`,
-        })
-        .catch(() => undefined);
-    }
+    const runtime = await resolveAgentRuntime(agent.agent_type, target);
+    const commandPrefix = getRuntimeCommandPrefix(runtime);
+    void getQueue(target, { role: agent.role })
+      .enqueue({
+        type: 'command',
+        text: `${commandPrefix}rename ${name}@${agent.room_name}`,
+      })
+      .catch(() => undefined);
   } catch {
     // Non-critical — ignore failure
   }

@@ -1,5 +1,6 @@
 import stripAnsi from 'strip-ansi';
 import { logServer } from '../shared/server-log.ts';
+import { detectAgentRuntimeFromPane } from '../shared/hook-runtime.ts';
 
 const SPAWN_TIMEOUT = 5000;
 
@@ -425,12 +426,18 @@ export async function getPaneCurrentCommand(
 
 /**
  * Returns true when the pane is running a known agent process (node/bun/claude/codex).
- * Returns false for plain shells (zsh, bash, sh, fish) or unreachable panes.
+ * Falls back to process-tree inspection for shell wrappers (e.g. `/bin/sh -c
+ * node ...`), which otherwise appear as plain shells from
+ * `pane_current_command`.
  */
 export async function paneCommandLooksAlive(target: string): Promise<boolean> {
   const cmd = await getPaneCurrentCommand(target);
-  if (!cmd) return false;
-  return AGENT_PROC_RE.test(cmd);
+  if (cmd && AGENT_PROC_RE.test(cmd)) {
+    return true;
+  }
+
+  const agentRuntime = await detectAgentRuntimeFromPane(target);
+  return agentRuntime === 'claude-code' || agentRuntime === 'codex';
 }
 
 export async function createSession(

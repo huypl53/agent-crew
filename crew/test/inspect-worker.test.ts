@@ -6,7 +6,9 @@ import {
   addHookEvent,
   clearState,
   getOrCreateRoom,
+  getLatestHookEvent,
 } from '../src/state/index.ts';
+import { processHookEventInput } from '../src/tools/hook-event.ts';
 
 function mkRoom(name: string) {
   return getOrCreateRoom(`/test/${name}`, name);
@@ -307,5 +309,86 @@ describe('worker inspection gateway', () => {
         timestamp: expect.any(String),
       },
     ]);
+  });
+
+  test('treats StopFailure as terminal for codex workers', async () => {
+    addHookEvent(
+      'codex-worker',
+      'StopFailure',
+      'codex-session',
+      JSON.stringify({
+        hook_event_name: 'StopFailure',
+        session_id: 'codex-session',
+        last_assistant_message: 'Codex worker failed but returned final state.',
+      }),
+    );
+    addAgent('codex-lead', 'leader', mkRoom('codex-room').id, '%7', 'claude-code');
+    addAgent(
+      'codex-worker',
+      'worker',
+      mkRoom('codex-room').id,
+      '%8',
+      'codex',
+    );
+
+    const snapshot = await inspectWorkerTurns({
+      workerName: 'codex-worker',
+      roomName: 'codex-room',
+      callerName: 'codex-lead',
+      turns: 4,
+    });
+
+    expect(snapshot.source).toBe('hook-events');
+    expect(snapshot.status).toBe('idle');
+    expect(snapshot.provider).toBe('codex');
+    expect(snapshot.degraded).toBe(true);
+    expect(snapshot.turns).toEqual([
+      {
+        role: 'assistant',
+        text: 'Codex worker failed but returned final state.',
+        timestamp: expect.any(String),
+      },
+    ]);
+  });
+
+  test('handles no-pane codex Stop event via session+cwd fallback', async () => {
+    const room = mkRoom('codex-room-nopane');
+    addAgent('codex-lead-2', 'leader', room.id, '%20', 'claude-code');
+    addAgent('codex-worker-2', 'worker', room.id, '%21', 'codex');
+
+    const eventInput = JSON.stringify({
+      hook_event_name: 'Stop',
+      session_id: 'codex-session-nopane',
+      cwd: '/test/codex-room-nopane/tasks',
+      last_assistant_message: 'Codex worker completed from no-pane hook.',
+    });
+    const result = await processHookEventInput(eventInput, undefined);
+    const data = JSON.parse(result.content[0]!.text);
+
+    expect(data.ok).toBe(true);
+    expect(data.hookSpecificOutput).toBeUndefined();
+
+    const snapshot = await inspectWorkerTurns({
+      workerName: 'codex-worker-2',
+      roomName: 'codex-room-nopane',
+      callerName: 'codex-lead-2',
+      turns: 4,
+    });
+
+    expect(snapshot.source).toBe('hook-events');
+    expect(snapshot.provider).toBe('codex');
+    expect(snapshot.degraded).toBe(true);
+    expect(snapshot.status).toBe('idle');
+    expect(snapshot.turns).toEqual([
+      {
+        role: 'assistant',
+        text: 'Codex worker completed from no-pane hook.',
+        timestamp: expect.any(String),
+      },
+    ]);
+
+    const latest = getLatestHookEvent('codex-worker-2', 'Stop');
+    expect(latest?.agent_name).toBe('codex-worker-2');
+    expect(latest?.session_id).toBe('codex-session-nopane');
   });
 });

@@ -30,6 +30,10 @@ function tailLines(text: string, n: number): string {
   return lines.slice(-n).join('\n');
 }
 
+function isCompletionHookEvent(eventType: string | null): boolean {
+  return eventType === 'Stop' || eventType === 'StopFailure';
+}
+
 /**
  * Waits for a tmux pane to become idle using hook events (fast-path)
  * with tmux hash polling as fallback for unregistered panes.
@@ -64,11 +68,16 @@ export async function waitForIdle(
         return { idle: false, content: '', elapsed, timedOut: true };
       }
 
-      const stopEvent = getLatestHookEvent(agentName, 'Stop');
+      const stopEvent =
+        getLatestHookEvent(agentName, 'Stop') ??
+        getLatestHookEvent(agentName, 'StopFailure');
       // SQLite datetime('now') returns UTC without 'Z' suffix — append it for correct JS parsing
       const eventTime = stopEvent ? new Date(stopEvent.created_at + 'Z') : null;
       if (stopEvent && eventTime && eventTime >= new Date(startTime)) {
         const content = extractHookCompletionMessage(stopEvent.payload);
+        if (!isCompletionHookEvent(stopEvent.event_type)) {
+          continue;
+        }
         return {
           idle: true,
           content,

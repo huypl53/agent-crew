@@ -11,11 +11,13 @@
  * 5. Record the event in hook_events for audit trail
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import path from 'node:path';
 import { closeDb, initDb } from '../src/state/db.ts';
 import {
   addAgent,
   clearState,
   getOrCreateRoom,
+  getLatestHookEvent,
 } from '../src/state/index.ts';
 import { processHookEventInput } from '../src/tools/hook-event.ts';
 
@@ -144,6 +146,28 @@ describe('PermissionRequest hook', () => {
     expect(data.ok).toBe(true);
     expect(data.hookSpecificOutput).toBeUndefined();
   });
+
+  test('resolves agent from session+cwd fallback when hook has no pane', async () => {
+    const room = getOrCreateRoom('/test/permission-room-codex', 'permission-room-codex');
+    addAgent('codex-1', 'worker', room.id, '%990', 'codex');
+
+    const input = makePermissionInput({
+      session_id: 'codex-session-1',
+      cwd: '/test/permission-room-codex/jobs',
+    });
+    const result = await processHookEventInput(input, undefined);
+    const data = parseResult(result);
+
+    expect(data.ok).toBe(true);
+    expect(data.hookSpecificOutput).toBeDefined();
+    expect(data.hookSpecificOutput.hookEventName).toBe('PermissionRequest');
+    expect(data.hookSpecificOutput.decision.behavior).toBe('allow');
+
+    const latest = getLatestHookEvent('codex-1', 'PermissionRequest', 'codex-session-1');
+    expect(latest).not.toBeNull();
+    expect(latest?.event_type).toBe('PermissionRequest');
+    expect(latest?.session_id).toBe('codex-session-1');
+  });
 });
 
 describe('PermissionRequest CLI output', () => {
@@ -153,6 +177,7 @@ describe('PermissionRequest CLI output', () => {
 
     const input = makePermissionInput();
     const proc = Bun.spawn(['bun', 'src/cli.ts', 'hook-event'], {
+      cwd: path.resolve(process.cwd(), 'crew'),
       stdin: new Response(input),
       stdout: 'pipe',
       stderr: 'pipe',
