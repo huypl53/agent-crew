@@ -71,6 +71,71 @@ const lastSeenEventId = new Map<string, number>();
 /** Cache pane width with 30s TTL — width rarely changes */
 const paneWidthCache = new Map<string, { width: number; ts: number }>();
 const PANE_WIDTH_CACHE_TTL_MS = 30_000;
+const NO_HOOK_IDLE_STABLE_MS = 3_000;
+const NO_HOOK_MAX_LINES = 80;
+
+interface NoHookPaneState {
+  hash: number;
+  lastChangeMs: number;
+}
+
+const noHookState = new Map<string, NoHookPaneState>();
+
+function hashString(text: string): number {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) + hash) ^ text.charCodeAt(i);
+    hash = hash >>> 0;
+  }
+  return hash;
+}
+
+function tailLines(text: string, lines: number): string {
+  const split = text.split('\n');
+  return split.slice(-lines).join('\n');
+}
+
+function resolveNoHookStatus(
+  target: string,
+  textOutput: string,
+  typingActive: boolean,
+): {
+  status: PaneStatus;
+  contentChanged: boolean;
+} {
+  const now = Date.now();
+  const sample = tailLines(textOutput, NO_HOOK_MAX_LINES);
+  const nextHash = hashString(sample);
+  const state = noHookState.get(target);
+
+  if (!state) {
+    noHookState.set(target, { hash: nextHash, lastChangeMs: now });
+    return {
+      status: typingActive ? 'busy' : 'unknown',
+      contentChanged: false,
+    };
+  }
+
+  if (state.hash !== nextHash) {
+    noHookState.set(target, { hash: nextHash, lastChangeMs: now });
+    return {
+      status: typingActive ? 'busy' : 'unknown',
+      contentChanged: true,
+    };
+  }
+
+  if (!typingActive && now - state.lastChangeMs >= NO_HOOK_IDLE_STABLE_MS) {
+    return {
+      status: 'idle',
+      contentChanged: false,
+    };
+  }
+
+  return {
+    status: typingActive ? 'busy' : 'unknown',
+    contentChanged: false,
+  };
+}
 
 function isCompletionHookEvent(eventType: string | null | undefined): boolean {
   return eventType === 'Stop' || eventType === 'StopFailure';
@@ -156,6 +221,7 @@ export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
   // Resolve agent from pane target
   const agentName = getAgentNameByPane(target);
   if (!agentName) {
+    noHookState.delete(target);
     return {
       status: 'unknown',
       contentChanged: false,
@@ -171,6 +237,7 @@ export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
   } catch {
     paneCache.delete(target);
     lastSeenEventId.delete(target);
+    noHookState.delete(target);
     return {
       status: 'unknown',
       contentChanged: false,
@@ -179,9 +246,14 @@ export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
     };
   }
   if (!latestEvent) {
+    const fallback = resolveNoHookStatus(
+      target,
+      textOutput,
+      parsed.typingActive,
+    );
     return {
-      status: 'unknown',
-      contentChanged: false,
+      status: fallback.status,
+      contentChanged: fallback.contentChanged,
       typingActive: parsed.typingActive,
       inputChars: parsed.inputChars,
     };
@@ -191,6 +263,7 @@ export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
     isCompletionHookEvent(latestEvent.event_type) ? 'idle' : 'busy';
   const prevEventId = lastSeenEventId.get(target) ?? 0;
   const contentChanged = latestEvent.id !== prevEventId;
+  noHookState.delete(target);
   lastSeenEventId.set(target, latestEvent.id);
 
   return {
@@ -205,4 +278,5 @@ export function clearPaneSnapshot(target: string): void {
   paneCache.delete(target);
   lastSeenEventId.delete(target);
   paneWidthCache.delete(target);
+  noHookState.delete(target);
 }
