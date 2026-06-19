@@ -7,6 +7,7 @@ import type {
   ToolResult,
 } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
+import { resolveAgentRuntime } from '../shared/hook-runtime.ts';
 import {
   createMessageBatch,
   getRoomMembers,
@@ -172,7 +173,11 @@ async function preflightWorkerDelivery(
       };
     }
 
-    if (member.agent_type === 'claude-code' || member.agent_type === 'codex') {
+    const agentRuntime = await resolveAgentRuntime(
+      member.agent_type,
+      member.tmux_target,
+    );
+    if (agentRuntime === 'claude-code' || agentRuntime === 'codex') {
       if (!(await paneCommandLooksAlive(member.tmux_target))) {
         return {
           error: `stale-target: pane ${member.tmux_target} is not running an agent process`,

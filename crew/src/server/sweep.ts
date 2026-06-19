@@ -6,6 +6,7 @@ import {
 import { flushPushQueue } from '../delivery/index.ts';
 import { getPaneStatus } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
+import { extractHookCompletionMessage } from '../shared/hook-runtime.ts';
 import type { SweepBusyMode } from '../shared/types.ts';
 import {
   getActivePartyRooms,
@@ -470,20 +471,14 @@ async function maybeNotify(
   let context = '';
   // Use last_assistant_message from hook payload instead of tmux capture
   if (hookPayload) {
-    try {
-      const parsed = JSON.parse(hookPayload) as { last_assistant_message?: string };
-      if (parsed.last_assistant_message) {
-        const msg = parsed.last_assistant_message
-          .split('\n')
-          .map((l) => l.trim())
-          .filter(Boolean)
-          .join(' | ');
-        const truncated = msg.length > 300 ? `${msg.slice(0, 297)}...` : msg;
-        if (truncated) context = ` [context: ${truncated}]`;
-      }
-    } catch {
-      // payload parse failed — no context
-    }
+    const extracted = extractHookCompletionMessage(hookPayload);
+    const msg = extracted
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .join(' | ');
+    const truncated = msg.length > 300 ? `${msg.slice(0, 297)}...` : msg;
+    if (truncated) context = ` [context: ${truncated}]`;
   }
 
   const notifyText = `[system@${w.room_name}]: ${w.name} ${reason}${context}`;

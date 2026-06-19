@@ -363,7 +363,13 @@ export interface DialogQuestion {
 
 /** Answer payload stored as JSON in leader_dialogs.answer. */
 export type LeaderDialogAnswer =
-  | { type: 'ask_question'; picks: number[] }
+  | {
+      type: 'ask_question';
+      /** 0-based option indices from the final question (legacy compatibility). */
+      picks: number[];
+      /** Per-question picks for multi-question AskUserQuestion flows. */
+      all_picks?: number[][];
+    }
   | { type: 'plan_approval'; approved: boolean };
 
 export interface LeaderDialog {
@@ -376,6 +382,10 @@ export interface LeaderDialog {
   tool_name: string;
   session_id: string | null;
   questions: DialogQuestion[] | null;
+  /** 0-based index of the currently active question in `questions`. */
+  current_question_index: number;
+  /** Persisted question answers while worker is still being queried. */
+  question_answers: number[][];
   status: LeaderDialogStatus;
   answer: LeaderDialogAnswer | null;
   created_at: string;

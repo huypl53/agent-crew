@@ -1,4 +1,5 @@
 import { capturePane } from '../tmux/index.ts';
+import { extractHookCompletionMessage } from '../shared/hook-runtime.ts';
 import { getAgentByPane, getLatestHookEvent } from '../state/index.ts';
 
 export interface WaitForIdleOptions {
@@ -67,18 +68,7 @@ export async function waitForIdle(
       // SQLite datetime('now') returns UTC without 'Z' suffix — append it for correct JS parsing
       const eventTime = stopEvent ? new Date(stopEvent.created_at + 'Z') : null;
       if (stopEvent && eventTime && eventTime >= new Date(startTime)) {
-        // Extract last_assistant_message for content
-        let content = '';
-        if (stopEvent.payload) {
-          try {
-            const parsed = JSON.parse(stopEvent.payload) as {
-              last_assistant_message?: string;
-            };
-            content = parsed.last_assistant_message ?? '';
-          } catch {
-            // payload parse failed
-          }
-        }
+        const content = extractHookCompletionMessage(stopEvent.payload);
         return {
           idle: true,
           content,

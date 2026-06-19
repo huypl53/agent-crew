@@ -33,7 +33,7 @@ describe('worker inspection gateway', () => {
     closeDb();
   });
 
-  test('returns transcript-backed inspection for a worker', async () => {
+  test('returns transcript-backed inspection for a Claude worker', async () => {
     const snapshot = await inspectWorkerTurns(
       {
         workerName: 'worker-1',
@@ -127,6 +127,7 @@ describe('worker inspection gateway', () => {
 
     expect(snapshot.source).toBe('transcript');
     expect(snapshot.degraded).toBe(false);
+    expect(snapshot.provider).toBe('unknown');
     expect(snapshot.turns).toEqual([
       {
         role: 'user',
@@ -269,18 +270,24 @@ describe('worker inspection gateway', () => {
     expect(snapshot.turns[0]?.text).toBe('Frontend room stop message.');
   });
 
-  test('supports codex workers via hook fallback when transcript is unavailable', async () => {
-    addAgent('codex-lead', 'leader', mkRoom('codex-room').id, '%5', 'codex');
-    addAgent('codex-worker', 'worker', mkRoom('codex-room').id, '%6', 'codex');
+  test('supports codex workers in gateway inspection', async () => {
     addHookEvent(
       'codex-worker',
       'Stop',
-      'sess-codex',
+      'codex-session',
       JSON.stringify({
         hook_event_name: 'Stop',
-        session_id: 'sess-codex',
-        output: 'Codex worker completed quickly.',
+        session_id: 'codex-session',
+        last_assistant_message: 'Codex worker stopped.',
       }),
+    );
+    addAgent('codex-lead', 'leader', mkRoom('codex-room').id, '%5', 'claude-code');
+    addAgent(
+      'codex-worker',
+      'worker',
+      mkRoom('codex-room').id,
+      '%6',
+      'codex',
     );
 
     const snapshot = await inspectWorkerTurns({
@@ -291,12 +298,12 @@ describe('worker inspection gateway', () => {
     });
 
     expect(snapshot.source).toBe('hook-events');
-    expect(snapshot.degraded).toBe(true);
     expect(snapshot.provider).toBe('codex');
+    expect(snapshot.degraded).toBe(true);
     expect(snapshot.turns).toEqual([
       {
         role: 'assistant',
-        text: 'Codex worker completed quickly.',
+        text: 'Codex worker stopped.',
         timestamp: expect.any(String),
       },
     ]);

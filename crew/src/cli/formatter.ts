@@ -559,7 +559,11 @@ const FORMATTERS: Record<string, (data: any) => string> = {
       return d.dialogs
         .map((dg: any) => {
           const head = `#${dg.id} ${dg.worker} [${dg.type}]${dg.header ? ` ${dg.header}` : ''}`;
-          const q = dg.question ? `    ${dg.question}` : '';
+          const step =
+            dg.total_questions && dg.total_questions > 1
+              ? ` (${dg.question_index + 1}/${dg.total_questions})`
+              : '';
+          const q = dg.question ? `    ${dg.question}${step}` : '';
           const opts = (dg.options ?? [])
             .map((o: any) => `    [${o.n}] ${o.label}`)
             .join('\n');

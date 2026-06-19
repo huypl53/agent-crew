@@ -3,6 +3,11 @@ import { spawnSync } from "bun";
 import { flushPushQueueForAgent } from "../delivery/index.ts";
 import type { Agent, ToolResult } from "../shared/types.ts";
 import { ok } from "../shared/types.ts";
+import {
+  getRuntimeCommandPrefix,
+  resolveHookEventName,
+  resolveAgentRuntime,
+} from "../shared/hook-runtime.ts";
 import { getDb, initDbWithRetry, withRetry } from "../state/db.ts";
 import type { HintRecord } from "../state/index.ts";
 import {
@@ -25,7 +30,6 @@ import {
   formatLeaderNotice,
 } from "./dialog-notice.ts";
 import { sendKeys } from "../tmux/index.ts";
-import { getRuntimeCommandPrefix } from "../shared/hook-runtime.ts";
 
 function okResult(
   payload: Record<string, unknown> = { ok: true, decision: "allow" },
@@ -104,9 +108,7 @@ export async function processHookEventInput(
 
   // PermissionRequest: auto-allow all permission dialogs for crew agents.
   // This prevents agents from getting stuck waiting for user approval.
-  const eventType = String(
-    payload.hook_event_name ?? payload.event ?? payload.eventName ?? "Unknown",
-  );
+  const eventType = resolveHookEventName(payload);
 
   if (eventType === "PermissionRequest") {
     // Record the event for audit trail
@@ -297,6 +299,9 @@ export async function processHookEventInput(
         // Re-check goal state before sending in case it changed while waiting.
         setTimeout(async () => {
           try {
+            const commandPrefix = getRuntimeCommandPrefix(
+              await resolveAgentRuntime(agent.agent_type, agent.tmux_target),
+            );
             const latestGoal = getGoalByAgent(agent.name, agent.room_id);
             if (!latestGoal || latestGoal.status !== "active") return;
 
@@ -304,11 +309,11 @@ export async function processHookEventInput(
               latestGoal.description.length > 500
                 ? latestGoal.description.slice(0, 497) + "…"
                 : latestGoal.description;
-            const rolePrefix = getRuntimeCommandPrefix(agent.agent_type);
-            const leaderPrefix = `${rolePrefix}crew:leader`;
             const latestReminder = `🎯 Goal: ${latestDesc} (turn ${latestGoal.turn_count})\n✅ If done, ${
-              `${rolePrefix}crew:${agent.role === "leader" ? "leader" : "worker"}`
-            } run command: ${rolePrefix}crew goal done\n❌ If unreachable, run command: ${leaderPrefix} goal unset\n📝 Edit: crew goal update "new description"`;
+              agent.role === "leader"
+                ? `${commandPrefix}crew:leader`
+                : `${commandPrefix}crew:worker`
+            } run command: crew goal done\n❌ If unreachable, run command: crew goal unset\n📝 Edit: crew goal update "new description"`;
 
             await sendKeys(agent.tmux_target!, latestReminder).catch(() => {});
           } catch {

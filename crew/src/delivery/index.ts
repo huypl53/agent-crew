@@ -2,6 +2,7 @@ import type { Agent, MessageDeliveryMetadata } from '../shared/types.ts';
 import { renderBatchFinalMessage } from '../state/batch-render.ts';
 import { getDb } from '../state/db.ts';
 import { dbClearAgentPane } from '../state/db-write.ts';
+import { resolveAgentRuntime } from '../shared/hook-runtime.ts';
 import {
   addMessage,
   advancePushCursor,
@@ -125,7 +126,11 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
         error: `Agent pane ${agent.tmux_target} no longer exists. Agent may need to rejoin.`,
       };
     }
-    if (agent.agent_type === 'claude-code' || agent.agent_type === 'codex') {
+    const agentRuntime = await resolveAgentRuntime(
+      agent.agent_type,
+      agent.tmux_target,
+    );
+    if (agentRuntime === 'claude-code' || agentRuntime === 'codex') {
       if (!(await paneCommandLooksAlive(agent.tmux_target))) {
         markAgentStale(agent.name);
         return {

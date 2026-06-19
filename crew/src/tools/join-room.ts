@@ -4,6 +4,10 @@ import { logServer } from '../shared/server-log.ts';
 import type { AgentRole, ToolResult, Room } from '../shared/types.ts';
 import { err, generateRandomName, ok, randomSuffix } from '../shared/types.ts';
 import {
+  detectAgentRuntimeFromPane,
+  inferAgentTypeFromProcesses,
+} from '../shared/hook-runtime.ts';
+import {
   addAgent,
   getAgentByRoomAndName,
   getAllAgents,
@@ -23,124 +27,7 @@ interface JoinRoomParams {
   room_id?: number;
 }
 
-function getTmuxSocketArgs(): string[] {
-  const socket = process.env.CREW_TMUX_SOCKET;
-  return socket ? ['-L', socket] : [];
-}
-
-interface ProcessInfo {
-  comm: string;
-  args?: string;
-}
-
-export function inferAgentTypeFromProcesses(
-  processes: ProcessInfo[],
-): 'claude-code' | 'codex' | 'unknown' {
-  const normalized = processes.map((process) => ({
-    comm: process.comm.trim().toLowerCase(),
-    args: process.args?.trim().toLowerCase() ?? '',
-  }));
-
-  if (
-    normalized.some(
-      (process) =>
-        process.comm.includes('claude') || process.args.includes('claude'),
-    )
-  ) {
-    return 'claude-code';
-  }
-
-  if (
-    normalized.some(
-      (process) =>
-        process.comm.includes('codex') || process.args.includes('codex'),
-    )
-  ) {
-    return 'codex';
-  }
-
-  return 'unknown';
-}
-
-/** Detect agent type by checking child process name via PID */
-export async function detectAgentType(
-  paneTarget: string,
-): Promise<'claude-code' | 'codex' | 'unknown'> {
-  try {
-    // Get shell PID from tmux pane
-    const shellProc = Bun.spawn(
-      [
-        'tmux',
-        ...getTmuxSocketArgs(),
-        'display-message',
-        '-p',
-        '-t',
-        paneTarget,
-        '#{pane_pid}',
-      ],
-      {
-        stdout: 'pipe',
-        stderr: 'pipe',
-      },
-    );
-    const shellPidStr = (await new Response(shellProc.stdout).text()).trim();
-    await shellProc.exited;
-    const shellPid = Number.parseInt(shellPidStr, 10);
-    if (Number.isNaN(shellPid)) return 'unknown';
-
-    const discovered: ProcessInfo[] = [];
-    const pending = [shellPid];
-    const seen = new Set<number>();
-
-    while (pending.length > 0) {
-      const parentPid = pending.shift();
-      if (parentPid == null || seen.has(parentPid)) continue;
-      seen.add(parentPid);
-
-      const pgrepProc = Bun.spawn(['pgrep', '-P', String(parentPid)], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
-      const childPidOutput = (await new Response(pgrepProc.stdout).text())
-        .trim()
-        .split('\n');
-      await pgrepProc.exited;
-
-      for (const cpid of childPidOutput) {
-        if (!cpid.trim()) continue;
-        const childPid = Number.parseInt(cpid.trim(), 10);
-        if (Number.isNaN(childPid) || seen.has(childPid)) continue;
-        pending.push(childPid);
-
-        const commProc = Bun.spawn(['ps', '-p', cpid.trim(), '-o', 'comm='], {
-          stdout: 'pipe',
-          stderr: 'pipe',
-        });
-        const argsProc = Bun.spawn(['ps', '-p', cpid.trim(), '-o', 'args='], {
-          stdout: 'pipe',
-          stderr: 'pipe',
-        });
-        const comm = (await new Response(commProc.stdout).text()).trim();
-        const args = (await new Response(argsProc.stdout).text()).trim();
-        await commProc.exited;
-        await argsProc.exited;
-
-        discovered.push({
-          comm,
-          args,
-        });
-      }
-    }
-
-    return inferAgentTypeFromProcesses(discovered);
-  } catch (e) {
-    logServer(
-      'ERROR',
-      `detectAgentType failed for pane ${paneTarget}: ${e instanceof Error ? e.message : String(e)}`,
-    );
-    return 'unknown';
-  }
-}
+export { inferAgentTypeFromProcesses, detectAgentRuntimeFromPane as detectAgentType };
 
 export async function handleJoinRoom(
   params: JoinRoomParams,
@@ -223,7 +110,9 @@ export async function handleJoinRoom(
     }
   }
 
-  const agentType = target ? await detectAgentType(target) : 'unknown';
+  const agentType = target
+    ? await detectAgentRuntimeFromPane(target)
+    : 'unknown';
   const agent = addAgent(
     name,
     role as AgentRole,

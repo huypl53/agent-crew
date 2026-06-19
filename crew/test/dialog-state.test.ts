@@ -9,6 +9,7 @@ import {
   getOrCreateRoom,
   listPendingDialogs,
   markDialogAnswered,
+  markDialogStepAnswered,
 } from '../src/state/index.ts';
 import type { DialogQuestion } from '../src/shared/types.ts';
 
@@ -67,6 +68,8 @@ describe('leader dialog state', () => {
       expect(d.status).toBe('pending');
       expect(d.answer).toBeNull();
       expect(d.answered_at).toBeNull();
+      expect(d.current_question_index).toBe(0);
+      expect(d.question_answers).toEqual([]);
       expect(d.questions?.[0].options.map((o) => o.label)).toEqual([
         'Red',
         'Green',
@@ -278,7 +281,10 @@ describe('leader dialog state', () => {
         picks: [0, 2],
       });
       expect(answered?.status).toBe('answered');
-      expect(answered?.answer).toEqual({ type: 'ask_question', picks: [0, 2] });
+      expect(answered?.answer).toEqual({
+        type: 'ask_question',
+        picks: [0, 2],
+      });
       expect(answered?.answered_at).not.toBeNull();
     });
 
@@ -334,6 +340,76 @@ describe('leader dialog state', () => {
       expect(
         markDialogAnswered(99999, { type: 'plan_approval', approved: true }),
       ).toBeNull();
+    });
+  });
+
+  describe('markDialogStepAnswered', () => {
+    test('advances current_question_index until final question', () => {
+      clearState();
+      const room = mkRoom('room-1');
+      addAgent('worker-1', 'worker', room.id, '%120');
+
+      const d = createLeaderDialog({
+        roomId: room.id,
+        workerName: 'worker-1',
+        workerPane: '%120',
+        leaderName: null,
+        dialogType: 'ask_question',
+        toolName: 'AskUserQuestion',
+        sessionId: null,
+        questions: [
+          {
+            question: 'q1',
+            header: 'h1',
+            multiSelect: false,
+            options: [{ label: 'A' }, { label: 'B' }],
+          },
+          {
+            question: 'q2',
+            header: 'h2',
+            multiSelect: true,
+            options: [{ label: 'C' }, { label: 'D' }],
+          },
+        ],
+        sourceHookEventId: null,
+      });
+
+      const step1 = markDialogStepAnswered(d.id, 0, [1]);
+      expect(step1.isComplete).toBe(false);
+      expect(step1.dialog?.current_question_index).toBe(1);
+      expect(step1.dialog?.question_answers).toEqual([[1]]);
+
+      const step2 = markDialogStepAnswered(d.id, 1, [0, 1]);
+      expect(step2.isComplete).toBe(true);
+      expect(step2.dialog?.status).toBe('answered');
+      expect(step2.dialog?.answer).toEqual({
+        type: 'ask_question',
+        picks: [1, 0, 1],
+        all_picks: [[1], [0, 1]],
+      });
+      expect(step2.dialog?.answered_at).not.toBeNull();
+    });
+
+    test('returns null when given wrong question index', () => {
+      clearState();
+      const room = mkRoom('room-1');
+      addAgent('worker-1', 'worker', room.id, '%121');
+
+      const d = createLeaderDialog({
+        roomId: room.id,
+        workerName: 'worker-1',
+        workerPane: '%121',
+        leaderName: null,
+        dialogType: 'ask_question',
+        toolName: 'AskUserQuestion',
+        sessionId: null,
+        questions: Q_COLOR,
+        sourceHookEventId: null,
+      });
+
+      const step1 = markDialogStepAnswered(d.id, 1, [0]);
+      expect(step1.dialog).toBeNull();
+      expect(step1.isComplete).toBe(false);
     });
   });
 });

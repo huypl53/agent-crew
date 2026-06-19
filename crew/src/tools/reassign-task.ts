@@ -4,6 +4,7 @@ import { assertRole } from '../shared/role-guard.ts';
 import type { ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
 import { getAgent } from '../state/index.ts';
+import { resolveAgentRuntime } from '../shared/hook-runtime.ts';
 
 interface ReassignTaskParams {
   worker_name: string;
@@ -46,7 +47,12 @@ export async function handleReassignTask(
     return err(`Worker "${worker_name}" has no tmux target`);
   }
 
-  if (worker.agent_type === 'claude-code' || worker.agent_type === 'codex') {
+  const agentRuntime = await resolveAgentRuntime(
+    worker.agent_type,
+    worker.tmux_target,
+  );
+
+  if (agentRuntime === 'claude-code' || agentRuntime === 'codex') {
     await getQueue(worker.tmux_target).enqueue({ type: 'sigint' });
   } else {
     await getQueue(worker.tmux_target).enqueue({ type: 'escape' });

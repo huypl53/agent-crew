@@ -7,6 +7,7 @@ import {
   listPendingDialogs,
   markDialogAnswered,
 } from '../state/index.ts';
+import { markDialogStepAnswered } from '../state/dialog-state.ts';
 import { logServer } from '../shared/server-log.ts';
 import type { LeaderDialog, ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
@@ -53,12 +54,16 @@ function parsePicks(raw: string | string[] | undefined): number[] {
 }
 
 function serializeDialog(d: LeaderDialog) {
-  const q = d.questions?.[0];
+  const questions = d.questions ?? [];
+  const questionIndex = Math.max(0, d.current_question_index ?? 0);
+  const q = questions[questionIndex];
   return {
     id: d.id,
     worker: d.worker_name,
     type: d.dialog_type,
     tool: d.tool_name,
+    question_index: questionIndex,
+    total_questions: questions.length,
     question: q?.question ?? null,
     header: q?.header ?? null,
     multi_select: q?.multiSelect ?? false,
@@ -110,7 +115,10 @@ export async function handleDialogAnswer(params: {
       `Dialog #${dialog.id} is a plan approval — use 'crew dialog approve ${worker}'`,
     );
   }
-  const q = dialog.questions?.[0];
+
+  const questions = dialog.questions ?? [];
+  const questionIndex = Math.max(0, dialog.current_question_index ?? 0);
+  const q = questions[questionIndex];
   if (!q || q.options.length === 0) {
     return err(`Dialog #${dialog.id} has no options to pick`);
   }
@@ -151,6 +159,8 @@ export async function handleDialogAnswer(params: {
     optionCount: q.options.length,
     multiSelect: q.multiSelect,
     picks: picks0,
+    questionIndex,
+    totalQuestions: questions.length,
   });
   const keys = expandKeyActions(actions);
   for (const key of keys) {
@@ -162,13 +172,40 @@ export async function handleDialogAnswer(params: {
     }
   }
 
-  markDialogAnswered(dialog.id, { type: 'ask_question', picks: picks0 });
+  const { dialog: progressed, isComplete } = markDialogStepAnswered(
+    dialog.id,
+    questionIndex,
+    picks0,
+  );
+  if (!progressed) {
+    return err(
+      `Failed to record answer for dialog #${dialog.id}; it may have been updated concurrently.`,
+    );
+  }
+
+  if (!isComplete) {
+    return ok({
+      ok: true,
+      worker,
+      dialog_id: progressed.id,
+      question_index: progressed.current_question_index,
+      total_questions: questions.length,
+      keys: describeKeyActions(actions),
+      status: 'pending',
+      message: 'Advanced to next question',
+    });
+  }
+
+  const finalAnswer = progressed.answer as
+    | { type: 'ask_question'; picks: number[]; all_picks?: number[][] }
+    | null;
   return ok({
     ok: true,
     worker,
-    dialog_id: dialog.id,
-    picks: picks0.map((p) => p + 1),
+    dialog_id: progressed.id,
+    picks: finalAnswer?.picks?.map((p) => p + 1) ?? [],
     keys: describeKeyActions(actions),
+    status: 'answered',
   });
 }
 

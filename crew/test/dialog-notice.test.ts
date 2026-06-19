@@ -86,7 +86,9 @@ describe('formatLeaderNotice', () => {
         },
       ],
     });
-    expect(notice).toContain('🔔 worker-1 asks (Library, single-select)');
+    expect(notice).toContain('Library');
+    expect(notice).toContain('single-select');
+    expect(notice).toContain('[1/1]');
     expect(notice).toContain('[1] A');
     expect(notice).toContain('[2] B');
     expect(notice).toContain('[3] C');
@@ -108,6 +110,20 @@ describe('formatLeaderNotice', () => {
     });
     expect(notice).toContain('multi-select');
     expect(notice).toContain('--pick 1,2,…');
+  });
+
+  test('renders current question index when multi-question', () => {
+    const notice = formatLeaderNotice({
+      workerName: 'worker-1',
+      dialogType: 'ask_question',
+      questionIndex: 1,
+      questions: [
+        { question: 'q1', header: '', multiSelect: true, options: [{ label: 'A' }] },
+        { question: 'q2', header: '', multiSelect: false, options: [{ label: 'B' }] },
+      ],
+    });
+    expect(notice).toContain('[2/2]');
+    expect(notice).toContain('q2');
   });
 
   test('renders approve command for plan approval', () => {

@@ -20,6 +20,10 @@ import type {
 import { isPaneDead, paneCommandLooksAlive } from '../tmux/index.ts';
 import { renderBatchFinalMessage } from './batch-render.ts';
 import {
+  extractHookCompletionMessage,
+  resolveAgentRuntime,
+} from '../shared/hook-runtime.ts';
+import {
   areAllBatchWorkersTerminal,
   completeBatchWorker,
   createMessageBatch,
@@ -982,8 +986,12 @@ export async function validateLiveness(): Promise<string[]> {
       continue;
     }
     // For known agent types, also verify the pane is still running an agent process.
-    // Skip 'unknown' agents (e.g. CLI-registered or test panes) to avoid false evictions.
-    if (agent.agent_type === 'claude-code' || agent.agent_type === 'codex') {
+    // For unknown types, detect from pane/process in case agent_type is stale.
+    const resolvedAgentType = await resolveAgentRuntime(
+      agent.agent_type,
+      agent.tmux_target,
+    );
+    if (resolvedAgentType === 'claude-code' || resolvedAgentType === 'codex') {
       if (!(await paneCommandLooksAlive(agent.tmux_target))) {
         markAgentStale(agent.name);
         dead.push(agent.name);
@@ -1173,9 +1181,9 @@ export function addHookEvent(
 
   // Party mode integration: capture response on Stop
   if (eventType === 'Stop') {
-    capturePartyResponseIfActive(agentName, payload, eventId, roomId, sessionId);
+    capturePartyResponseIfActive(agentName, payload, eventId, roomId);
     // Room mode: auto-notify leaders (skips if party mode active)
-    notifyLeadersOnWorkerStop(agentName, payload, roomId, sessionId);
+    notifyLeadersOnWorkerStop(agentName, payload, roomId);
   }
 
   return eventId;
@@ -1186,7 +1194,6 @@ function capturePartyResponseIfActive(
   payload: string,
   hookEventId: number,
   roomId?: number,
-  sessionId: string | null = null,
 ): void {
   const agent =
     roomId !== undefined
@@ -1197,7 +1204,7 @@ function capturePartyResponseIfActive(
   const partyState = getPartyState(agent.room_id);
   if (!partyState?.active) return;
 
-  const response = buildStopCompletionResponse(payload, sessionId);
+  const response = extractHookCompletionMessage(payload);
 
   if (!response.trim()) return;
 
@@ -1310,7 +1317,6 @@ function notifyLeadersOnWorkerStop(
   agentName: string,
   payload: string,
   roomId?: number,
-  sessionId: string | null = null,
 ): void {
   const agent =
     roomId !== undefined
@@ -1323,9 +1329,7 @@ function notifyLeadersOnWorkerStop(
   if (partyState?.active) return;
 
   // Extract response
-  const response = buildStopCompletionResponse(payload, sessionId);
-
-  if (!response.trim()) return;
+  const response = extractHookCompletionMessage(payload);
 
   const goal = getGoalByAgent(agentName, agent.room_id);
   if (goal?.status === 'active') {
@@ -1382,80 +1386,6 @@ function notifyLeadersOnWorkerStop(
   if (alreadyNotifiedThisTurn(agent.room_id, agentName)) return;
 
   sendWorkerCompletionToLeaders(agentName, agent.room_id, response);
-}
-
-function buildStopCompletionResponse(
-  payload: string,
-  sessionId: string | null,
-): string {
-  const response = extractHookCompletionMessage(payload);
-  if (response.trim()) return response;
-  if (!sessionId) return '';
-  return `Task completed for session ${sessionId}`;
-}
-
-function extractHookCompletionMessage(payload: string): string {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(payload);
-  } catch {
-    return '';
-  }
-
-  if (!parsed || typeof parsed !== 'object') return '';
-
-  const obj = parsed as Record<string, unknown>;
-  const keys = [
-    'last_assistant_message',
-    'lastAssistantMessage',
-    'assistant_message',
-    'assistantMessage',
-    'assistant',
-    'message',
-    'output',
-    'response',
-    'result',
-    'final_message',
-    'finalMessage',
-    'text',
-    'content',
-  ];
-  for (const key of keys) {
-    const value = extractTextFromValue(obj[key]);
-    if (value) return value;
-  }
-
-  return '';
-}
-
-function extractTextFromValue(value: unknown): string | null {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const extracted = extractTextFromValue(item);
-      if (extracted) return extracted;
-    }
-    return null;
-  }
-  if (value && typeof value === 'object') {
-    const obj = value as Record<string, unknown>;
-    if ('text' in obj) {
-      const text = extractTextFromValue(obj.text);
-      if (text) return text;
-    }
-    if ('content' in obj) {
-      const content = extractTextFromValue(obj.content);
-      if (content) return content;
-    }
-    if ('message' in obj) {
-      const message = extractTextFromValue(obj.message);
-      if (message) return message;
-    }
-  }
-  return null;
 }
 
 function sendWorkerCompletionToLeaders(

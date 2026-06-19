@@ -4,6 +4,10 @@ import { getAllAgents, getLatestHookEvent } from '../state/index.ts';
 import { capturePane } from '../tmux/index.ts';
 import { resolveAgentSession } from '../tokens/pid-mapper.ts';
 import {
+  extractHookCompletionMessage,
+  resolveAgentRuntime,
+} from '../shared/hook-runtime.ts';
+import {
   extractRecentClaudeTurns,
   type InspectionTurn,
 } from './claude-transcript.ts';
@@ -23,79 +27,6 @@ interface InspectWorkerDeps {
   sessionResolver?: (tmuxTarget: string) => Promise<ResolvedSession | null>;
   transcriptLoader?: (sessionPath: string) => Promise<string | null>;
   paneLoader?: (tmuxTarget: string) => Promise<string | null>;
-}
-
-function parseLastAssistantMessage(payload: string | null): string | null {
-  if (!payload) return null;
-  const text = extractHookCompletionMessage(payload);
-  return text ? text : null;
-}
-
-function extractHookCompletionMessage(payload: string): string {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(payload);
-  } catch {
-    return '';
-  }
-
-  if (!parsed || typeof parsed !== 'object') return '';
-  const obj = parsed as Record<string, unknown>;
-  const keys = [
-    'last_assistant_message',
-    'lastAssistantMessage',
-    'assistant_message',
-    'assistantMessage',
-    'assistant',
-    'message',
-    'output',
-    'response',
-    'result',
-    'final_message',
-    'finalMessage',
-    'text',
-    'content',
-  ];
-
-  for (const key of keys) {
-    const value = extractTextFromValue(obj[key]);
-    if (value) return value;
-  }
-
-  return '';
-}
-
-function extractTextFromValue(value: unknown): string | null {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const extracted = extractTextFromValue(item);
-      if (extracted) return extracted;
-    }
-    return null;
-  }
-
-  if (value && typeof value === 'object') {
-    const obj = value as Record<string, unknown>;
-    if ('text' in obj) {
-      const text = extractTextFromValue(obj.text);
-      if (text) return text;
-    }
-    if ('content' in obj) {
-      const content = extractTextFromValue(obj.content);
-      if (content) return content;
-    }
-    if ('message' in obj) {
-      const message = extractTextFromValue(obj.message);
-      if (message) return message;
-    }
-  }
-
-  return null;
 }
 
 function detectBlockHint(
@@ -124,13 +55,13 @@ function detectBlockHint(
   return status === 'busy' ? 'running' : 'unknown';
 }
 
-function buildHookFallback(
+async function buildHookFallback(
   workerName: string,
   roomName: string,
-  provider: string,
+  agentType: 'claude-code' | 'codex' | 'unknown',
   sessionId: string | null,
   degradationReason: DegradationReason,
-): InspectionSnapshot {
+): Promise<InspectionSnapshot> {
   const scopedSessionId = sessionId ?? undefined;
   const latestEvent = getLatestHookEvent(
     workerName,
@@ -142,7 +73,7 @@ function buildHookFallback(
     latestStop && (!latestEvent || latestStop.id >= latestEvent.id)
       ? latestStop
       : latestEvent;
-  const assistantText = parseLastAssistantMessage(
+  const assistantText = extractHookCompletionMessage(
     latestRelevantEvent?.payload ?? null,
   );
   const turns = assistantText
@@ -164,7 +95,7 @@ function buildHookFallback(
   return {
     agent_name: workerName,
     room_name: roomName,
-    provider,
+    provider: agentType,
     session_id: sessionId,
     status,
     updated_at: latestRelevantEvent?.created_at ?? null,
@@ -187,6 +118,10 @@ export async function inspectWorkerTurns(
   );
 
   const limit = params.turns && params.turns > 0 ? params.turns : 2;
+  const resolvedAgentType = await resolveAgentRuntime(
+    worker.agent_type,
+    worker.tmux_target,
+  );
 
   const sessionResolver =
     deps.sessionResolver ??
@@ -229,7 +164,7 @@ export async function inspectWorkerTurns(
         return {
           agent_name: worker.name,
           room_name: worker.room_name,
-          provider: worker.agent_type,
+          provider: resolvedAgentType,
           session_id: resolvedSession.sessionId,
           status,
           updated_at: updatedAt,
@@ -240,18 +175,18 @@ export async function inspectWorkerTurns(
           degradation_reason: 'none',
         };
       }
-      return buildHookFallback(
+      return await buildHookFallback(
         worker.name,
         worker.room_name,
-        worker.agent_type,
+        resolvedAgentType,
         resolvedSession.sessionId,
         'transcript_unavailable',
       );
     }
-    return buildHookFallback(
+    return await buildHookFallback(
       worker.name,
       worker.room_name,
-      worker.agent_type,
+      resolvedAgentType,
       resolvedSession.sessionId,
       'transcript_unavailable',
     );
@@ -263,13 +198,13 @@ export async function inspectWorkerTurns(
   );
   if (sameNameWorkers.length > 1) {
     throw new Error(
-      `Unable to resolve Claude session for worker "${worker.name}". Use a unique worker name per room or restore session resolution.`,
+      `Unable to resolve session for worker "${worker.name}". Use a unique worker name per room or restore session resolution.`,
     );
   }
-  const hookSnapshot = buildHookFallback(
+  const hookSnapshot = await buildHookFallback(
     worker.name,
     worker.room_name,
-    worker.agent_type,
+    resolvedAgentType,
     latestEvent?.session_id ?? null,
     'session_unresolved',
   );
@@ -287,7 +222,7 @@ export async function inspectWorkerTurns(
     return {
       agent_name: worker.name,
       room_name: worker.room_name,
-      provider: worker.agent_type,
+      provider: resolvedAgentType,
       session_id: latestEvent?.session_id ?? null,
       status,
       updated_at: null,

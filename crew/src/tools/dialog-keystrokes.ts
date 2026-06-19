@@ -12,9 +12,8 @@
  * Spec (user-described) defaults:
  *   Up/Down ........ move focus
  *   Space .......... select / toggle focused option
- *   bottom row ..... submit button (reached by navigating Down past all options)
- *   Enter .......... submit
- *   Tab ............ (left/right) tab between regions — unused by the builder
+ *   Right .......... next question or submit control in multi-select flow
+ *   Enter .......... submit / advance question for single-select
  */
 
 export interface KeyAction {
@@ -27,6 +26,8 @@ export interface DialogKeyMap {
   select: string;
   /** Move focus one step toward the submit button (Down). */
   submitNav: string;
+  /** Move focus to next question / submit control in multi-question flows. */
+  nextQuestion: string;
   /** Submit the dialog (Enter). */
   submit: string;
   /**
@@ -40,6 +41,7 @@ export interface DialogKeyMap {
 export const DEFAULT_DIALOG_KEYMAP: DialogKeyMap = {
   select: 'Space',
   submitNav: 'Down',
+  nextQuestion: 'Right',
   submit: 'Enter',
   directSubmitSingle: true,
 };
@@ -52,6 +54,10 @@ export interface BuildKeystrokesInput {
   multiSelect: boolean;
   /** 0-based option indices the leader picked. */
   picks: number[];
+  /** 0-based index of the question in the AskUserQuestion payload. */
+  questionIndex: number;
+  /** Total number of questions in the AskUserQuestion payload. */
+  totalQuestions: number;
 }
 
 /** Flatten grouped KeyActions into a flat list of tmux key names. */
@@ -93,9 +99,14 @@ export function buildKeystrokes(
   const optionCount = input.optionCount;
   if (!Number.isInteger(optionCount) || optionCount < 1) return [];
 
+  const totalQuestions = input.totalQuestions > 1 ? input.totalQuestions : 1;
+  const questionIndex = input.questionIndex > 0 ? input.questionIndex : 0;
+  const isLastQuestion = questionIndex >= totalQuestions - 1;
+
   const picks = normalizePicks(input.picks, optionCount);
 
-  // Single-select short-circuit: focus the option, Enter submits it directly.
+  // Single-select short-circuit: focus the option, Enter moves to next question
+  // or submits final question.
   if (!input.multiSelect && keymap.directSubmitSingle) {
     const target = picks[0] ?? 0;
     const actions: KeyAction[] = [];
@@ -105,8 +116,7 @@ export function buildKeystrokes(
   }
 
   // General path (multi-select, or single-select driven like multi-select):
-  // walk focus down to each picked option, toggle it, then navigate to the
-  // submit button (positioned after the last option) and submit.
+  // walk focus down to each picked option and toggle it.
   const actions: KeyAction[] = [];
   let pos = 0;
   for (const pick of picks) {
@@ -115,8 +125,15 @@ export function buildKeystrokes(
     actions.push({ key: keymap.select, repeat: 1 });
     pos = pick;
   }
-  const toSubmit = optionCount - pos;
-  if (toSubmit > 0) actions.push({ key: keymap.submitNav, repeat: toSubmit });
+
+  // Non-final questions move to the next question with Right after picking.
+  if (!isLastQuestion) {
+    actions.push({ key: keymap.nextQuestion, repeat: 1 });
+    return actions;
+  }
+
+  // Final question: move from options area to submit control, then submit.
+  actions.push({ key: keymap.nextQuestion, repeat: 1 });
   actions.push({ key: keymap.submit, repeat: 1 });
   return actions;
 }

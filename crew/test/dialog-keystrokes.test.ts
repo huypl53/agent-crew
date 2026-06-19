@@ -12,7 +12,7 @@ const keys = (
   keymap?: DialogKeyMap,
 ) => expandKeyActions(buildKeystrokes(input, keymap));
 
-describe('buildKeystrokes: single-select (direct submit)', () => {
+describe('buildKeystrokes: single-select', () => {
   test('first option needs no navigation', () => {
     expect(
       keys({
@@ -20,17 +20,21 @@ describe('buildKeystrokes: single-select (direct submit)', () => {
         optionCount: 3,
         multiSelect: false,
         picks: [0],
+        questionIndex: 0,
+        totalQuestions: 1,
       }),
     ).toEqual(['Enter']);
   });
 
-  test('navigates down then submits', () => {
+  test('navigates down then submits for non-multi-select', () => {
     expect(
       keys({
         dialogType: 'ask_question',
         optionCount: 3,
         multiSelect: false,
         picks: [1],
+        questionIndex: 0,
+        totalQuestions: 1,
       }),
     ).toEqual(['Down', 'Enter']);
     expect(
@@ -39,54 +43,64 @@ describe('buildKeystrokes: single-select (direct submit)', () => {
         optionCount: 3,
         multiSelect: false,
         picks: [2],
+        questionIndex: 0,
+        totalQuestions: 1,
       }),
     ).toEqual(['Down', 'Down', 'Enter']);
   });
 
-  test('defaults to first option when pick missing/invalid', () => {
+  test('advances to next question when not last', () => {
     expect(
       keys({
         dialogType: 'ask_question',
         optionCount: 3,
         multiSelect: false,
-        picks: [99],
+        picks: [2],
+        questionIndex: 0,
+        totalQuestions: 2,
       }),
-    ).toEqual(['Enter']);
+    ).toEqual(['Down', 'Down', 'Enter']);
   });
 });
 
 describe('buildKeystrokes: multi-select', () => {
-  test('selects first and last of three', () => {
+  test('moves to next question after toggles for non-final', () => {
     expect(
       keys({
         dialogType: 'ask_question',
         optionCount: 3,
         multiSelect: true,
         picks: [0, 2],
+        questionIndex: 0,
+        totalQuestions: 2,
       }),
-    ).toEqual(['Space', 'Down', 'Down', 'Space', 'Down', 'Enter']);
+    ).toEqual(['Space', 'Down', 'Down', 'Space', 'Right']);
   });
 
-  test('selects a single middle option', () => {
+  test('submits final question with Right + Enter', () => {
     expect(
       keys({
         dialogType: 'ask_question',
         optionCount: 3,
         multiSelect: true,
         picks: [1],
+        questionIndex: 1,
+        totalQuestions: 2,
       }),
-    ).toEqual(['Down', 'Space', 'Down', 'Down', 'Enter']);
+    ).toEqual(['Down', 'Space', 'Right', 'Enter']);
   });
 
-  test('selects all options', () => {
+  test('selects all options final', () => {
     expect(
       keys({
         dialogType: 'ask_question',
         optionCount: 3,
         multiSelect: true,
         picks: [0, 1, 2],
+        questionIndex: 1,
+        totalQuestions: 2,
       }),
-    ).toEqual(['Space', 'Down', 'Space', 'Down', 'Space', 'Down', 'Enter']);
+    ).toEqual(['Space', 'Down', 'Space', 'Down', 'Space', 'Right', 'Enter']);
   });
 });
 
@@ -98,6 +112,8 @@ describe('buildKeystrokes: plan approval', () => {
         optionCount: 0,
         multiSelect: false,
         picks: [],
+        questionIndex: 0,
+        totalQuestions: 1,
       }),
     ).toEqual(['Enter']);
   });
@@ -111,8 +127,10 @@ describe('buildKeystrokes: normalization & edge cases', () => {
         optionCount: 3,
         multiSelect: true,
         picks: [2, 0, 0, 2],
+        questionIndex: 1,
+        totalQuestions: 2,
       }),
-    ).toEqual(['Space', 'Down', 'Down', 'Space', 'Down', 'Enter']);
+    ).toEqual(['Space', 'Down', 'Down', 'Space', 'Right']);
   });
 
   test('filters out-of-range picks', () => {
@@ -122,8 +140,10 @@ describe('buildKeystrokes: normalization & edge cases', () => {
         optionCount: 2,
         multiSelect: true,
         picks: [0, 5, -1],
+        questionIndex: 0,
+        totalQuestions: 1,
       }),
-    ).toEqual(['Space', 'Down', 'Down', 'Enter']);
+    ).toEqual(['Space', 'Down', 'Down', 'Right', 'Enter']);
   });
 
   test('returns empty when no options', () => {
@@ -133,12 +153,17 @@ describe('buildKeystrokes: normalization & edge cases', () => {
         optionCount: 0,
         multiSelect: false,
         picks: [0],
+        questionIndex: 0,
+        totalQuestions: 1,
       }),
     ).toEqual([]);
   });
 
   test('directSubmitSingle=false forces general path for single-select', () => {
-    const keymap: DialogKeyMap = { ...DEFAULT_DIALOG_KEYMAP, directSubmitSingle: false };
+    const keymap: DialogKeyMap = {
+      ...DEFAULT_DIALOG_KEYMAP,
+      directSubmitSingle: false,
+    };
     expect(
       keys(
         {
@@ -146,10 +171,12 @@ describe('buildKeystrokes: normalization & edge cases', () => {
           optionCount: 2,
           multiSelect: false,
           picks: [0],
+          questionIndex: 0,
+          totalQuestions: 1,
         },
         keymap,
       ),
-    ).toEqual(['Space', 'Down', 'Down', 'Enter']);
+    ).toEqual(['Space', 'Down', 'Down', 'Right', 'Enter']);
   });
 });
 

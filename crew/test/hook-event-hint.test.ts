@@ -16,6 +16,7 @@
  * and read-only lookup.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import path from 'node:path';
 import { formatResult } from '../src/cli/formatter.ts';
 import { COMMANDS } from '../src/cli/router.ts';
 import { closeDb, initDb } from '../src/state/db.ts';
@@ -44,13 +45,17 @@ function parseResult(
 }
 
 async function runHookEventCli(input: string, pane: string) {
-  const proc = Bun.spawn(['bun', 'src/cli.ts', 'hook-event'], {
+  const cliPath = path.resolve(process.cwd(), 'crew/src/cli.ts');
+  const stateDir = process.env.CREW_STATE_DIR;
+
+  const proc = Bun.spawn([ 'bun', cliPath, 'hook-event'], {
     stdin: new Response(input),
     stdout: 'pipe',
     stderr: 'pipe',
+    cwd: process.cwd(),
     env: {
       ...process.env,
-      CREW_STATE_DIR: process.env.CREW_STATE_DIR ?? '',
+      ...(stateDir ? { CREW_STATE_DIR: stateDir } : {}),
       TMUX_PANE: pane,
     },
   });

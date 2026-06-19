@@ -70,8 +70,13 @@ export function formatLeaderNotice(args: {
   workerName: string;
   dialogType: LeaderDialogType;
   questions: DialogQuestion[] | null;
+  questionIndex?: number;
 }): string {
   const { workerName, dialogType, questions } = args;
+  const questionIndex = Math.max(
+    0,
+    Number.parseInt(String(args.questionIndex ?? 0), 10),
+  );
 
   if (dialogType === 'plan_approval') {
     return [
@@ -80,7 +85,8 @@ export function formatLeaderNotice(args: {
     ].join('\n');
   }
 
-  const q = questions?.[0];
+  const totalQuestions = questions?.length ?? 0;
+  const q = questions?.[questionIndex] ?? questions?.[0] ?? null;
   if (!q) {
     return [
       `🔔 ${workerName} has a question pending.`,
@@ -90,7 +96,11 @@ export function formatLeaderNotice(args: {
 
   const mode = q.multiSelect ? 'multi-select' : 'single-select';
   const header = q.header || 'Question';
-  const lines = [`🔔 ${workerName} asks (${header}, ${mode}):`, q.question];
+  const step = totalQuestions > 0 ? ` [${questionIndex + 1}/${totalQuestions}]` : '';
+  const lines = [
+    `🔔 ${workerName} asks ${step} (${header}, ${mode}):`,
+    q.question,
+  ];
   q.options.forEach((o, i) => {
     lines.push(`  [${i + 1}] ${o.label}`);
   });
@@ -98,5 +108,9 @@ export function formatLeaderNotice(args: {
     ? `crew dialog answer ${workerName} --pick 1,2,…`
     : `crew dialog answer ${workerName} --pick N`;
   lines.push(`Answer: ${cmd}`);
+  const nav = q.multiSelect
+    ? 'single-select: Enter; multi-select: Space + Right (or Enter at final)'
+    : 'Answer: Enter';
+  lines.push(`Navigate: ${nav}`);
   return lines.join('\n');
 }

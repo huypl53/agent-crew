@@ -51,6 +51,32 @@ function parseAnswer(raw: string | null): LeaderDialogAnswer | null {
   }
 }
 
+function parseQuestionAnswers(raw: string | null): number[][] | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed as number[][];
+  } catch {
+    return null;
+  }
+}
+
+function ensureDialogProgressColumns(): void {
+  const db = getDb();
+  const cols = db
+    .query('PRAGMA table_info(leader_dialogs)')
+    .all() as Array<{ name: string }>;
+  const hasCurrent = cols.some((c) => c.name === 'current_question_index');
+  const hasAnswers = cols.some((c) => c.name === 'question_answers');
+  if (!hasCurrent) {
+    db.run('ALTER TABLE leader_dialogs ADD COLUMN current_question_index INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!hasAnswers) {
+    db.run('ALTER TABLE leader_dialogs ADD COLUMN question_answers TEXT');
+  }
+}
+
 function rowToDialog(row: Record<string, unknown>): LeaderDialog {
   return {
     id: row.id as number,
@@ -62,6 +88,11 @@ function rowToDialog(row: Record<string, unknown>): LeaderDialog {
     tool_name: row.tool_name as string,
     session_id: (row.session_id as string | null) ?? null,
     questions: parseQuestions((row.questions as string | null) ?? null),
+    current_question_index:
+      Number.parseInt(String(row.current_question_index ?? 0), 10) || 0,
+    question_answers: parseQuestionAnswers(
+      (row.question_answers as string | null) ?? null,
+    ) ?? [],
     status: parseStatus(row.status),
     answer: parseAnswer((row.answer as string | null) ?? null),
     created_at: row.created_at as string,
@@ -79,6 +110,7 @@ export function createLeaderDialog(
   input: CreateLeaderDialogInput,
 ): LeaderDialog {
   const db = getDb();
+  ensureDialogProgressColumns();
   const ts = now();
   return db.transaction(() => {
     db.run(
@@ -91,9 +123,10 @@ export function createLeaderDialog(
     db.run(
       `INSERT INTO leader_dialogs (
          room_id, worker_name, worker_pane, leader_name, dialog_type,
-         tool_name, session_id, questions, status, answer, answered_at,
+         tool_name, session_id, questions, current_question_index, question_answers,
+         status, answer, answered_at,
          source_hook_event_id
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?)`,
       [
         input.roomId,
         input.workerName,
@@ -103,6 +136,8 @@ export function createLeaderDialog(
         input.toolName,
         input.sessionId,
         input.questions ? JSON.stringify(input.questions) : null,
+        0,
+        null,
         input.sourceHookEventId,
       ],
     );
@@ -173,4 +208,86 @@ export function markDialogAnswered(
     [JSON.stringify(answer), ts, id],
   );
   return getDialogById(id);
+}
+
+/**
+ * Record a step for ask_question and either advance to the next question (while
+ * keeping status pending) or close the dialog when the last question is done.
+ */
+export function markDialogStepAnswered(
+  id: number,
+  questionIndex: number,
+  picks: number[],
+): { dialog: LeaderDialog | null; isComplete: boolean } {
+  const db = getDb();
+  ensureDialogProgressColumns();
+  const nowTs = now();
+  const row = db
+    .query(
+      `SELECT status, dialog_type, questions, current_question_index,
+              question_answers
+       FROM leader_dialogs WHERE id = ?`,
+    )
+    .get(id) as
+    | {
+        status: LeaderDialogStatus;
+        dialog_type: string;
+        questions: string | null;
+        current_question_index: number | null;
+        question_answers: string | null;
+      }
+    | null;
+
+  if (
+    !row ||
+    row.status !== 'pending' ||
+    parseDialogType(row.dialog_type) !== 'ask_question'
+  ) {
+    return { dialog: null, isComplete: false };
+  }
+
+  const qIndex = Number.parseInt(String(row.current_question_index ?? 0), 10) || 0;
+  if (!Number.isInteger(questionIndex) || questionIndex !== qIndex) {
+    return { dialog: null, isComplete: false };
+  }
+
+  const questions = parseQuestions(row.questions);
+  const totalQuestions = questions ? questions.length : 0;
+  if (!Number.isInteger(totalQuestions) || totalQuestions < 1) {
+    return { dialog: null, isComplete: false };
+  }
+
+  const normalizedAnswers = parseQuestionAnswers(row.question_answers) ?? [];
+  const answersByQuestion = [...normalizedAnswers];
+  answersByQuestion[questionIndex] = picks;
+
+  const nextIndex = questionIndex + 1;
+  if (nextIndex < totalQuestions) {
+    db.run(
+      `UPDATE leader_dialogs
+       SET current_question_index = ?, question_answers = ?
+       WHERE id = ?`,
+      [nextIndex, JSON.stringify(answersByQuestion), id],
+    );
+    return { dialog: getDialogById(id), isComplete: false };
+  }
+
+  const allPicks = answersByQuestion.flat();
+  db.run(
+    `UPDATE leader_dialogs
+     SET status = 'answered', answer = ?, answered_at = ?,
+         question_answers = ?
+     WHERE id = ?`,
+    [
+      JSON.stringify({
+        type: 'ask_question',
+        picks: allPicks,
+        all_picks: answersByQuestion,
+      } as LeaderDialogAnswer),
+      nowTs,
+      JSON.stringify(answersByQuestion),
+      id,
+    ],
+  );
+  return { dialog: getDialogById(id), isComplete: true };
 }
