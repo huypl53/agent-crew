@@ -1,6 +1,7 @@
 import stripAnsi from 'strip-ansi';
-import { logServer } from '../shared/server-log.ts';
 import { detectAgentRuntimeFromPane } from '../shared/hook-runtime.ts';
+import { logServer } from '../shared/server-log.ts';
+import { withPaneLock } from './pane-lock.ts';
 
 const SPAWN_TIMEOUT = 5000;
 
@@ -65,6 +66,19 @@ const PASTE_SETTLE_MS = (() => {
   return Number.isFinite(v) && v >= 0 ? v : 500;
 })();
 
+/**
+ * Settle AFTER a submitting delivery (paste / command / crew-command) releases
+ * the cross-process pane lock. Gives the target TUI time to process the Enter
+ * before the NEXT `crew` process — unblocked once the lock releases — injects
+ * its own keystrokes. Tunable via env. Default is generous because Codex
+ * `/clear` (full context reset + redraw) is the slowest submit and is the case
+ * that breaks when several `crew` commands land back-to-back.
+ */
+const POST_DELIVERY_SETTLE_MS = (() => {
+  const v = Number(process.env.CREW_PANE_SETTLE_MS);
+  return Number.isFinite(v) && v >= 0 ? v : 300;
+})();
+
 export async function sendKeys(
   target: string,
   text: string,
@@ -80,67 +94,76 @@ export async function sendKeys(
   // so the terminal app treats the entire payload as one atomic paste. Enter sent after
   // the paste completes then submits cleanly.
   const bufferName = `_crew_${target.replace('%', '')}`;
-  try {
-    // Load text into a named tmux buffer via stdin (safe for arbitrary content).
-    // Must use the same socket as paste-buffer so both commands share the same server.
-    const socketArgs = getSocketArgs();
-    const loadProc = Bun.spawn(
-      ['tmux', ...socketArgs, 'load-buffer', '-b', bufferName, '-'],
-      {
-        stdin: Buffer.from(text),
-        stdout: 'pipe',
-        stderr: 'pipe',
-      },
-    );
-    const loadTimeout = setTimeout(() => loadProc.kill(), SPAWN_TIMEOUT);
-    const loadExit = await loadProc.exited;
-    clearTimeout(loadTimeout);
-    if (loadExit !== 0) {
-      const stderr = await new Response(loadProc.stderr).text();
-      return {
-        delivered: false,
-        error: stderr.trimEnd() || 'load-buffer failed',
-      };
+  // Hold the cross-process pane lock across the whole load→paste→Enter sequence
+  // so a concurrent `crew` process cannot interleave its own keystrokes into
+  // this pane mid-paste (which garbles the target TUI's input).
+  return withPaneLock(target, async () => {
+    try {
+      // Load text into a named tmux buffer via stdin (safe for arbitrary content).
+      // Must use the same socket as paste-buffer so both commands share the same server.
+      const socketArgs = getSocketArgs();
+      const loadProc = Bun.spawn(
+        ['tmux', ...socketArgs, 'load-buffer', '-b', bufferName, '-'],
+        {
+          stdin: Buffer.from(text),
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      );
+      const loadTimeout = setTimeout(() => loadProc.kill(), SPAWN_TIMEOUT);
+      const loadExit = await loadProc.exited;
+      clearTimeout(loadTimeout);
+      if (loadExit !== 0) {
+        const stderr = await new Response(loadProc.stderr).text();
+        return {
+          delivered: false,
+          error: stderr.trimEnd() || 'load-buffer failed',
+        };
+      }
+
+      // Paste with bracketed paste mode; -d deletes the buffer after pasting
+      const pasteResult = await run(
+        'paste-buffer',
+        '-dp',
+        '-b',
+        bufferName,
+        '-t',
+        target,
+      );
+      if (!pasteResult.success) {
+        return {
+          delivered: false,
+          error: pasteResult.stderr || 'paste-buffer failed',
+        };
+      }
+
+      // Let the terminal app finish processing the bracketed paste
+      await Bun.sleep(PASTE_SETTLE_MS);
+
+      // Submit
+      const enterResult = await run('send-keys', '-t', target, 'Enter');
+      if (!enterResult.success) {
+        return {
+          delivered: false,
+          error: enterResult.stderr || 'send-keys Enter failed',
+        };
+      }
+
+      // Let the TUI process the submission before the pane lock releases and a
+      // queued-up `crew` process injects the next command.
+      await Bun.sleep(POST_DELIVERY_SETTLE_MS);
+
+      return { delivered: true };
+    } catch (e) {
+      // Clean up buffer on failure
+      logServer(
+        'ERROR',
+        `paste delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      await run('delete-buffer', '-b', bufferName).catch(() => {});
+      return { delivered: false, error: 'paste delivery failed' };
     }
-
-    // Paste with bracketed paste mode; -d deletes the buffer after pasting
-    const pasteResult = await run(
-      'paste-buffer',
-      '-dp',
-      '-b',
-      bufferName,
-      '-t',
-      target,
-    );
-    if (!pasteResult.success) {
-      return {
-        delivered: false,
-        error: pasteResult.stderr || 'paste-buffer failed',
-      };
-    }
-
-    // Let the terminal app finish processing the bracketed paste
-    await Bun.sleep(PASTE_SETTLE_MS);
-
-    // Submit
-    const enterResult = await run('send-keys', '-t', target, 'Enter');
-    if (!enterResult.success) {
-      return {
-        delivered: false,
-        error: enterResult.stderr || 'send-keys Enter failed',
-      };
-    }
-
-    return { delivered: true };
-  } catch (e) {
-    // Clean up buffer on failure
-    logServer(
-      'ERROR',
-      `paste delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
-    );
-    await run('delete-buffer', '-b', bufferName).catch(() => {});
-    return { delivered: false, error: 'paste delivery failed' };
-  }
+  });
 }
 
 /**
@@ -152,99 +175,167 @@ export async function sendCommand(
   target: string,
   text: string,
 ): Promise<{ delivered: boolean; error?: string }> {
-  try {
-    // Send the command text literally
-    const textResult = await run('send-keys', '-t', target, '-l', text);
-    if (!textResult.success) {
-      return {
-        delivered: false,
-        error: textResult.stderr || 'send-keys -l failed',
-      };
+  return withPaneLock(target, async () => {
+    try {
+      // Send the command text literally
+      const textResult = await run('send-keys', '-t', target, '-l', text);
+      if (!textResult.success) {
+        return {
+          delivered: false,
+          error: textResult.stderr || 'send-keys -l failed',
+        };
+      }
+      // Small settle for the text to appear in the input line
+      await Bun.sleep(100);
+      // Press Enter to submit
+      const enterResult = await run('send-keys', '-t', target, 'Enter');
+      if (!enterResult.success) {
+        return {
+          delivered: false,
+          error: enterResult.stderr || 'send-keys Enter failed',
+        };
+      }
+      // Let the TUI process the submission before another `crew` process
+      // (unblocked by the pane-lock release) injects its own command.
+      await Bun.sleep(POST_DELIVERY_SETTLE_MS);
+      return { delivered: true };
+    } catch (e) {
+      logServer(
+        'ERROR',
+        `command delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return { delivered: false, error: 'command delivery failed' };
     }
-    // Small settle for the text to appear in the input line
-    await Bun.sleep(100);
-    // Press Enter to submit
-    const enterResult = await run('send-keys', '-t', target, 'Enter');
-    if (!enterResult.success) {
-      return {
-        delivered: false,
-        error: enterResult.stderr || 'send-keys Enter failed',
-      };
+  });
+}
+
+/**
+ * Send a crew CLI subcommand via the bang prefix (`!crew <text>`) then Enter,
+ * then a BSpace to exit bang mode — all atomically under the pane lock.
+ *
+ * Used by the `crew-command` queue type. The whole text→Enter→BSpace sequence
+ * MUST be one locked unit: if another `crew` process could inject between the
+ * Enter and the BSpace, the BSpace would act on the wrong input line.
+ */
+export async function sendCrewCommand(
+  target: string,
+  text: string,
+): Promise<{ delivered: boolean; error?: string }> {
+  return withPaneLock(target, async () => {
+    try {
+      const textResult = await run(
+        'send-keys',
+        '-t',
+        target,
+        '-l',
+        `!crew ${text}`,
+      );
+      if (!textResult.success) {
+        return {
+          delivered: false,
+          error: textResult.stderr || 'send-keys -l failed',
+        };
+      }
+      await Bun.sleep(100);
+      const enterResult = await run('send-keys', '-t', target, 'Enter');
+      if (!enterResult.success) {
+        return {
+          delivered: false,
+          error: enterResult.stderr || 'send-keys Enter failed',
+        };
+      }
+      // Let the Enter submit before sending BSpace, otherwise the BSpace would
+      // backspace the not-yet-submitted `!crew ...` text instead of exiting mode.
+      await Bun.sleep(POST_DELIVERY_SETTLE_MS);
+      // BSpace (0x7f) exits bang mode after the command runs.
+      const bsResult = await run('send-keys', '-t', target, '-H', '7f');
+      if (!bsResult.success) {
+        return {
+          delivered: false,
+          error: bsResult.stderr || 'send-keys BSpace failed',
+        };
+      }
+      return { delivered: true };
+    } catch (e) {
+      logServer(
+        'ERROR',
+        `crew-command delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return { delivered: false, error: 'crew-command delivery failed' };
     }
-    return { delivered: true };
-  } catch (e) {
-    logServer(
-      'ERROR',
-      `command delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
-    );
-    return { delivered: false, error: 'command delivery failed' };
-  }
+  });
 }
 
 export async function sendEscape(
   target: string,
 ): Promise<{ delivered: boolean; error?: string }> {
-  try {
-    const result = await run('send-keys', '-t', target, 'Escape');
-    if (!result.success) {
-      return {
-        delivered: false,
-        error: result.stderr || 'send-keys Escape failed',
-      };
+  return withPaneLock(target, async () => {
+    try {
+      const result = await run('send-keys', '-t', target, 'Escape');
+      if (!result.success) {
+        return {
+          delivered: false,
+          error: result.stderr || 'send-keys Escape failed',
+        };
+      }
+      await Bun.sleep(PASTE_SETTLE_MS);
+      return { delivered: true };
+    } catch (e) {
+      logServer(
+        'ERROR',
+        `Escape delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return { delivered: false, error: 'Escape delivery failed' };
     }
-    await Bun.sleep(PASTE_SETTLE_MS);
-    return { delivered: true };
-  } catch (e) {
-    logServer(
-      'ERROR',
-      `Escape delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
-    );
-    return { delivered: false, error: 'Escape delivery failed' };
-  }
+  });
 }
 
 export async function sendSigint(
   target: string,
 ): Promise<{ delivered: boolean; error?: string }> {
-  try {
-    const result = await run('send-keys', '-t', target, 'C-c');
-    if (!result.success) {
-      return {
-        delivered: false,
-        error: result.stderr || 'send-keys C-c failed',
-      };
+  return withPaneLock(target, async () => {
+    try {
+      const result = await run('send-keys', '-t', target, 'C-c');
+      if (!result.success) {
+        return {
+          delivered: false,
+          error: result.stderr || 'send-keys C-c failed',
+        };
+      }
+      await Bun.sleep(PASTE_SETTLE_MS);
+      return { delivered: true };
+    } catch (e) {
+      logServer(
+        'ERROR',
+        `SIGINT delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return { delivered: false, error: 'SIGINT delivery failed' };
     }
-    await Bun.sleep(PASTE_SETTLE_MS);
-    return { delivered: true };
-  } catch (e) {
-    logServer(
-      'ERROR',
-      `SIGINT delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
-    );
-    return { delivered: false, error: 'SIGINT delivery failed' };
-  }
+  });
 }
 
 export async function sendClear(
   target: string,
 ): Promise<{ delivered: boolean; error?: string }> {
-  try {
-    const result = await run('send-keys', '-t', target, 'C-l');
-    if (!result.success) {
-      return {
-        delivered: false,
-        error: result.stderr || 'send-keys C-l failed',
-      };
+  return withPaneLock(target, async () => {
+    try {
+      const result = await run('send-keys', '-t', target, 'C-l');
+      if (!result.success) {
+        return {
+          delivered: false,
+          error: result.stderr || 'send-keys C-l failed',
+        };
+      }
+      await Bun.sleep(PASTE_SETTLE_MS);
+      return { delivered: true };
+    } catch (e) {
+      logServer(
+        'ERROR',
+        `Ctrl-L delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return { delivered: false, error: 'Ctrl-L delivery failed' };
     }
-    await Bun.sleep(PASTE_SETTLE_MS);
-    return { delivered: true };
-  } catch (e) {
-    logServer(
-      'ERROR',
-      `Ctrl-L delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
-    );
-    return { delivered: false, error: 'Ctrl-L delivery failed' };
-  }
+  });
 }
 
 /** Capture last `lines` non-empty lines from pane scrollback. Returns null on failure. */
@@ -612,23 +703,25 @@ export async function sendKey(
   target: string,
   key: string,
 ): Promise<{ delivered: boolean; error?: string }> {
-  try {
-    const result = await run('send-keys', '-t', target, key);
-    if (!result.success) {
-      return {
-        delivered: false,
-        error: result.stderr || `send-keys ${key} failed`,
-      };
+  return withPaneLock(target, async () => {
+    try {
+      const result = await run('send-keys', '-t', target, key);
+      if (!result.success) {
+        return {
+          delivered: false,
+          error: result.stderr || `send-keys ${key} failed`,
+        };
+      }
+      await Bun.sleep(PASTE_SETTLE_MS);
+      return { delivered: true };
+    } catch (e) {
+      logServer(
+        'ERROR',
+        `Key ${key} delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return { delivered: false, error: `Key ${key} delivery failed` };
     }
-    await Bun.sleep(PASTE_SETTLE_MS);
-    return { delivered: true };
-  } catch (e) {
-    logServer(
-      'ERROR',
-      `Key ${key} delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
-    );
-    return { delivered: false, error: `Key ${key} delivery failed` };
-  }
+  });
 }
 
 /**
@@ -645,21 +738,23 @@ export async function sendKeyHex(
   target: string,
   hex: string,
 ): Promise<{ delivered: boolean; error?: string }> {
-  try {
-    const result = await run('send-keys', '-t', target, '-H', hex);
-    if (!result.success) {
-      return {
-        delivered: false,
-        error: result.stderr || `send-keys -H ${hex} failed`,
-      };
+  return withPaneLock(target, async () => {
+    try {
+      const result = await run('send-keys', '-t', target, '-H', hex);
+      if (!result.success) {
+        return {
+          delivered: false,
+          error: result.stderr || `send-keys -H ${hex} failed`,
+        };
+      }
+      await Bun.sleep(PASTE_SETTLE_MS);
+      return { delivered: true };
+    } catch (e) {
+      logServer(
+        'ERROR',
+        `Key hex ${hex} delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return { delivered: false, error: `Key hex ${hex} delivery failed` };
     }
-    await Bun.sleep(PASTE_SETTLE_MS);
-    return { delivered: true };
-  } catch (e) {
-    logServer(
-      'ERROR',
-      `Key hex ${hex} delivery failed for target ${target}: ${e instanceof Error ? e.message : String(e)}`,
-    );
-    return { delivered: false, error: `Key hex ${hex} delivery failed` };
-  }
+  });
 }

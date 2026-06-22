@@ -21,6 +21,7 @@ import {
   paneExists,
   sendClear,
   sendCommand,
+  sendCrewCommand,
   sendEscape,
   sendKey,
   sendKeyHex,
@@ -306,17 +307,11 @@ export class PaneQueue {
         break;
       }
       case 'crew-command': {
-        const r1 = await sendCommand(this.target, `!crew ${item.text}`);
-        if (!r1.delivered)
+        // Atomic text→Enter→BSpace under one pane lock (see sendCrewCommand).
+        const r = await sendCrewCommand(this.target, item.text);
+        if (!r.delivered)
           throw new PaneDeliveryError(
-            r1.error ?? `crew-command "${item.text}" delivery failed`,
-            'DELIVERY_FAILED',
-          );
-        // Send BSpace (0x7f) to exit command mode after crew command
-        const r2 = await sendKeyHex(this.target, '7f');
-        if (!r2.delivered)
-          throw new PaneDeliveryError(
-            r2.error ?? 'crew-command BSpace delivery failed',
+            r.error ?? `crew-command "${item.text}" delivery failed`,
             'DELIVERY_FAILED',
           );
         break;
