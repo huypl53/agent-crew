@@ -12,12 +12,17 @@ import {
   addMessage,
   closeDb,
   getAllMessages,
+  getOrCreateRoom,
   initDb,
   readMessages,
 } from '../src/state/index.ts';
 
 let passed = 0;
 let failed = 0;
+
+function roomId(name: string): number {
+  return getOrCreateRoom(`/uat/${name}`, name).id;
+}
 
 function assert(condition: boolean, label: string, detail?: string) {
   if (condition) {
@@ -36,9 +41,9 @@ console.log('\n═══ No-ACK Regression UAT ═══\n');
 initDb(':memory:');
 
 // Register agents
-addAgent('leader-1', 'leader', 'main', null);
-addAgent('leader-1', 'leader', 'main', null);
-addAgent('worker-1', 'worker', 'main', null);
+addAgent('leader-1', 'leader', roomId('main'), null);
+addAgent('leader-1', 'leader', roomId('main'), null);
+addAgent('worker-1', 'worker', roomId('main'), null);
 
 // ─── Group 1: Message delivery without ACK ────────────────────────────────
 
@@ -95,7 +100,7 @@ console.log('--- Group 1: Message delivery without ACK ---\n');
 // TC-4: Cursor-based read works as polling fallback (simulates agent polling)
 {
   // Fresh agent with no cursor — first read gets all messages
-  addAgent('worker-2', 'worker', 'alpha', null);
+  addAgent('worker-2', 'worker', roomId('alpha'), null);
   addMessage('worker-2', 'leader-1', 'alpha', 'first task', 'worker-2');
   addMessage('worker-2', 'leader-1', 'alpha', 'second task', 'worker-2');
 
@@ -209,7 +214,7 @@ console.log('\n--- Group 3: Message storage ---\n');
 
 // TC-9: Message is stored and readable
 {
-  addAgent('worker-3', 'worker', 'beta', null);
+  addAgent('worker-3', 'worker', roomId('beta'), null);
   const msg = addMessage(
     'worker-3',
     'leader-1',
@@ -226,8 +231,8 @@ console.log('\n--- Group 3: Message storage ---\n');
 
 // TC-10: Multiple agents each poll independently — no cross-contamination
 {
-  addAgent('worker-4', 'worker', 'gamma', null);
-  addAgent('worker-5', 'worker', 'gamma', null);
+  addAgent('worker-4', 'worker', roomId('gamma'), null);
+  addAgent('worker-5', 'worker', roomId('gamma'), null);
 
   addMessage('worker-4', 'leader-1', 'gamma', 'for worker-4', 'worker-4');
   addMessage('worker-5', 'leader-1', 'gamma', 'for worker-5', 'worker-5');

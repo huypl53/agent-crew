@@ -1,6 +1,7 @@
 /**
- * Fixture-driven hook + tmux integration tests.
- * Each *.fixture.json in test/fixtures/hooks/ is a self-contained test case.
+ * Fixture-driven hook replay tests.
+ * Each *.fixture.json in test/fixtures/hooks/ is a self-contained deterministic
+ * replay case for `processHookEventInput()` with mocked tmux side effects.
  * Add a new JSON file to add a new edge case — no test code changes needed.
  */
 

@@ -1,12 +1,15 @@
 /**
- * Fixture Runner — data-driven test harness for hook + tmux integration.
- * Each fixture file describes seed state, hook events to fire, and expected
- * responses + tmux side effects. Adding a new edge case = adding a JSON file.
+ * Fixture Runner — deterministic replay harness for hook payloads.
+ *
+ * These fixtures drive `processHookEventInput()` through MockHook, seed DB
+ * state, and assert on hook JSON output plus mocked tmux side effects.
+ * They do NOT watch live tmux panes or verify real delivery stability.
+ * Adding a new replay edge case = adding a JSON file.
  */
 
 import { mock } from 'bun:test';
 import { resolve } from 'node:path';
-import { initDb, closeDb, addAgent, getOrCreateRoom } from '../../src/state/index.ts';
+import { initDb, closeDb, addAgent, getLatestHookEvent, getOrCreateRoom, getRecentHookEvents } from '../../src/state/index.ts';
 import { setHint } from '../../src/state/index.ts';
 import { setGoal, completeGoal, armLeaderGoalReminder } from '../../src/state/goal-state.ts';
 import { MockHook } from './mock-hook.ts';
@@ -63,11 +66,19 @@ export interface FixtureExpect {
   stdout_path?: Array<{ path: string; value: unknown }>;
   tmux?: Array<{ op: string; target?: string; contains?: string; matches?: string }>;
   tmux_absent?: Array<{ op: string; target?: string; contains?: string }>;
+  hook_event?: {
+    agent: string;
+    event?: string;
+    session_id?: string | null;
+    payload_contains?: string;
+    absent?: boolean;
+  };
+  hook_events_count?: number;
 }
 
 export interface FixtureStep {
   event: string;
-  pane?: string;
+  pane?: string | null;
   payload?: Record<string, unknown>;
   delay?: number;
   expect?: FixtureExpect;
@@ -76,6 +87,7 @@ export interface FixtureStep {
 export interface Fixture {
   name: string;
   description?: string;
+  tags?: string[];
   seed: FixtureSeed;
   steps: FixtureStep[];
 }
@@ -95,7 +107,24 @@ export interface FixtureResult {
 
 export async function runFixture(fixture: Fixture): Promise<FixtureResult> {
   const failures: FixtureFailure[] = [];
+  const defaultSessionIds = new Map<string, string>();
   _tapLog.length = 0;
+
+  const validationError = validateFixture(fixture);
+  if (validationError) {
+    return {
+      name: fixture?.name ?? '(invalid fixture)',
+      passed: false,
+      failures: [
+        {
+          step: -1,
+          check: 'fixture_validation',
+          expected: 'valid deterministic replay fixture',
+          actual: validationError,
+        },
+      ],
+    };
+  }
 
   try {
     initDb(':memory:');
@@ -125,8 +154,16 @@ export async function runFixture(fixture: Fixture): Promise<FixtureResult> {
 
     for (let i = 0; i < fixture.steps.length; i++) {
       const step = fixture.steps[i];
-      const pane = step.pane ?? fixture.seed.agents[0]?.pane ?? '%0';
-      const hook = new MockHook({ pane });
+      if (!step) continue;
+      const defaultPane = fixture.seed.agents[0]?.pane ?? '%0';
+      const pane = Object.prototype.hasOwnProperty.call(step, 'pane')
+        ? (step.pane ?? undefined)
+        : defaultPane;
+      const sessionKey = pane ?? '__no_pane__';
+      const defaultSessionId =
+        defaultSessionIds.get(sessionKey) ?? `fixture-session-${fixture.name}-${sessionKey}`;
+      defaultSessionIds.set(sessionKey, defaultSessionId);
+      const hook = new MockHook({ pane, sessionId: defaultSessionId });
 
       if (step.delay && step.delay > 0) {
         await new Promise((r) => setTimeout(r, step.delay));
@@ -195,6 +232,61 @@ export async function runFixture(fixture: Fixture): Promise<FixtureResult> {
           }
         }
       }
+
+      if (typeof step.expect.hook_events_count === 'number') {
+        const actual = getRecentHookEvents(0, 1000).length;
+        if (actual !== step.expect.hook_events_count) {
+          failures.push({
+            step: i,
+            check: 'hook_events_count',
+            expected: step.expect.hook_events_count,
+            actual,
+          });
+        }
+      }
+
+      if (step.expect.hook_event) {
+        const check = step.expect.hook_event;
+        const latest = getLatestHookEvent(
+          check.agent,
+          check.event,
+          check.session_id === undefined ? undefined : check.session_id ?? undefined,
+        );
+        if (check.absent) {
+          if (latest) {
+            failures.push({
+              step: i,
+              check: `hook_event_absent:${check.agent}`,
+              expected: null,
+              actual: {
+                event_type: latest.event_type,
+                session_id: latest.session_id,
+                payload: latest.payload,
+              },
+            });
+          }
+        } else if (!latest) {
+          failures.push({
+            step: i,
+            check: `hook_event:${check.agent}`,
+            expected: {
+              event: check.event ?? '(latest)',
+              session_id: check.session_id ?? '(any)',
+            },
+            actual: null,
+          });
+        } else if (
+          check.payload_contains &&
+          !(latest.payload ?? '').includes(check.payload_contains)
+        ) {
+          failures.push({
+            step: i,
+            check: `hook_event_payload:${check.agent}`,
+            expected: check.payload_contains,
+            actual: latest.payload,
+          });
+        }
+      }
     }
   } finally {
     _tapLog.length = 0;
@@ -206,8 +298,14 @@ export async function runFixture(fixture: Fixture): Promise<FixtureResult> {
 
 export async function runFixtureDir(dir: string): Promise<FixtureResult[]> {
   const glob = new Bun.Glob('*.fixture.json');
-  const results: FixtureResult[] = [];
+  const paths: string[] = [];
   for await (const path of glob.scan(dir)) {
+    paths.push(path);
+  }
+  paths.sort();
+
+  const results: FixtureResult[] = [];
+  for (const path of paths) {
     const content = await Bun.file(`${dir}/${path}`).text();
     const fixture: Fixture = JSON.parse(content);
     results.push(await runFixture(fixture));
@@ -244,6 +342,34 @@ function findTmuxEntries(
     if (check.matches && !new RegExp(check.matches).test(text)) return false;
     return true;
   });
+}
+
+function validateFixture(fixture: Fixture): string | null {
+  if (!fixture || typeof fixture !== 'object') {
+    return 'fixture must be an object';
+  }
+  if (typeof fixture.name !== 'string' || fixture.name.trim() === '') {
+    return 'fixture.name must be a non-empty string';
+  }
+  if (!fixture.seed || typeof fixture.seed !== 'object') {
+    return 'fixture.seed must be present';
+  }
+  if (!fixture.seed.room || typeof fixture.seed.room !== 'object') {
+    return 'fixture.seed.room must be present';
+  }
+  if (!Array.isArray(fixture.seed.agents) || fixture.seed.agents.length === 0) {
+    return 'fixture.seed.agents must be a non-empty array';
+  }
+  if (!Array.isArray(fixture.steps) || fixture.steps.length === 0) {
+    return 'fixture.steps must be a non-empty array';
+  }
+  for (let i = 0; i < fixture.steps.length; i++) {
+    const step = fixture.steps[i];
+    if (!step || typeof step.event !== 'string' || step.event.trim() === '') {
+      return `fixture.steps[${i}].event must be a non-empty string`;
+    }
+  }
+  return null;
 }
 
 function summarizeEntry(e: TapEntry): string {

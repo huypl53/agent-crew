@@ -78,7 +78,7 @@ describe('Input block unblock flow', () => {
         session_id: 'sess-unblock-test',
       });
       const result = await processHookEventInput(input, '%510');
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
 
       // Block should be cleared
       expect(data.ok).toBe(true);

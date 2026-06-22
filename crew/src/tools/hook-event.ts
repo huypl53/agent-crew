@@ -29,6 +29,7 @@ import {
   tickGoalTurnCount,
   tickHintCadence,
 } from "../state/index.ts";
+import { resolveAgentByCwdFallback } from "../state/session-binding.ts";
 import {
   extractDialogFromPermission,
   formatLeaderNotice,
@@ -50,52 +51,13 @@ function extractString(
 }
 
 function extractSessionId(payload: Record<string, unknown>): string | null {
-  return extractString(payload, ["session_id", "sessionId"]);
+  return extractString(payload, ["session_id", "sessionId", "turn_id", "turnId"]);
 }
 
 function extractCwd(payload: Record<string, unknown>): string | null {
   return extractString(payload, ["cwd"]);
 }
 
-function normalizePathForMatch(path: string): string {
-  const trimmed = path.trim();
-  if (!trimmed) return "";
-  return trimmed.replace(/\/+$/, "");
-}
-
-function isPathMatchCandidate(roomPath: string, cwd: string): boolean {
-  const normalizedRoomPath = normalizePathForMatch(roomPath);
-  const normalizedCwd = normalizePathForMatch(cwd);
-  if (!normalizedRoomPath || !normalizedCwd) return false;
-  return (
-    normalizedCwd === normalizedRoomPath ||
-    normalizedCwd.startsWith(`${normalizedRoomPath}/`)
-  );
-}
-
-function resolveAgentForSessionOnlyFallback(
-  sessionId: string,
-  cwd: string | null,
-  eventType: string | null,
-): Agent | undefined {
-  const bound = getAgentBySessionId(sessionId);
-  if (bound) return bound;
-
-  if (!cwd) return undefined;
-
-  const candidates = getAllAgents().filter((agent) => {
-    if (!agent.tmux_target || !agent.room_path) return false;
-    return isPathMatchCandidate(agent.room_path, cwd);
-  });
-  if (candidates.length === 1) return candidates[0];
-
-  if (eventType === "Stop" || eventType === "StopFailure" || eventType === "UserPromptSubmit") {
-    const workerCandidates = candidates.filter((agent) => agent.role === "worker");
-    if (workerCandidates.length === 1) return workerCandidates[0];
-  }
-
-  return undefined;
-}
 
 function okResult(
   payload: Record<string, unknown> = { ok: true, decision: "allow" },
@@ -111,30 +73,31 @@ function okResult(
  * and escalates the session to bypassPermissions mode (if available).
  */
 function permissionAllowResult(input: Record<string, unknown>): ToolResult {
+  const hookSpecificOutput = {
+    hookEventName: "PermissionRequest",
+    decision: {
+      behavior: "allow",
+      updatedPermissions: [
+        {
+          type: "setMode",
+          mode: "bypassPermissions",
+          destination: "session",
+        },
+      ],
+    },
+  };
+
   const payload: Record<string, unknown> = {
     ok: true,
-    hookSpecificOutput: {
-      hookEventName: "PermissionRequest",
-      decision: {
-        behavior: "allow",
-        updatedPermissions: [
-          {
-            type: "setMode",
-            mode: "bypassPermissions",
-            destination: "session",
-          },
-        ],
-      },
-    },
+    hookSpecificOutput,
   };
 
   // Echo back permission_suggestions as updatedPermissions so each
   // individual tool rule gets persisted too
   const suggestions = input.permission_suggestions;
   if (Array.isArray(suggestions) && suggestions.length > 0) {
-    const perms = payload.hookSpecificOutput.decision.updatedPermissions;
-    payload.hookSpecificOutput.decision.updatedPermissions = [
-      ...perms,
+    hookSpecificOutput.decision.updatedPermissions = [
+      ...hookSpecificOutput.decision.updatedPermissions,
       ...suggestions,
     ];
   }
@@ -169,10 +132,10 @@ export async function processHookEventInput(
   const eventType = resolveHookEventName(payload);
 
   let agent =
-    getAgentByPane(pane) ??
+    (pane ? getAgentByPane(pane) : undefined) ??
     (sessionId ? getAgentBySessionId(sessionId) : undefined);
   if (!agent && !pane && sessionId) {
-    agent = resolveAgentForSessionOnlyFallback(sessionId, cwd, eventType);
+    agent = resolveAgentByCwdFallback(cwd, eventType, getAllAgents());
   }
   if (!agent) {
     if (sessionId) {
@@ -194,8 +157,8 @@ export async function processHookEventInput(
     }
     // Session-only hook events can still be used for completion/instrumentation.
     if (isStopLikeEvent(eventType)) {
-      capturePartyResponseIfActive(agent.name, payload, hookEventId, agent.room_id, sessionId);
-      notifyLeadersOnWorkerStop(agent.name, payload, agent.room_id, sessionId);
+      capturePartyResponseIfActive(agent.name, input, hookEventId, agent.room_id, sessionId);
+      notifyLeadersOnWorkerStop(agent.name, input, agent.room_id, sessionId);
     }
     return okResult();
   }
@@ -476,7 +439,9 @@ function getParentPid(pid: number): number | null {
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
     const parts = stat.split(" ");
-    return parseInt(parts[3], 10);
+    const parentPid = parts[3];
+    if (!parentPid) return null;
+    return parseInt(parentPid, 10);
   } catch {
     return null;
   }

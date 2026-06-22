@@ -1,4 +1,4 @@
-import { err } from '../shared/types.ts';
+import { err, type ToolResult } from '../shared/types.ts';
 import { handleAutoSelf } from '../tools/auto-self.ts';
 import { handleCheckChanges } from '../tools/check-changes.ts';
 import { handleClearWorkerSession } from '../tools/clear-worker-session.ts';
@@ -51,11 +51,11 @@ import { handleSendBatch } from '../tools/send-batch.ts';
 import { handleSendMessage } from '../tools/send-message.ts';
 import { handleSetRoomTopic } from '../tools/set-room-topic.ts';
 
-type Handler = (params: unknown) => Promise<unknown>;
+type Handler = (params: any) => ToolResult | Promise<ToolResult>;
 type ParamBuilder = (
-  flags: Record<string, unknown>,
+  flags: Record<string, string | boolean>,
   positional: string[],
-) => unknown;
+) => Record<string, unknown>;
 
 export const COMMANDS: Record<
   string,
@@ -106,7 +106,7 @@ export const COMMANDS: Record<
     buildParams: (f) => ({
       name: f.name,
       room: f.room,
-      limit: f.limit ? parseInt(f.limit, 10) : undefined,
+      limit: f.limit ? parseInt(String(f.limit), 10) : undefined,
     }),
   },
   status: {
@@ -280,7 +280,7 @@ export const COMMANDS: Record<
     }),
   },
   hint: {
-    handler: async (p) => {
+    handler: async (p: any) => {
       const subcommand = p.subcommand;
       if (subcommand === 'set') return handleHintSet(p);
       if (subcommand === 'unset') return handleHintUnset(p);
@@ -301,7 +301,7 @@ export const COMMANDS: Record<
     }),
   },
   goal: {
-    handler: async (p) => {
+    handler: async (p: any) => {
       const subcommand = p.subcommand;
       // No subcommand → room overview (show whether goals are set)
       if (!subcommand) return handleGoalOverview(p);
@@ -332,7 +332,7 @@ export const COMMANDS: Record<
     buildParams: (f, p) => ({ name: f.name, action: p[0] ?? 'on' }),
   },
   dialog: {
-    handler: async (p) => {
+    handler: async (p: any) => {
       const subcommand = p.subcommand;
       if (subcommand === 'pending') return handleDialogPending(p);
       if (subcommand === 'answer') return handleDialogAnswer(p);

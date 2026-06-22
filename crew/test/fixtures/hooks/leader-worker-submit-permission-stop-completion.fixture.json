@@ -1,0 +1,120 @@
+{
+  "name": "leader-worker-submit-permission-stop-completion",
+  "description": "Worker submits, asks permission, then stops; replay preserves the worker session chain and worker-side reminder behavior",
+  "tags": ["scenario", "leader-worker", "permission", "stop"],
+  "seed": {
+    "room": {
+      "name": "alpha",
+      "path": "/tmp/crew-alpha"
+    },
+    "agents": [
+      {
+        "name": "leader-1",
+        "pane": "%10",
+        "role": "leader"
+      },
+      {
+        "name": "worker-1",
+        "pane": "%11",
+        "role": "worker"
+      }
+    ],
+    "goals": [
+      {
+        "agent": "leader-1",
+        "description": "Review worker completion",
+        "armed": true
+      },
+      {
+        "agent": "worker-1",
+        "description": "Implement task"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%11",
+      "payload": {
+        "session_id": "sess-worker-1"
+      },
+      "delay": 0,
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "UserPromptSubmit",
+          "session_id": "sess-worker-1"
+        }
+      }
+    },
+    {
+      "event": "PermissionRequest",
+      "pane": "%11",
+      "payload": {
+        "session_id": "sess-worker-1",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "ls"
+        }
+      },
+      "delay": 300,
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "stdout_path": [
+          {
+            "path": "hookSpecificOutput.hookEventName",
+            "value": "PermissionRequest"
+          },
+          {
+            "path": "hookSpecificOutput.decision.behavior",
+            "value": "allow"
+          }
+        ],
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "PermissionRequest",
+          "session_id": "sess-worker-1"
+        }
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": "%11",
+      "payload": {
+        "session_id": "sess-worker-1",
+        "message": "Worker task completed"
+      },
+      "delay": 800,
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "Stop",
+          "session_id": "sess-worker-1",
+          "payload_contains": "Worker task completed"
+        },
+        "tmux": [
+          {
+            "op": "sendKeys",
+            "target": "%11",
+            "contains": "Implement task"
+          }
+        ],
+        "tmux_absent": [
+          {
+            "op": "sendKeys",
+            "target": "%10",
+            "contains": "Worker task completed"
+          }
+        ]
+      }
+    }
+  ]
+}

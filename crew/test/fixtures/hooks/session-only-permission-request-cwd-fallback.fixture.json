@@ -1,0 +1,38 @@
+{
+  "name": "session-only-permission-request-cwd-fallback",
+  "description": "No-pane PermissionRequest resolves a unique worker by session + cwd fallback and persists the hook event",
+  "seed": {
+    "room": { "name": "codex-room", "path": "/tmp/codex-room" },
+    "agents": [
+      { "name": "codex-1", "pane": "%42", "role": "worker" }
+    ]
+  },
+  "steps": [
+    {
+      "event": "PermissionRequest",
+      "pane": null,
+      "payload": {
+        "session_id": "codex-session-1",
+        "cwd": "/tmp/codex-room/jobs/task-1",
+        "tool_name": "Bash"
+      },
+      "expect": {
+        "stdout": { "ok": true },
+        "stdout_path": [
+          { "path": "hookSpecificOutput.hookEventName", "value": "PermissionRequest" },
+          { "path": "hookSpecificOutput.decision.behavior", "value": "allow" }
+        ],
+        "hook_event": {
+          "agent": "codex-1",
+          "event": "PermissionRequest",
+          "session_id": "codex-session-1",
+          "payload_contains": "codex-session-1"
+        },
+        "hook_events_count": 1,
+        "tmux_absent": [
+          { "op": "sendKeys", "target": "%42" }
+        ]
+      }
+    }
+  ]
+}

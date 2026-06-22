@@ -2,6 +2,7 @@ import { config } from '../config.ts';
 import type {
   Agent,
   AgentRole,
+  AgentStatus,
   AgentTemplate,
   HookEvent,
   InputBlockMode,
@@ -44,6 +45,11 @@ import {
   renderBatchPendingHint,
 } from './batch-state.ts';
 import { closeDb, getDb, initDb } from './db.ts';
+import {
+  getLatestHookAgentNameBySessionId,
+  getSessionBindingRecord,
+  upsertAgentSessionBinding,
+} from './session-binding.ts';
 import {
   armLeaderGoalReminder,
   canonicalizeGoalIdentity,
@@ -100,6 +106,7 @@ export {
   getRenderableBatchWorkers,
   initDb,
   capturePartyResponseIfActive,
+  upsertAgentSessionBinding,
   notifyLeadersOnWorkerStop,
   listHintableBatches,
   listIncompleteBatches,
@@ -248,7 +255,7 @@ export function isAgentAutoSelfOnIdle(name: string): boolean {
   return row?.auto_self_on_idle !== 0; // default is on
 }
 
-export function setAgentStatus(name: string, status: 'busy' | 'idle'): void {
+export function setAgentStatus(name: string, status: AgentStatus): void {
   // Update status on most recent agent with this name
   const agent = getDb()
     .query('SELECT id FROM agents WHERE name = ? ORDER BY id DESC LIMIT 1')
@@ -626,6 +633,7 @@ export function getOrCreateRoom(path: string, name: string): Room {
     name,
     topic: null,
     created_at: ts,
+    reminder_policy: null,
   };
 }
 
@@ -678,38 +686,6 @@ export function getAgentByRoomAndName(
   return dbRowToAgent(row);
 }
 
-function getAgentBySessionBinding(sessionId: string): Agent | undefined {
-  const binding = getDb()
-    .query(
-      'SELECT room_id, agent_name FROM agent_session_bindings WHERE session_id = ? ORDER BY last_seen_at DESC LIMIT 1',
-    )
-    .get(sessionId) as
-    | { room_id: number; agent_name: string }
-    | null;
-  if (!binding) return undefined;
-
-  return (
-    getAgentByRoomAndName(binding.room_id, binding.agent_name) ??
-    getAgent(binding.agent_name)
-  );
-}
-
-export function upsertAgentSessionBinding(
-  sessionId: string,
-  roomId: number,
-  agentName: string,
-  pane?: string | null,
-): void {
-  getDb().run(
-    `INSERT INTO agent_session_bindings (session_id, room_id, agent_name, pane, last_seen_at)
-     VALUES (?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(session_id, room_id) DO UPDATE SET
-       agent_name = excluded.agent_name,
-       pane = COALESCE(excluded.pane, agent_session_bindings.pane),
-       last_seen_at = datetime('now')`,
-    [sessionId, roomId, agentName, pane ?? null],
-  );
-}
 
 export function getAgentByPane(pane: string): Agent | undefined {
   const db = getDb();
@@ -729,17 +705,15 @@ export function getAgentByPane(pane: string): Agent | undefined {
 }
 
 export function getAgentBySessionId(sessionId: string): Agent | undefined {
-  const boundAgent = getAgentBySessionBinding(sessionId);
-  if (boundAgent) return boundAgent;
+  const binding = getSessionBindingRecord(sessionId);
+  if (binding) {
+    return getAgentByRoomAndName(binding.room_id, binding.agent_name);
+  }
 
-  const db = getDb();
-  const row = db
-    .query(
-      'SELECT agent_name FROM hook_events WHERE session_id = ? ORDER BY id DESC LIMIT 1',
-    )
-    .get(sessionId) as { agent_name: string } | null;
-  if (!row) return undefined;
-  const agent = getAgent(row.agent_name);
+  const agentName = getLatestHookAgentNameBySessionId(sessionId);
+  if (!agentName) return undefined;
+
+  const agent = getAgent(agentName);
   if (agent) {
     upsertAgentSessionBinding(sessionId, agent.room_id, agent.name, agent.tmux_target);
   }
@@ -835,7 +809,7 @@ export function getRoomMessages(
   if (!roomObj) return [];
 
   let sql = 'SELECT * FROM messages WHERE room_id = ?';
-  const params: unknown[] = [roomObj.id];
+  const params: Array<string | number> = [roomObj.id];
   if (sinceSequence !== undefined) {
     sql += ' AND id > ?';
     params.push(sinceSequence);
@@ -845,9 +819,12 @@ export function getRoomMessages(
     sql += ' LIMIT ?';
     params.push(limit);
   }
-  return (db.query(sql).all(...params) as Record<string, unknown>[]).map(
-    rowToMessage,
-  );
+  return (
+    db.query(sql).all(...(params as [number, ...Array<string | number>])) as Record<
+      string,
+      unknown
+    >[]
+  ).map(rowToMessage);
 }
 
 export function getCursor(agentName: string, _room: string): number {
@@ -965,7 +942,7 @@ export function readRoomMessages(
           AND (s.role IS NULL OR s.role != 'worker' OR ? = 'leader'))
     )
     ORDER BY m.id`;
-  const params: unknown[] = [
+  const params: Array<string | number> = [
     roomObj.id,
     cursor,
     agentName,
@@ -973,10 +950,13 @@ export function readRoomMessages(
     readerRole,
   ];
   const allMsgs = (
-    db.query(sql).all(...params) as Record<string, unknown>[]
+    db.query(sql).all(...(params as [number, ...Array<string | number>])) as Record<
+      string,
+      unknown
+    >[]
   ).map(rowToMessage);
   const msgs = allMsgs.length > limit ? allMsgs.slice(-limit) : allMsgs;
-  const maxSeq = msgs.length > 0 ? msgs[msgs.length - 1]?.sequence : cursor;
+  const maxSeq = msgs.at(-1)?.sequence ?? cursor;
   advanceCursor(agentName, room, maxSeq);
   return { messages: msgs, next_sequence: maxSeq };
 }
@@ -1007,11 +987,13 @@ export function readMessages(
     params.push(sinceSequence);
   }
   sql += ' ORDER BY id';
-  const msgs = (db.query(sql).all(...params) as Record<string, unknown>[]).map(
-    rowToMessage,
-  );
-  const maxSeq =
-    msgs.length > 0 ? msgs[msgs.length - 1]?.sequence : (sinceSequence ?? 0);
+  const msgs = (
+    db.query(sql).all(...(params as [number, ...Array<string | number>])) as Record<
+      string,
+      unknown
+    >[]
+  ).map(rowToMessage);
+  const maxSeq = msgs.at(-1)?.sequence ?? (sinceSequence ?? 0);
   return { messages: msgs, next_sequence: maxSeq };
 }
 
@@ -1638,7 +1620,9 @@ export function getLatestHookEvent(
     params.push(sessionId);
   }
   sql += ' ORDER BY id DESC LIMIT 1';
-  const row = db.query(sql).get(...params) as Record<string, unknown> | null;
+  const row = db.query(sql).get(
+    ...(params as [string, ...Array<string>])
+  ) as Record<string, unknown> | null;
   if (!row) return null;
   return {
     id: row.id as number,

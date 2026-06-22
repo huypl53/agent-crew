@@ -35,11 +35,11 @@ export interface SequenceStep {
 }
 
 export class MockHook {
-  readonly pane: string;
+  readonly pane: string | undefined;
   readonly defaultSessionId: string;
   readonly results: HookResult[] = [];
 
-  constructor(opts: { pane: string; sessionId?: string }) {
+  constructor(opts: { pane?: string; sessionId?: string }) {
     this.pane = opts.pane;
     this.defaultSessionId = opts.sessionId ?? `mock-session-${Date.now()}`;
   }

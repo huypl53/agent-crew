@@ -149,7 +149,7 @@ describe('batch state primitives', () => {
     markBatchCompleted('batch-state', completeTime);
 
     const batch = getMessageBatch('batch-state');
-    const worker = getBatchWorkers('batch-state')[0];
+    const worker = getBatchWorkers('batch-state')[0]!;
 
     expect(batch?.hint_sent_at).toBe(hintTime);
     expect(batch?.status).toBe('completed');
@@ -464,7 +464,7 @@ describe('send-batch command', () => {
       });
 
       expect(result.isError).toBeUndefined();
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.batch_id).toBeDefined();
       expect(data.workers).toEqual([
         { name: 'worker-b', dispatch_status: 'sent' },

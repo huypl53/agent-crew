@@ -81,14 +81,15 @@ describe('Party Mode', () => {
       addPartyResponse(roomId, 1, 'worker-a', 'My response', null);
       const responses = getPartyResponses(roomId, 1);
       expect(responses.length).toBe(1);
-      expect(responses[0].agent_name).toBe('worker-a');
-      expect(responses[0].response).toBe('My response');
+      const firstResponse = responses[0];
+      expect(firstResponse?.agent_name).toBe('worker-a');
+      expect(firstResponse?.response).toBe('My response');
     });
 
     test('addPartyResponse stores hook event id when null', () => {
       addPartyResponse(roomId, 1, 'worker-a', 'My response', null);
       const responses = getPartyResponses(roomId, 1);
-      expect(responses[0].hook_event_id).toBeNull();
+      expect(responses[0]?.hook_event_id).toBeNull();
     });
 
     test('addPartyResponse upserts on duplicate', () => {
@@ -96,7 +97,7 @@ describe('Party Mode', () => {
       addPartyResponse(roomId, 1, 'worker-a', 'Updated response', null);
       const responses = getPartyResponses(roomId, 1);
       expect(responses.length).toBe(1);
-      expect(responses[0].response).toBe('Updated response');
+      expect(responses[0]?.response).toBe('Updated response');
     });
 
     test('getPartyResponses returns empty for non-existent round', () => {
@@ -135,7 +136,7 @@ describe('Party Mode', () => {
       skipPartyWorker(roomId, 1, 'worker-a');
       const responses = getPartyResponses(roomId, 1);
       expect(responses.length).toBe(1);
-      expect(responses[0].response).toBe('[SKIPPED]');
+      expect(responses[0]?.response).toBe('[SKIPPED]');
       expect(getPendingPartyWorkers(roomId, 1)).not.toContain('worker-a');
     });
 
@@ -159,9 +160,9 @@ describe('Party Mode', () => {
       const r2Responses = getPartyResponses(roomId, 2);
 
       expect(r1Responses.length).toBe(1);
-      expect(r1Responses[0].response).toBe('R1 response');
+      expect(r1Responses[0]?.response).toBe('R1 response');
       expect(r2Responses.length).toBe(1);
-      expect(r2Responses[0].response).toBe('R2 response');
+      expect(r2Responses[0]?.response).toBe('R2 response');
     });
 
     test('pending workers reset each round', () => {

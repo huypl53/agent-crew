@@ -146,9 +146,10 @@ export function selectOne<T>(options: PromptOptions<T>): Promise<T | null> {
     render: () => {
       let lines = `\x1b[36m?\x1b[0m \x1b[1m${title}\x1b[22m\n`;
       for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (!item) continue;
         const prefix = i === cursor ? '\x1b[36m❯\x1b[0m ' : '  ';
-        const label =
-          i === cursor ? `\x1b[36m${items[i].label}\x1b[0m` : items[i].label;
+        const label = i === cursor ? `\x1b[36m${item.label}\x1b[0m` : item.label;
         lines += `${prefix}${label}\n`;
       }
       return lines;
@@ -165,7 +166,7 @@ export function selectOne<T>(options: PromptOptions<T>): Promise<T | null> {
       } else if (key.name === 'return' || key.name === 'enter') {
         clear();
         cleanup();
-        resolve(items[cursor].value);
+        resolve(items[cursor]?.value ?? null);
       } else if (key.name === 'escape' || key.name === 'q') {
         clear();
         cleanup();
@@ -199,11 +200,12 @@ export function selectMultiple<T>(
     render: () => {
       let lines = `\x1b[36m?\x1b[0m \x1b[1m${title}\x1b[22m\n`;
       for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (!item) continue;
         const checkbox = selected.has(i) ? '\x1b[32m[x]\x1b[0m' : '[ ]';
         const prefix =
           i === cursor ? `\x1b[36m❯\x1b[0m ${checkbox}` : `  ${checkbox}`;
-        const label =
-          i === cursor ? `\x1b[36m${items[i].label}\x1b[0m` : items[i].label;
+        const label = i === cursor ? `\x1b[36m${item.label}\x1b[0m` : item.label;
         lines += `${prefix} ${label}\n`;
       }
       return lines;
@@ -228,7 +230,9 @@ export function selectMultiple<T>(
       } else if (key.name === 'return' || key.name === 'enter') {
         clear();
         cleanup();
-        const results = Array.from(selected).map((idx) => items[idx].value);
+        const results = Array.from(selected)
+          .map((idx) => items[idx]?.value)
+          .filter((value): value is T => value !== undefined);
         resolve(results);
       } else if (key.name === 'escape' || key.name === 'q') {
         clear();

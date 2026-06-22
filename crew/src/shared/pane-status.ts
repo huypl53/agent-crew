@@ -1,8 +1,5 @@
-import {
-  getAgentByPane,
-  getLatestHookEvent,
-  type HookEvent,
-} from '../state/index.ts';
+import { getAgentByPane, getLatestHookEvent } from '../state/index.ts';
+import type { HookEvent } from './types.ts';
 import { capturePane } from '../tmux/index.ts';
 
 export type PaneStatus = 'idle' | 'busy' | 'unknown';
@@ -71,12 +68,10 @@ const lastSeenEventId = new Map<string, number>();
 /** Cache pane width with 30s TTL — width rarely changes */
 const paneWidthCache = new Map<string, { width: number; ts: number }>();
 const PANE_WIDTH_CACHE_TTL_MS = 30_000;
-const NO_HOOK_IDLE_STABLE_MS = 3_000;
 const NO_HOOK_MAX_LINES = 80;
 
 interface NoHookPaneState {
   hash: number;
-  lastChangeMs: number;
 }
 
 const noHookState = new Map<string, NoHookPaneState>();
@@ -98,41 +93,32 @@ function tailLines(text: string, lines: number): string {
 function resolveNoHookStatus(
   target: string,
   textOutput: string,
-  typingActive: boolean,
 ): {
   status: PaneStatus;
   contentChanged: boolean;
 } {
-  const now = Date.now();
   const sample = tailLines(textOutput, NO_HOOK_MAX_LINES);
   const nextHash = hashString(sample);
   const state = noHookState.get(target);
 
   if (!state) {
-    noHookState.set(target, { hash: nextHash, lastChangeMs: now });
+    noHookState.set(target, { hash: nextHash });
     return {
-      status: typingActive ? 'busy' : 'unknown',
+      status: 'unknown',
       contentChanged: false,
     };
   }
 
   if (state.hash !== nextHash) {
-    noHookState.set(target, { hash: nextHash, lastChangeMs: now });
+    noHookState.set(target, { hash: nextHash });
     return {
-      status: typingActive ? 'busy' : 'unknown',
+      status: 'unknown',
       contentChanged: true,
     };
   }
 
-  if (!typingActive && now - state.lastChangeMs >= NO_HOOK_IDLE_STABLE_MS) {
-    return {
-      status: 'idle',
-      contentChanged: false,
-    };
-  }
-
   return {
-    status: typingActive ? 'busy' : 'unknown',
+    status: 'unknown',
     contentChanged: false,
   };
 }
@@ -246,11 +232,7 @@ export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
     };
   }
   if (!latestEvent) {
-    const fallback = resolveNoHookStatus(
-      target,
-      textOutput,
-      parsed.typingActive,
-    );
+    const fallback = resolveNoHookStatus(target, textOutput);
     return {
       status: fallback.status,
       contentChanged: fallback.contentChanged,

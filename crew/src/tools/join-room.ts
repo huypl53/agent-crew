@@ -1,14 +1,14 @@
-import { getPaneStatus } from '../shared/pane-status.ts';
-import { normalizePath } from '../shared/path-utils.ts';
-import { logServer } from '../shared/server-log.ts';
-import type { AgentRole, ToolResult, Room } from '../shared/types.ts';
-import { err, generateRandomName, ok, randomSuffix } from '../shared/types.ts';
+import { getPaneStatus } from "../shared/pane-status.ts";
+import { normalizePath } from "../shared/path-utils.ts";
+import { logServer } from "../shared/server-log.ts";
+import type { AgentRole, ToolResult, Room } from "../shared/types.ts";
+import { err, generateRandomName, ok, randomSuffix } from "../shared/types.ts";
 import {
   detectAgentRuntimeFromPane,
   inferAgentTypeFromProcesses,
   getRuntimeCommandPrefix,
   resolveAgentRuntime,
-} from '../shared/hook-runtime.ts';
+} from "../shared/hook-runtime.ts";
 import {
   addAgent,
   getAgentByRoomAndName,
@@ -16,10 +16,10 @@ import {
   getOrCreateRoom,
   getRoom,
   removeAgentFully,
-} from '../state/index.ts';
-import { getPaneCwd, paneExists } from '../tmux/index.ts';
+} from "../state/index.ts";
+import { getPaneCwd, paneExists } from "../tmux/index.ts";
 
-const VALID_ROLES: AgentRole[] = ['leader', 'worker'];
+const VALID_ROLES: AgentRole[] = ["leader", "worker"];
 
 interface JoinRoomParams {
   room?: string;
@@ -29,7 +29,10 @@ interface JoinRoomParams {
   room_id?: number;
 }
 
-export { inferAgentTypeFromProcesses, detectAgentRuntimeFromPane as detectAgentType };
+export {
+  inferAgentTypeFromProcesses,
+  detectAgentRuntimeFromPane as detectAgentType,
+};
 
 export async function handleJoinRoom(
   params: JoinRoomParams,
@@ -37,7 +40,7 @@ export async function handleJoinRoom(
   const { role, tmux_target, room_id } = params;
 
   if (!role) {
-    return err('Missing required param: role');
+    return err("Missing required param: role");
   }
 
   if (!VALID_ROLES.includes(role as AgentRole)) {
@@ -92,7 +95,7 @@ export async function handleJoinRoom(
   } else {
     const room = params.room;
     if (!room) {
-      return err('Missing required param: room or room-id');
+      return err("Missing required param: room or room-id");
     }
     roomObj = getOrCreateRoom(normalizedPath, room);
   }
@@ -114,7 +117,7 @@ export async function handleJoinRoom(
 
   const agentType = target
     ? await detectAgentRuntimeFromPane(target)
-    : 'unknown';
+    : "unknown";
   const agent = addAgent(
     name,
     role as AgentRole,
@@ -127,7 +130,7 @@ export async function handleJoinRoom(
   if (target) {
     await getPaneStatus(target).catch((e) => {
       logServer(
-        'WARN',
+        "WARN",
         `Pre-seed status capture failed for ${target}: ${e instanceof Error ? e.message : String(e)}`,
       );
     });
@@ -136,12 +139,12 @@ export async function handleJoinRoom(
   // Rename agent session to current identity
   try {
     if (target) {
-      const { getQueue } = await import('../delivery/pane-queue.ts');
+      const { getQueue } = await import("../delivery/pane-queue.ts");
       const runtime = await resolveAgentRuntime(agentType, target);
-      const commandPrefix = getRuntimeCommandPrefix(runtime);
+      // const commandPrefix = getRuntimeCommandPrefix(runtime);
       await getQueue(target, { role: role as AgentRole }).enqueue({
-        type: 'command',
-        text: `${commandPrefix}rename ${name}@${roomObj.name}`,
+        type: "command",
+        text: `/rename ${name}@${roomObj.name}`,
       });
     }
   } catch {

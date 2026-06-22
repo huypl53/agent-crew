@@ -1,7 +1,10 @@
-import type { Agent, MessageDeliveryMetadata } from '../shared/types.ts';
+import type {
+  ActiveEndpoint,
+  Agent,
+  MessageDeliveryMetadata,
+} from '../shared/types.ts';
 import { renderBatchFinalMessage } from '../state/batch-render.ts';
 import { getDb } from '../state/db.ts';
-import { dbClearAgentPane } from '../state/db-write.ts';
 import { resolveAgentRuntime } from '../shared/hook-runtime.ts';
 import {
   addMessage,
@@ -24,6 +27,10 @@ import {
   recordBatchWorkerTerminalMessage,
   rollbackPushCursor,
 } from '../state/index.ts';
+import {
+  markEndpointStale,
+  resolveActiveEndpoint,
+} from '../state/session-binding.ts';
 import {
   capturePaneTail,
   paneCommandLooksAlive,
@@ -48,6 +55,36 @@ interface DeliveryContext {
   replyTo?: number | null;
   metadata?: MessageDeliveryMetadata;
   agent?: Agent;
+}
+
+function describeEndpoint(endpoint: ActiveEndpoint): string {
+  return `${endpoint.transport}:${endpoint.target}`;
+}
+
+async function checkEndpointLiveness(
+  agent: Agent,
+  endpoint: ActiveEndpoint,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!(await paneExists(endpoint.target))) {
+    markEndpointStale(agent);
+    return {
+      ok: false,
+      error: `Agent endpoint ${describeEndpoint(endpoint)} no longer exists. Agent may need to rejoin.`,
+    };
+  }
+
+  const agentRuntime = await resolveAgentRuntime(agent.agent_type, endpoint.target);
+  if (agentRuntime === 'claude-code' || agentRuntime === 'codex') {
+    if (!(await paneCommandLooksAlive(endpoint.target))) {
+      markAgentStale(agent.name);
+      return {
+        ok: false,
+        error: `stale-target: ${describeEndpoint(endpoint)} is not running an agent process`,
+      };
+    }
+  }
+
+  return { ok: true };
 }
 
 function shouldApplyReminder(
@@ -110,71 +147,55 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
   );
 
   const agent = ctx.agent ?? getAgent(to);
-  if (agent) {
-    if (!agent.tmux_target) {
-      return {
-        message_id: msg.message_id,
-        delivered: false,
-        queued: true,
-        error: 'no tmux pane',
-      };
-    }
-    if (!(await paneExists(agent.tmux_target))) {
-      dbClearAgentPane(agent.name, agent.tmux_target);
-      return {
-        message_id: msg.message_id,
-        delivered: false,
-        queued: true,
-        error: `Agent pane ${agent.tmux_target} no longer exists. Agent may need to rejoin.`,
-      };
-    }
-    const agentRuntime = await resolveAgentRuntime(
-      agent.agent_type,
-      agent.tmux_target,
-    );
-    if (agentRuntime === 'claude-code' || agentRuntime === 'codex') {
-      if (!(await paneCommandLooksAlive(agent.tmux_target))) {
-        markAgentStale(agent.name);
-        return {
-          message_id: msg.message_id,
-          delivered: false,
-          queued: true,
-          error: `stale-target: pane ${agent.tmux_target} is not running an agent process`,
-        };
-      }
-    }
-    try {
-      const shouldArm = shouldArmLeaderGoalReminder(
-        agent,
-        senderAgent,
-        ctx.metadata,
-      );
-      await getQueue(agent.tmux_target, { role: agent.role }).enqueue({
-        type: 'paste',
-        text: fullText,
-      });
-      if (shouldArm) armLeaderGoalReminder(agent.name, agent.room_id);
-      incrementRoomReminderDispatchCount(roomName);
-      advancePushCursor(agent.name, msg.sequence);
-      return {
-        message_id: msg.message_id,
-        delivered: true,
-        queued: true,
-      };
-    } catch (e) {
-      return {
-        message_id: msg.message_id,
-        delivered: false,
-        queued: true,
-        error: e instanceof Error ? e.message : String(e),
-      };
-    }
-  } else {
+  if (!agent) {
     return {
       message_id: msg.message_id,
       delivered: false,
       queued: true,
       error: 'Agent not found',
+    };
+  }
+
+  const endpoint = resolveActiveEndpoint(agent);
+  if (!endpoint) {
+    return {
+      message_id: msg.message_id,
+      delivered: false,
+      queued: true,
+      error: 'no active endpoint',
+    };
+  }
+
+  const liveness = await checkEndpointLiveness(agent, endpoint);
+  if (!liveness.ok) {
+    return {
+      message_id: msg.message_id,
+      delivered: false,
+      queued: true,
+      error: liveness.error,
+    };
+  }
+
+  try {
+    const shouldArm = shouldArmLeaderGoalReminder(agent, senderAgent, ctx.metadata);
+    await getQueue(endpoint.target, { role: agent.role }).enqueue({
+      type: 'paste',
+      text: fullText,
+    });
+    if (shouldArm) armLeaderGoalReminder(agent.name, agent.room_id);
+    incrementRoomReminderDispatchCount(roomName);
+    advancePushCursor(agent.name, msg.sequence);
+    return {
+      message_id: msg.message_id,
+      delivered: true,
+      queued: true,
+    };
+  } catch (e) {
+    return {
+      message_id: msg.message_id,
+      delivered: false,
+      queued: true,
+      error: e instanceof Error ? e.message : String(e),
     };
   }
 }
@@ -294,7 +315,7 @@ export async function deliverMessage(
 
 export async function flushPushQueue(): Promise<void> {
   const agents = getAllAgents();
-  const activeAgents = agents.filter((a) => a.tmux_target);
+  const activeAgents = agents.filter((agent) => resolveActiveEndpoint(agent));
 
   for (const agent of activeAgents) {
     await flushPushQueueForAgent(agent);
@@ -307,12 +328,13 @@ export async function flushPushQueue(): Promise<void> {
  * without waiting for the next sweep cycle.
  */
 export async function flushPushQueueForAgent(agent: Agent): Promise<number> {
-  if (!agent.tmux_target) return 0;
+  const endpoint = resolveActiveEndpoint(agent);
+  if (!endpoint) return 0;
 
   const blockMode = getAgentInputBlockMode(agent.name);
   if (blockMode !== 'off') return 0;
 
-  const pane = agent.tmux_target;
+  const pane = endpoint.target;
   const cursor = getPushCursor(agent.name);
   const db = getDb();
 

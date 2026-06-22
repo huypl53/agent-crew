@@ -1,0 +1,34 @@
+{
+  "name": "send-keys-appears-in-pane",
+  "description": "Live tmux-watch fixture catches expected pane output on the isolated test socket",
+  "tags": ["smoke", "tmux-watch"],
+  "setup": {
+    "panes": [
+      {
+        "name": "target",
+        "command": "cat",
+        "settleMs": 100
+      }
+    ]
+  },
+  "trigger": {
+    "actions": [
+      {
+        "type": "tmux-send-keys",
+        "pane": "target",
+        "text": "HELLO-TMUX-WATCH"
+      }
+    ]
+  },
+  "watch": {
+    "pane": "target",
+    "contains": "HELLO-TMUX-WATCH",
+    "timeoutMs": 4000
+  },
+  "expect": {
+    "timedOut": false,
+    "finalCaptureContains": [
+      "HELLO-TMUX-WATCH"
+    ]
+  }
+}

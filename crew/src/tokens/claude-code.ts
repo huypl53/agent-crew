@@ -1,5 +1,6 @@
 import { closeSync, existsSync, fstatSync, openSync, readSync, readFileSync } from 'fs';
 import {
+  getAgent,
   getLatestTokenUsage,
   getPricingForModel,
   recordTokenUsage,
@@ -94,8 +95,11 @@ export async function collectClaudeCodeTokens(
       (totals.output_tokens / 1_000_000) * pricing.output_cost_per_million
     : null;
 
+  const agent = getAgent(agentName);
+  if (!agent) return;
+
   recordTokenUsage({
-    agent_name: agentName,
+    agent_id: agent.agent_id,
     session_id: session.sessionId,
     model: totals.model,
     input_tokens: totals.input_tokens,

@@ -1,4 +1,7 @@
-import { getPaneStatus } from '../shared/pane-status.ts';
+import {
+  getPaneStatus,
+  type PaneStatusResult,
+} from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
 import type { Agent, AgentStatus, ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
@@ -230,34 +233,38 @@ export function formatInline(data: DashboardData): string {
 
 // --- Core status resolver (unchanged) ---
 
-export async function resolveAgentLiveStatus(
+async function resolveAgentLiveProbe(
   agent: Agent,
-): Promise<AgentStatus> {
+): Promise<{ status: AgentStatus; paneStatus: PaneStatusResult | null }> {
+  if (!agent.tmux_target) {
+    return { status: 'unknown', paneStatus: null };
+  }
+
   const dead = await isPaneDead(agent.tmux_target);
   if (dead) {
-    return 'dead';
+    return { status: 'dead', paneStatus: null };
   }
 
   try {
-    let result = await getPaneStatus(agent.tmux_target);
-    if (result.status === 'unknown') {
-      const retryMs = Number(process.env.CREW_STATUS_RETRY_MS);
-      await Bun.sleep(
-        Number.isFinite(retryMs) && retryMs >= 0 ? retryMs : 3500,
-      );
-      result = await getPaneStatus(agent.tmux_target);
-    }
-    if (result.contentChanged) {
+    const paneStatus = await getPaneStatus(agent.tmux_target);
+    if (paneStatus.contentChanged) {
       touchAgentActivity(agent.name);
     }
-    return result.status;
+    return { status: paneStatus.status, paneStatus };
   } catch (e) {
     logServer(
       'ERROR',
       `getPaneStatus failed for ${agent.name} (pane ${agent.tmux_target}): ${e instanceof Error ? e.message : String(e)}`,
     );
-    return 'unknown';
+    return { status: 'unknown', paneStatus: null };
   }
+}
+
+export async function resolveAgentLiveStatus(
+  agent: Agent,
+): Promise<AgentStatus> {
+  const result = await resolveAgentLiveProbe(agent);
+  return result.status;
 }
 
 // --- Handler ---
@@ -373,7 +380,11 @@ async function handleSelfStatus(params: GetStatusParams): Promise<ToolResult> {
 
   initDb();
 
-  const status = await resolveAgentLiveStatus(agent);
+  const liveProbe = agent.tmux_target
+    ? await resolveAgentLiveProbe(agent)
+    : { status: 'unknown' as AgentStatus, paneStatus: null };
+  const status = liveProbe.status;
+  const paneStatus = liveProbe.paneStatus;
   const inputBlockMode = getAgentInputBlockMode(agent.name);
 
   // Hint: try session_id first, fall back to pane-only lookup
@@ -456,23 +467,14 @@ async function handleSelfStatus(params: GetStatusParams): Promise<ToolResult> {
 
   // Extended fields for --json
   if (params.json) {
-    let typingActive = false;
-    if (agent.tmux_target) {
-      try {
-        const paneResult = await getPaneStatus(agent.tmux_target);
-        typingActive = paneResult.typingActive;
-      } catch {
-        // ignore
-      }
-    }
-    data.typing_active = typingActive;
+    data.typing_active = paneStatus?.typingActive ?? false;
     data.session_id = latestEvent?.session_id ?? null;
     data.agent_type = agent.agent_type;
     data.message_counts = getAgentMessageCounts(agent.name);
   }
 
   if (params.json) {
-    return ok(data as Record<string, unknown>);
+    return ok(data as unknown as Record<string, unknown>);
   }
 
   if (params.inline) {

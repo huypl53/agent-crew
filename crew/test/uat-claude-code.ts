@@ -39,6 +39,9 @@ function assert(condition: boolean, label: string, detail?: string) {
 }
 
 async function capturePaneFull(): Promise<string> {
+  if (!paneId) {
+    throw new Error('paneId is not set');
+  }
   const proc = Bun.spawn(
     ['tmux', 'capture-pane', '-p', '-J', '-t', paneId, '-S', '-500'],
     {
@@ -184,11 +187,12 @@ for (const tc of testCases) {
     const paneText = await capturePaneFull();
     const lines = paneText.split('\n');
     const promptLines = lines.filter((l) => l.includes('❯')).slice(-1);
-    if (promptLines.length && promptLines[0].length > 5) {
+    const promptLine = promptLines[0];
+    if (promptLine && promptLine.length > 5) {
       assert(
         false,
         'Enter key submitted the message',
-        `Text stuck in input buffer: "${promptLines[0].slice(0, 80)}..."`,
+        `Text stuck in input buffer: "${promptLine.slice(0, 80)}..."`,
       );
     } else {
       assert(

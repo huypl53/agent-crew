@@ -142,7 +142,11 @@ export async function handleDialogAnswer(params: {
 
   // Stale-dialog guard: confirm the first option's label is visible on the
   // pane before driving it. Fail-open if the capture itself errors.
-  const label = q.options[0].label;
+  const firstOption = q.options[0];
+  if (!firstOption) {
+    return err(`Dialog #${dialog.id} has no options to pick`);
+  }
+  const label = firstOption.label;
   const pane = await capturePaneTail(agent.tmux_target, 40);
   if (pane !== null && label && !pane.includes(label)) {
     logServer(

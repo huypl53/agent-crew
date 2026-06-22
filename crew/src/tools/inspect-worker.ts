@@ -64,7 +64,7 @@ export async function handleInspectWorker(
       callerName: params.name,
       turns: params.turns,
     });
-    return ok(snapshot);
+    return ok(snapshot as unknown as Record<string, unknown>);
   } catch (error) {
     return err(error instanceof Error ? error.message : String(error));
   }

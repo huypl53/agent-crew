@@ -2,6 +2,7 @@ import { Database } from 'bun:sqlite';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import {
+  getAgent,
   getLatestTokenUsage,
   getPricingForModel,
   recordTokenUsage,
@@ -45,6 +46,9 @@ export function collectCodexTokens(agentName: string): void {
   const thread = getLatestCodexThread();
   if (!thread || thread.tokens_used === 0) return;
 
+  const agent = getAgent(agentName);
+  if (!agent) return;
+
   const latest = getLatestTokenUsage(agentName);
   if (
     latest?.session_id === thread.id &&
@@ -63,7 +67,7 @@ export function collectCodexTokens(agentName: string): void {
     : null;
 
   recordTokenUsage({
-    agent_name: agentName,
+    agent_id: agent.agent_id,
     session_id: thread.id,
     model: thread.model,
     input_tokens: estInput,

@@ -9,6 +9,7 @@ import {
   cleanupAllTestSessions,
   createTestSession,
   destroyTestSession,
+  sendPaneMarker,
 } from './helpers.ts';
 
 describe('parsePaneInputSection', () => {
@@ -69,6 +70,34 @@ describe('getPaneStatus', () => {
   afterAll(async () => {
     await cleanupAllTestSessions();
     closeDb();
+  });
+
+  test('keeps no-hook panes unknown while still tracking content changes', async () => {
+    initDb(':memory:');
+    const session = await createTestSession('pane-status-no-hook-observation');
+
+    try {
+      const room = getOrCreateRoom('/test/pane-status', 'pane-status');
+      addAgent(
+        'pane-status-worker',
+        'worker',
+        room.id,
+        session.pane,
+        'claude-code',
+      );
+
+      const initial = await getPaneStatus(session.pane);
+      expect(initial.status).toBe('unknown');
+      expect(initial.contentChanged).toBe(false);
+
+      await sendPaneMarker(session.pane, 'observation-change');
+
+      const changed = await getPaneStatus(session.pane);
+      expect(changed.status).toBe('unknown');
+      expect(changed.contentChanged).toBe(true);
+    } finally {
+      await destroyTestSession('pane-status-no-hook-observation');
+    }
   });
 
   test('returns unknown instead of throwing when pane cache is warm but DB is closed', async () => {

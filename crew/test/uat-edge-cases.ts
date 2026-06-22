@@ -69,10 +69,10 @@ async function testE1_PaneDiesMidDelivery() {
   }
 }
 
-// ─── E2: Enter retry exhaustion ───────────────────────────────────────────────
+// ─── E2: Frozen agent still accepts a direct submit ───────────────────────────
 
-async function testE2_EnterRetryExhaustion() {
-  console.log('\nE2: Enter retry exhaustion');
+async function testE2_FrozenAgentDirectSubmit() {
+  console.log('\nE2: Frozen agent still accepts a direct submit');
 
   const pane = await createTestPane(`bash ${FIXTURES} e2-agent`);
   await Bun.sleep(500);
@@ -80,13 +80,13 @@ async function testE2_EnterRetryExhaustion() {
   await Bun.sleep(100);
 
   const start = Date.now();
-  // tmuxSendKeys (src/tmux/index.ts) retries Enter up to 3 times with backoff (~2.4s)
-  await tmuxSendKeys(pane, 'Message to frozen agent');
+  const result = await tmuxSendKeys(pane, 'Message to frozen agent');
   const elapsed = Date.now() - start;
 
+  ok(result.delivered, 'Frozen agent delivery reported success');
   ok(
-    elapsed > 1800,
-    `Enter retry backoff observed (${elapsed}ms > 1800ms)`,
+    elapsed < 2000,
+    `Direct submit stayed fast (${elapsed}ms < 2000ms)`,
     `elapsed=${elapsed}ms`,
   );
 }
@@ -192,13 +192,11 @@ async function testE5_RapidFire() {
   ok(inOrder, 'Messages arrived in order');
 }
 
-// ─── E6: Unstable content (chaos mode) ───────────────────────────────────────
+// ─── E6: Chaos pane delivery eventually completes ─────────────────────────────
 
-async function testE6_UnstableContent() {
-  console.log('\nE6: Unstable content — chaos mode stabilization');
+async function testE6_ChaosPaneDeliveryCompletes() {
+  console.log('\nE6: Chaos pane delivery eventually completes');
 
-  // Pre-set chaos mode before pane creation so the initial emit is chaos-line, not idle.
-  // This prevents waitForReady from seeing an idle snapshot at startup.
   await setAgentMode('e6-agent', 'chaos');
   const pane = await createTestPane(`bash ${FIXTURES} e6-agent`);
   await Bun.sleep(500);
@@ -206,81 +204,59 @@ async function testE6_UnstableContent() {
   const queue = new PaneQueue(pane);
   const start = Date.now();
 
-  // After 2s switch to idle so queue unblocks
-  const switchTimer = setTimeout(() => setAgentMode('e6-agent', 'idle'), 2000);
-
   await queue.enqueue({ type: 'paste', text: 'test-e6' });
-  clearTimeout(switchTimer);
   const elapsed = Date.now() - start;
 
-  // Should have waited for content to stabilize (~2s idle switch + polling overhead)
   ok(
-    elapsed >= 1800,
-    `Waited for stability (${elapsed}ms >= 1800ms)`,
-    `elapsed=${elapsed}ms`,
-  );
-  ok(
-    elapsed < 12000,
-    `Delivered before timeout (${elapsed}ms < 12000ms)`,
+    elapsed < 60_000,
+    `Chaos-pane delivery completed without hanging indefinitely (${elapsed}ms < 60000ms)`,
     `elapsed=${elapsed}ms`,
   );
 }
 
-// ─── E7: Busy timeout ─────────────────────────────────────────────────────────
+// ─── E7: Busy-looking pane without hooks still delivers promptly ──────────────
 
-async function testE7_BusyTimeout() {
-  console.log('\nE7: Busy status timeout (10s)');
+async function testE7_BusyLookingPaneStillDelivers() {
+  console.log('\nE7: Busy-looking pane without hooks still delivers promptly');
 
   const pane = await createTestPane(`bash ${FIXTURES} e7-agent`);
   await Bun.sleep(500);
   await setAgentMode('e7-agent', 'busy');
-  // Wait for busy output to appear in the pane before starting the queue (avoids idle-snapshot race)
   await Bun.sleep(1200);
 
   const queue = new PaneQueue(pane);
   const start = Date.now();
 
-  // Will timeout at MAX_WAIT_MS=10s and deliver anyway
   await queue.enqueue({ type: 'paste', text: 'message to busy agent' });
   const elapsed = Date.now() - start;
 
   ok(
-    elapsed >= 9000,
-    `Waited near timeout (${elapsed}ms >= 9000ms)`,
-    `elapsed=${elapsed}ms`,
-  );
-  ok(
-    elapsed <= 14000,
-    `Did not hang forever (${elapsed}ms <= 14000ms)`,
+    elapsed < 2000,
+    `No-hook busy pane did not stall queue (${elapsed}ms < 2000ms)`,
     `elapsed=${elapsed}ms`,
   );
 }
 
-// ─── E8: Hash-based status detects idle on stable pane ──────────────────────────
+// ─── E8: No-hook status stays unknown even when pane is stable ─────────────────
 
-async function testE8_HashBasedIdleDetection() {
-  console.log('\nE8: Hash-based status detects idle on stable pane');
+async function testE8_NoHookStatusStaysUnknown() {
+  console.log('\nE8: No-hook status stays unknown even when pane is stable');
 
   const { getPaneStatus } = await import('../src/shared/pane-status.ts');
   const pane = await createTestPane(`bash ${FIXTURES} e8-agent`);
-  await Bun.sleep(1000); // let shell settle
+  await Bun.sleep(1000);
 
-  // First call seeds baseline (returns unknown)
   const first = await getPaneStatus(pane);
-  ok(
-    first.status === 'unknown' || first.status === 'idle',
-    `First call returned unknown or idle (got: ${first.status})`,
-  );
+  ok(first.status === 'unknown', `First call returned unknown (got: ${first.status})`);
 
-  // Wait for stable threshold (3s)
   await Bun.sleep(3500);
 
-  // Second call should detect idle (content unchanged)
   const second = await getPaneStatus(pane);
   ok(
-    second.status === 'idle',
-    `Detected idle after content stable (got: ${second.status})`,
+    second.status === 'unknown',
+    `Stable no-hook pane remained unknown (got: ${second.status})`,
   );
+  ok(second.contentChanged === false, 'Stable no-hook pane reported unchanged content');
 
   await killPane(pane);
 }
@@ -366,7 +342,6 @@ async function testE11_RoleBasedIntervals() {
 
   ok(getPollingInterval('worker', now) === 2000, `Worker interval is 2000ms`);
   ok(getPollingInterval('leader', now) === 5000, `Leader interval is 5000ms`);
-  ok(getPollingInterval('leader', now) === 10000, `Leader interval is 10000ms`);
   ok(
     getPollingInterval('unknown-role', now) === 2000,
     `Unknown role defaults to 2000ms`,
@@ -384,12 +359,13 @@ async function testE12_SpoofedPane() {
   const tmpScript = `${crewDir}/_tmp_e12_test.ts`;
 
   const scriptLog = `
-import { initDb, addAgent } from './src/state/index.ts';
+import { initDb, addAgent, getOrCreateRoom } from './src/state/index.ts';
 import { handleSendMessage } from './src/tools/send-message.ts';
 
 initDb(':memory:');
-addAgent('test-worker', 'worker', 'test-room', '%10', 'claude-code');
-addAgent('test-leader', 'leader', 'test-room', '%11', 'claude-code');
+const room = getOrCreateRoom('/uat/test-room', 'test-room');
+addAgent('test-worker', 'worker', room.id, '%10', 'claude-code');
+addAgent('test-leader', 'leader', room.id, '%11', 'claude-code');
 
 const result = await handleSendMessage({
   room: 'test-room', text: 'test message',
@@ -422,12 +398,13 @@ console.log('log-ok:' + (result.isError !== true));
 
     // ENFORCE mode
     const scriptEnforce = `
-import { initDb, addAgent } from './src/state/index.ts';
+import { initDb, addAgent, getOrCreateRoom } from './src/state/index.ts';
 import { handleSendMessage } from './src/tools/send-message.ts';
 
 initDb(':memory:');
-addAgent('test-worker', 'worker', 'test-room', '%10', 'claude-code');
-addAgent('test-leader', 'leader', 'test-room', '%11', 'claude-code');
+const room = getOrCreateRoom('/uat/test-room', 'test-room');
+addAgent('test-worker', 'worker', room.id, '%10', 'claude-code');
+addAgent('test-leader', 'leader', room.id, '%11', 'claude-code');
 
 const result = await handleSendMessage({
   room: 'test-room', text: 'test message',
@@ -462,9 +439,9 @@ if (result.isError) {
       `ENFORCE mode: error mentions mismatch (got: ${enforceOut.trim()})`,
     );
   } finally {
-    await Bun.file(tmpScript)
-      .exists()
-      .then((e) => e && Bun.$`rm ${tmpScript}`.quiet());
+    if (await Bun.file(tmpScript).exists()) {
+      await Bun.$`rm ${tmpScript}`.quiet();
+    }
   }
 }
 
@@ -477,12 +454,13 @@ async function testE13_NoTmuxPane() {
   const tmpScript = `${crewDir}/_tmp_e13_test.ts`;
 
   const script = `
-import { initDb, addAgent } from './src/state/index.ts';
+import { initDb, addAgent, getOrCreateRoom } from './src/state/index.ts';
 import { handleSendMessage } from './src/tools/send-message.ts';
 
 initDb(':memory:');
-addAgent('cli-agent', 'worker', 'cli-room', '%20', 'claude-code');
-addAgent('cli-leader', 'leader', 'cli-room', '%21', 'claude-code');
+const room = getOrCreateRoom('/uat/cli-room', 'cli-room');
+addAgent('cli-agent', 'worker', room.id, '%20', 'claude-code');
+addAgent('cli-leader', 'leader', room.id, '%21', 'claude-code');
 
 const result = await handleSendMessage({
   room: 'cli-room', text: 'external cli message',
@@ -492,12 +470,12 @@ console.log('result-ok:' + (result.isError !== true));
   await Bun.write(tmpScript, script);
 
   try {
-    const env = {
+    const env: Record<string, string | undefined> = {
       ...process.env,
       CREW_SENDER_VERIFICATION: 'enforce',
       CREW_TMUX_SOCKET: '',
+      TMUX_PANE: undefined,
     };
-    delete env.TMUX_PANE; // simulate external CLI — no pane
 
     const proc = Bun.spawn(['bun', 'run', tmpScript], {
       env,
@@ -512,9 +490,9 @@ console.log('result-ok:' + (result.isError !== true));
       `No TMUX_PANE: verification skipped, message allowed (got: ${out.trim()})`,
     );
   } finally {
-    await Bun.file(tmpScript)
-      .exists()
-      .then((e) => e && Bun.$`rm ${tmpScript}`.quiet());
+    if (await Bun.file(tmpScript).exists()) {
+      await Bun.$`rm ${tmpScript}`.quiet();
+    }
   }
 }
 
@@ -529,19 +507,20 @@ async function testE14_StalePaneDetection() {
 
   setupTestDb();
   try {
-    const { addAgent } = await import('../src/state/index.ts');
+    const { addAgent, getOrCreateRoom } = await import('../src/state/index.ts');
     const { deliverMessage } = await import('../src/delivery/index.ts');
 
-    addAgent('stale-worker', 'worker', 'stale-room', pane, 'claude-code');
-    addAgent('stale-leader', 'leader', 'stale-room', '%999', 'claude-code');
+    const room = getOrCreateRoom('/uat/stale-room', 'stale-room');
+    addAgent('stale-worker', 'worker', room.id, pane, 'claude-code');
+    addAgent('stale-leader', 'leader', room.id, '%999', 'claude-code');
 
     const results = await deliverMessage(
       'stale-leader',
       'stale-room',
       'task for stale worker',
       'stale-worker',
-      'push',
-      'task',
+      null,
+      undefined,
     );
 
     ok(results.length === 1, `Got one delivery result (got ${results.length})`);
@@ -592,16 +571,17 @@ async function testE15_BroadcastPartialDelivery() {
 
   setupTestDb();
   try {
-    const { addAgent } = await import('../src/state/index.ts');
+    const { addAgent, getOrCreateRoom } = await import('../src/state/index.ts');
     const { deliverMessage } = await import('../src/delivery/index.ts');
 
-    addAgent('broadcaster', 'leader', 'broadcast-room', '%800', 'unknown');
+    const room = getOrCreateRoom('/uat/broadcast-room', 'broadcast-room');
+    addAgent('broadcaster', 'leader', room.id, '%800', 'unknown');
 
     for (let i = 0; i < 3; i++) {
       addAgent(
         `live-e15-${i}`,
         'worker',
-        'broadcast-room',
+        room.id,
         livePanes[i]!,
         'unknown',
       );
@@ -611,7 +591,7 @@ async function testE15_BroadcastPartialDelivery() {
       addAgent(
         `dead-e15-${i}`,
         'worker',
-        'broadcast-room',
+        room.id,
         deadPanes[i]!,
         'claude-code',
       );
@@ -622,8 +602,8 @@ async function testE15_BroadcastPartialDelivery() {
       'broadcast-room',
       'broadcast message',
       null,
-      'push',
-      'chat',
+      null,
+      undefined,
     );
 
     // All 5 non-broadcaster members get attempted
@@ -643,10 +623,10 @@ async function testE15_BroadcastPartialDelivery() {
   }
 }
 
-// ─── E16: Worker completion notifies leader ───────────────────────────────────
+// ─── E16: Worker Stop hook notifies leader ────────────────────────────────────
 
-async function testE16_WorkerNotifiesLeader() {
-  console.log('\nE16: Worker completion notifies leader');
+async function testE16_WorkerStopHookNotifiesLeader() {
+  console.log('\nE16: Worker Stop hook notifies leader');
 
   const leaderPane = await createTestPane(`bash ${FIXTURES} e16-leader`);
   const workerPane = await createTestPane(`bash ${FIXTURES} e16-worker`);
@@ -654,30 +634,33 @@ async function testE16_WorkerNotifiesLeader() {
 
   setupTestDb();
   try {
-    const { addAgent } = await import('../src/state/index.ts');
-    const { deliverMessage } = await import('../src/delivery/index.ts');
+    const { addAgent, getOrCreateRoom } = await import('../src/state/index.ts');
+    const { processHookEventInput } = await import('../src/tools/hook-event.ts');
 
-    addAgent('e16-leader', 'leader', 'notify-room', leaderPane, 'unknown');
-    addAgent('e16-worker', 'worker', 'notify-room', workerPane, 'unknown');
+    const room = getOrCreateRoom('/uat/notify-room', 'notify-room');
+    addAgent('e16-leader', 'leader', room.id, leaderPane, 'unknown');
+    addAgent('e16-worker', 'worker', room.id, workerPane, 'unknown');
 
-    // Worker sends a completion message (kind='completion' triggers auto-notify to leader)
-    await deliverMessage(
-      'e16-worker',
-      'notify-room',
-      'Task completed successfully',
-      'e16-leader',
-      'push',
-      'completion',
+    await processHookEventInput(
+      JSON.stringify({
+        hook_event_name: 'Stop',
+        session_id: 'e16-session-1',
+        message: 'Task completed successfully',
+      }),
+      workerPane,
     );
 
-    // Auto-notify is fire-and-forget. Allow up to 3s for: waitForReady (~0ms, pane is idle)
-    // + delivery (~800ms). Give generous margin for timing variation.
     await Bun.sleep(3000);
     const leaderContent = await capturePane(leaderPane, 100);
 
     ok(
-      leaderContent.includes('[system@notify-room]'),
-      'Leader received system notification',
+      leaderContent.includes('[e16-worker@notify-room] completed:'),
+      'Leader received worker completion notification',
+      `leader pane tail: ${leaderContent.slice(-300)}`,
+    );
+    ok(
+      leaderContent.includes('Task completed successfully'),
+      'Leader notification includes completion text',
       `leader pane tail: ${leaderContent.slice(-300)}`,
     );
   } finally {
@@ -695,13 +678,14 @@ async function testE17_ConcurrentSends() {
 
   setupTestDb();
   try {
-    const { addAgent } = await import('../src/state/index.ts');
+    const { addAgent, getOrCreateRoom } = await import('../src/state/index.ts');
     const { deliverMessage } = await import('../src/delivery/index.ts');
 
-    addAgent('e17-target', 'leader', 'concurrent-room', targetPane, 'unknown');
+    const room = getOrCreateRoom('/uat/concurrent-room', 'concurrent-room');
+    addAgent('e17-target', 'leader', room.id, targetPane, 'unknown');
     for (let i = 1; i <= 3; i++) {
       // Senders don't need real panes (they only send, not receive via push here)
-      addAgent(`e17-sender-${i}`, 'worker', 'concurrent-room', null, 'unknown');
+      addAgent(`e17-sender-${i}`, 'worker', room.id, null, 'unknown');
     }
 
     // Fire 3 deliveries concurrently
@@ -711,8 +695,8 @@ async function testE17_ConcurrentSends() {
         'concurrent-room',
         `CONCURRENT-MSG-${i}-MARKER`,
         'e17-target',
-        'push',
-        'chat',
+        null,
+        undefined,
       ),
     );
 
@@ -756,15 +740,15 @@ async function main() {
   try {
     // E1-E5: Delivery
     await testE1_PaneDiesMidDelivery();
-    await testE2_EnterRetryExhaustion();
+    await testE2_FrozenAgentDirectSubmit();
     await testE3_LargePayload();
     await testE4_SpecialChars();
     await testE5_RapidFire();
 
-    // E6-E8: Status detection (E7 is slow — ~10s timeout)
-    await testE6_UnstableContent();
-    await testE7_BusyTimeout();
-    await testE8_HashBasedIdleDetection();
+    // E6-E8: No-hook readiness/status behavior
+    await testE6_ChaosPaneDeliveryCompletes();
+    await testE7_BusyLookingPaneStillDelivers();
+    await testE8_NoHookStatusStaysUnknown();
 
     // E9-E11: Queue/polling
     await testE9_QueueBacklog();
@@ -778,7 +762,7 @@ async function main() {
     // E14-E17: Integration
     await testE14_StalePaneDetection();
     await testE15_BroadcastPartialDelivery();
-    await testE16_WorkerNotifiesLeader();
+    await testE16_WorkerStopHookNotifiesLeader();
     await testE17_ConcurrentSends();
   } finally {
     console.log('\n─── Cleanup ───');

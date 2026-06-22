@@ -658,9 +658,9 @@ describe('send-batch', () => {
     expect(result.batch_id).toBeTruthy();
     const workers = result.workers as Array<{ name: string; dispatch_status: string }>;
     expect(workers.length).toBe(3);
-    expect(workers[0].name).toBe('w1');
-    expect(workers[1].name).toBe('w2');
-    expect(workers[2].name).toBe('w3');
+    expect(workers[0]?.name).toBe('w1');
+    expect(workers[1]?.name).toBe('w2');
+    expect(workers[2]?.name).toBe('w3');
     expect(workers.every(w => w.dispatch_status === 'sent')).toBe(true);
   });
 

@@ -90,7 +90,8 @@ export function getPollingInterval(
   }
 
   // Reduced profile — role-based intervals
-  return POLL_INTERVALS[role ?? 'default'] ?? POLL_INTERVALS.default;
+  const roleKey = role ?? 'default';
+  return POLL_INTERVALS[roleKey] ?? 2_000;
 }
 
 export interface PaneQueueOptions {
@@ -326,7 +327,7 @@ export class PaneQueue {
   private async withLock<T>(fn: () => Promise<T>): Promise<T> {
     // Async mutex: wait for any prior lock holder to finish, then run exclusively
     const prev = this.lockPromise;
-    let releaseLock: () => void;
+    let releaseLock: () => void = () => {};
     this.lockPromise = new Promise<void>((resolve) => {
       releaseLock = resolve;
     });
@@ -334,7 +335,7 @@ export class PaneQueue {
     try {
       return await fn();
     } finally {
-      releaseLock?.();
+      releaseLock();
     }
   }
 }

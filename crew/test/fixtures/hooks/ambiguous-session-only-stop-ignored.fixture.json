@@ -1,0 +1,35 @@
+{
+  "name": "ambiguous-session-only-stop-ignored",
+  "description": "No-pane Stop with only cwd fallback stays unresolved when multiple workers match the same room path",
+  "seed": {
+    "room": { "name": "shared-room", "path": "/tmp/ambiguous-room" },
+    "agents": [
+      { "name": "worker-a", "pane": "%61", "role": "worker" },
+      { "name": "worker-b", "pane": "%62", "role": "worker" }
+    ]
+  },
+  "steps": [
+    {
+      "event": "Stop",
+      "pane": null,
+      "payload": {
+        "session_id": "ambiguous-session-1",
+        "cwd": "/tmp/ambiguous-room/jobs"
+      },
+      "expect": {
+        "stdout": { "ok": true, "decision": "allow" },
+        "hook_events_count": 0,
+        "hook_event": {
+          "agent": "worker-a",
+          "event": "Stop",
+          "session_id": "ambiguous-session-1",
+          "absent": true
+        },
+        "tmux_absent": [
+          { "op": "sendKeys", "target": "%61" },
+          { "op": "sendKeys", "target": "%62" }
+        ]
+      }
+    }
+  ]
+}

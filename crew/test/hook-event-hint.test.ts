@@ -41,18 +41,19 @@ function parseResult(
     | Awaited<ReturnType<typeof handleHintUnset>>
     | Awaited<ReturnType<typeof handleHintLookup>>,
 ) {
-  return JSON.parse(result.content[0]?.text);
+  return JSON.parse(result.content[0]!.text);
 }
 
 async function runHookEventCli(input: string, pane: string) {
-  const cliPath = path.resolve(process.cwd(), 'crew/src/cli.ts');
+  const crewDir = path.resolve(new URL('..', import.meta.url).pathname);
+  const cliPath = path.resolve(crewDir, 'src/cli.ts');
   const stateDir = process.env.CREW_STATE_DIR;
 
-  const proc = Bun.spawn([ 'bun', cliPath, 'hook-event'], {
+  const proc = Bun.spawn(['bun', cliPath, 'hook-event'], {
     stdin: new Response(input),
     stdout: 'pipe',
     stderr: 'pipe',
-    cwd: process.cwd(),
+    cwd: crewDir,
     env: {
       ...process.env,
       ...(stateDir ? { CREW_STATE_DIR: stateDir } : {}),
@@ -124,7 +125,7 @@ describe('hook-event dual-path (processHookEventInput)', () => {
       session_id: 'sess-1',
     });
     const result = await processHookEventInput(input, '%400');
-    const data = JSON.parse(result.content[0]?.text);
+    const data = JSON.parse(result.content[0]!.text);
 
     // Model context: full hint message
     expect(data.hint).toBeDefined();
@@ -147,7 +148,7 @@ describe('hook-event dual-path (processHookEventInput)', () => {
       session_id: 'sess-2',
     });
     const result = await processHookEventInput(input, '%401');
-    const data = JSON.parse(result.content[0]?.text);
+    const data = JSON.parse(result.content[0]!.text);
 
     expect(data.hint).toBeUndefined();
     expect(data.hintStatus).toBeUndefined();
@@ -163,7 +164,7 @@ describe('hook-event dual-path (processHookEventInput)', () => {
       session_id: 'sess-3',
     });
     const result = await processHookEventInput(input, '%402');
-    const data = JSON.parse(result.content[0]?.text);
+    const data = JSON.parse(result.content[0]!.text);
 
     expect(data.ok).toBe(true);
     expect(data.hint).toBeUndefined();
@@ -181,7 +182,7 @@ describe('hook-event dual-path (processHookEventInput)', () => {
       session_id: 'sess-4',
     });
     const result = await processHookEventInput(input, '%403');
-    const data = JSON.parse(result.content[0]?.text);
+    const data = JSON.parse(result.content[0]!.text);
 
     expect(data.hint).toBeUndefined();
     expect(data.hintStatus).toBeUndefined();
@@ -405,9 +406,11 @@ describe('hint lookup (read-only)', () => {
 
 describe('hint subcommand routing', () => {
   test('returns isError=true for missing subcommand', async () => {
-    const params = COMMANDS.hint.buildParams({}, []);
-    const result = await COMMANDS.hint.handler(params);
-    const data = JSON.parse(result.content[0]?.text);
+    const hintCommand = COMMANDS.hint;
+    expect(hintCommand).toBeDefined();
+    const params = hintCommand!.buildParams({}, []);
+    const result = await hintCommand!.handler(params);
+    const data = JSON.parse(result.content[0]!.text);
 
     expect(result.isError).toBe(true);
     expect(data.error).toContain('Unknown hint subcommand');
@@ -415,9 +418,11 @@ describe('hint subcommand routing', () => {
   });
 
   test('returns isError=true for invalid subcommand', async () => {
-    const params = COMMANDS.hint.buildParams({}, ['bogus']);
-    const result = await COMMANDS.hint.handler(params);
-    const data = JSON.parse(result.content[0]?.text);
+    const hintCommand = COMMANDS.hint;
+    expect(hintCommand).toBeDefined();
+    const params = hintCommand!.buildParams({}, ['bogus']);
+    const result = await hintCommand!.handler(params);
+    const data = JSON.parse(result.content[0]!.text);
 
     expect(result.isError).toBe(true);
     expect(data.error).toContain("'bogus'");

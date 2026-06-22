@@ -34,7 +34,7 @@ if (parsed.command === 'help' || parsed.flags.help) {
   }
 
   let helpRole: 'leader' | 'worker' | 'user' = 'user';
-  if (parsed.flags.name) {
+  if (typeof parsed.flags.name === 'string') {
     try {
       const { getAgent } = await import('./state/index.ts');
       const agent = getAgent(parsed.flags.name);
@@ -110,9 +110,13 @@ if (
 try {
   const params = cmd.buildParams(parsed.flags, parsed.positional);
   const result = await cmd.handler(params);
+  const firstContent = result.content[0];
+  if (!firstContent) {
+    throw new Error('Tool handler returned no content');
+  }
 
   // Handlers return MCP-shaped results — unwrap the envelope
-  const data = JSON.parse(result.content[0].text);
+  const data = JSON.parse(firstContent.text);
 
   if (result.isError) {
     console.error(formatError(data));

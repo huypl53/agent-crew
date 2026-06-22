@@ -77,6 +77,15 @@ export interface MessageDeliveryMetadata {
   manifest_order?: number;
 }
 
+export type EndpointTransport = 'tmux';
+
+export interface ActiveEndpoint {
+  transport: EndpointTransport;
+  target: string;
+  stale: boolean;
+  lastSeenAt?: string | null;
+}
+
 export interface SendBatchManifestWorker {
   name: string;
   file: string;

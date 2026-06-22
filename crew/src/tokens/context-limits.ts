@@ -21,13 +21,15 @@ const DEFAULT_CONTEXT_LIMIT = 200_000;
 /** Get context window limit for a model name. Uses prefix matching. */
 export function getContextLimit(model: string): number {
   // Exact match first
-  if (MODEL_CONTEXT_LIMITS[model]) return MODEL_CONTEXT_LIMITS[model];
+  const exactLimit = MODEL_CONTEXT_LIMITS[model];
+  if (exactLimit !== undefined) return exactLimit;
 
   // Prefix match: try progressively shorter prefixes
   const keys = Object.keys(MODEL_CONTEXT_LIMITS);
   for (const key of keys) {
     if (model.startsWith(key) || key.startsWith(model)) {
-      return MODEL_CONTEXT_LIMITS[key];
+      const matchedLimit = MODEL_CONTEXT_LIMITS[key];
+      if (matchedLimit !== undefined) return matchedLimit;
     }
   }
 

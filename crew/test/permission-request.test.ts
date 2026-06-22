@@ -46,7 +46,7 @@ function makePermissionInput(overrides: Record<string, unknown> = {}) {
 }
 
 function parseResult(result: Awaited<ReturnType<typeof processHookEventInput>>) {
-  return JSON.parse(result.content[0].text);
+  return JSON.parse(result.content[0]!.text);
 }
 
 describe('PermissionRequest hook', () => {
@@ -176,8 +176,9 @@ describe('PermissionRequest CLI output', () => {
     addAgent('worker-1', 'worker', room.id, TEST_PANE);
 
     const input = makePermissionInput();
+    const crewDir = path.resolve(new URL('..', import.meta.url).pathname);
     const proc = Bun.spawn(['bun', 'src/cli.ts', 'hook-event'], {
-      cwd: path.resolve(process.cwd(), 'crew'),
+      cwd: crewDir,
       stdin: new Response(input),
       stdout: 'pipe',
       stderr: 'pipe',

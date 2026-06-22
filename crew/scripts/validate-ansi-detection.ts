@@ -11,12 +11,13 @@
 
 import { $ } from 'bun';
 
-const target = process.argv[2];
-if (!target) {
+const paneTarget = process.argv[2];
+if (!paneTarget) {
   console.error('Usage: bun crew/scripts/validate-ansi-detection.ts <pane-id>');
   console.error('Example: bun crew/scripts/validate-ansi-detection.ts %5');
   process.exit(1);
 }
+const tmuxTarget: string = paneTarget;
 
 function simpleHash(str: string): number {
   let hash = 0;
@@ -49,7 +50,7 @@ function hexDump(str: string, maxLen = 200): string {
 
 async function capturePane(withAnsi: boolean, lines?: number): Promise<string | null> {
   try {
-    const args = ['tmux', 'capture-pane', '-t', target, '-p'];
+    const args: string[] = ['tmux', 'capture-pane', '-t', tmuxTarget, '-p'];
     if (withAnsi) args.push('-e');
     if (lines) {
       args.push('-S', String(-lines));
@@ -65,14 +66,14 @@ async function capturePane(withAnsi: boolean, lines?: number): Promise<string | 
 }
 
 async function run() {
-  console.log(`\n=== ANSI Detection Validation for pane ${target} ===\n`);
+  console.log(`\n=== ANSI Detection Validation for pane ${tmuxTarget} ===\n`);
 
   // Full pane capture
   const fullText = await capturePane(false);
   const fullAnsi = await capturePane(true);
 
   if (!fullText || !fullAnsi) {
-    console.error(`Failed to capture pane ${target}. Is it a valid tmux pane?`);
+    console.error(`Failed to capture pane ${tmuxTarget}. Is it a valid tmux pane?`);
     process.exit(1);
   }
 

@@ -44,7 +44,11 @@ without the flag.
   the handler `src/tools/hook-event.ts`.
 - `test/lib/fixture-runner.ts` + `test/fixtures/hooks/*.fixture.json` are
   data-driven: each JSON file seeds rooms/agents/goals/hints, fires a sequence
-  of hook events, and asserts on stdout + recorded tmux side effects. The tmux
+  of hook events, and asserts on stdout, persisted hook-event state, and
+  recorded tmux side effects. Fixture steps share a stable default session id
+  per pane (and one shared id for no-pane flows) unless they explicitly
+  override it. Current hook fixtures also cover session-only hooks, rebinding,
+  permission-request auto-allow, and stale/mismatched pane edge cases. The tmux
   module is mocked; calls land in a `_tapLog` (`TmuxTap`) for assertion.
   **Adding an edge case = adding a JSON file, no test code changes.**
 - Driven by `test/hook-fixture.test.ts`.
@@ -55,7 +59,9 @@ pane queue, pacing, or pane liveness. That is Layer 2's job. Don't extend a
 fixture to assert on delivery semantics it cannot actually see.
 
 Also: `MockHook` fakes the hook **payload**, not real Claude Code. It tests
-crew's hook handler, not the live Claude Code ↔ crew wiring.
+crew's hook handler, not the live Claude Code ↔ crew wiring. For true overlap
+or in-flight races, prefer dedicated unit tests using `MockHook.concurrent()`;
+fixture JSONs are best for deterministic replay sequences.
 
 ### Layer 2: real tmux (integration)
 

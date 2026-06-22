@@ -61,7 +61,8 @@ describe('pane liveness checks', () => {
     test('returns shell command for shell pane', async () => {
       const cmd = await getPaneCurrentCommand(shellPane);
       expect(cmd).toBeTruthy();
-      expect(['zsh', 'bash', 'sh', 'fish', 'dash']).toContain(cmd);
+      expect(cmd).not.toBeNull();
+      expect(['zsh', 'bash', 'sh', 'fish', 'dash']).toContain(cmd!);
     });
 
     test('returns node for pane running node', async () => {

@@ -1,0 +1,51 @@
+{
+  "name": "session-bound-pane-mismatch-uses-registered-target",
+  "description": "After a session is bound, a later Stop from a different pane still resolves by session and sends reminders to the registered tmux target",
+  "seed": {
+    "room": { "name": "dev", "path": "/tmp/rebind-room" },
+    "agents": [
+      { "name": "worker-1", "pane": "%42", "role": "worker" }
+    ],
+    "goals": [
+      { "agent": "worker-1", "description": "Target stays registered" }
+    ]
+  },
+  "steps": [
+    {
+      "event": "Stop",
+      "pane": "%42",
+      "payload": { "session_id": "bound-session-1" },
+      "expect": {
+        "stdout": { "ok": true, "decision": "allow" },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "Stop",
+          "session_id": "bound-session-1"
+        },
+        "hook_events_count": 1,
+        "tmux": [
+          { "op": "sendKeys", "target": "%42", "contains": "(turn 1)" }
+        ]
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": "%99",
+      "payload": { "session_id": "bound-session-1" },
+      "expect": {
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "Stop",
+          "session_id": "bound-session-1"
+        },
+        "hook_events_count": 2,
+        "tmux": [
+          { "op": "sendKeys", "target": "%42", "contains": "(turn 2)" }
+        ],
+        "tmux_absent": [
+          { "op": "sendKeys", "target": "%99" }
+        ]
+      }
+    }
+  ]
+}

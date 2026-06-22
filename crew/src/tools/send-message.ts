@@ -5,6 +5,7 @@ import { deliverMessage } from '../delivery/index.ts';
 import type { MessageDeliveryMetadata, ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
 import { getAgent, getRoom, getRoomMembers } from '../state/index.ts';
+import { resolveActiveEndpoint } from '../state/session-binding.ts';
 import { resolveAgentLiveStatus } from './get-status.ts';
 
 interface SendMessageParams {
@@ -62,13 +63,27 @@ export async function readUtf8TextFile(
   }
 }
 
+function validateSenderEndpointConsistency(
+  name: string,
+  sender: NonNullable<ReturnType<typeof getAgent>>,
+): string | null {
+  if (config.senderVerification === 'off') return null;
+
+  const callerPane = process.env.TMUX_PANE ?? null;
+  const endpoint = resolveActiveEndpoint(sender);
+  if (!callerPane || !endpoint) return null;
+  if (endpoint.transport !== 'tmux' || endpoint.target === callerPane) return null;
+
+  return `Sender mismatch: claimed "${name}" uses ${endpoint.transport}:${endpoint.target} but caller is tmux:${callerPane}`;
+}
+
 export function validateSenderAndRoom(
   room: string,
   name: string,
 ): {
   value?: {
-    sender: ReturnType<typeof getAgent>;
-    room: ReturnType<typeof getRoom>;
+    sender: NonNullable<ReturnType<typeof getAgent>>;
+    room: NonNullable<ReturnType<typeof getRoom>>;
   };
   error?: string;
 } {
@@ -90,17 +105,12 @@ export function validateSenderAndRoom(
     return { error: `Sender "${name}" is not a member of room "${room}"` };
   }
 
-  // Sender verification: compare claimed sender's registered pane against the
-  // tmux pane that originated this call (available via $TMUX_PANE in the process env).
-  if (config.senderVerification !== 'off') {
-    const callerPane = process.env.TMUX_PANE ?? null;
-    if (callerPane && sender.tmux_target && callerPane !== sender.tmux_target) {
-      const msg = `Sender mismatch: claimed "${name}" (pane ${sender.tmux_target}) but caller is pane ${callerPane}`;
-      if (config.senderVerification === 'enforce') {
-        return { error: msg };
-      }
-      console.warn(`[sender-verification] ${msg}`);
+  const endpointMismatch = validateSenderEndpointConsistency(name, sender);
+  if (endpointMismatch) {
+    if (config.senderVerification === 'enforce') {
+      return { error: endpointMismatch };
     }
+    console.warn(`[sender-verification] ${endpointMismatch}`);
   }
 
   return { value: { sender, room: roomObj } };
@@ -150,7 +160,12 @@ export async function handleSendMessage(
     return err(senderContext.error);
   }
 
-  const { sender, room: r } = senderContext.value!;
+  const senderValue = senderContext.value;
+  if (!senderValue) {
+    return err('Failed to resolve sender context');
+  }
+
+  const { sender, room: r } = senderValue;
 
   // Validate target if directed message
   if (to) {
@@ -215,10 +230,15 @@ export async function handleSendMessage(
   }
 
   if (results.length === 1) {
+    const firstResult = results[0];
+    if (!firstResult) {
+      return err('Message delivery returned no results');
+    }
+
     return ok({
-      message_id: results[0]!.message_id,
-      delivered: results[0]!.delivered,
-      queued: results[0]!.queued,
+      message_id: firstResult.message_id,
+      delivered: firstResult.delivered,
+      queued: firstResult.queued,
       ...(membersStatus ? { members: membersStatus } : {}),
     });
   }

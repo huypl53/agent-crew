@@ -1,0 +1,56 @@
+{
+  "name": "codex-turn-id-stop-delivery",
+  "description": "Codex no-pane Stop uses turn_id to persist the event and deliver the final answer to the leader",
+  "seed": {
+    "room": { "name": "codex-room", "path": "/tmp/codex-room" },
+    "agents": [
+      { "name": "leader-1", "pane": "%40", "role": "leader" },
+      { "name": "worker-1", "pane": "%41", "role": "worker" }
+    ]
+  },
+  "steps": [
+    {
+      "event": "__skip__",
+      "pane": null,
+      "payload": {
+        "__raw_input__": "{\"hook_event_name\":\"UserPromptSubmit\",\"turn_id\":\"codex-turn-42\",\"cwd\":\"/tmp/codex-room/jobs/task-42\"}"
+      },
+      "expect": {
+        "stdout": { "ok": true, "decision": "allow" },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "UserPromptSubmit",
+          "session_id": "codex-turn-42"
+        },
+        "hook_events_count": 1
+      }
+    },
+    {
+      "event": "__skip__",
+      "pane": null,
+      "payload": {
+        "__raw_input__": "{\"hook_event_name\":\"Stop\",\"turn_id\":\"codex-turn-42\",\"cwd\":\"/tmp/codex-room/jobs/task-42\",\"last_assistant_message\":\"Codex worker final answer\"}"
+      },
+      "expect": {
+        "stdout": { "ok": true, "decision": "allow" },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "Stop",
+          "session_id": "codex-turn-42",
+          "payload_contains": "Codex worker final answer"
+        },
+        "hook_events_count": 2,
+        "tmux": [
+          {
+            "op": "sendKeys",
+            "target": "%40",
+            "contains": "Codex worker final answer"
+          }
+        ],
+        "tmux_absent": [
+          { "op": "sendKeys", "target": "%41", "contains": "Codex worker final answer" }
+        ]
+      }
+    }
+  ]
+}

@@ -182,7 +182,7 @@ async function isLeaderBusyAuto(target: string): Promise<boolean> {
   const now = Date.now();
   try {
     const status = await getPaneStatus(target);
-    if (status.status === 'busy' || status.contentChanged) {
+    if (status.status === 'busy') {
       leaderBusyUntil.set(target, now + AUTO_BUSY_WINDOW_MS);
     }
   } catch {
@@ -412,14 +412,6 @@ async function runLivenessCheck(): Promise<void> {
 
     if (alive) {
       deadCounts.delete(agent.name);
-      // Status is now set by hook events, but fallback for workers without hooks
-      if (agent.role === 'worker') {
-        const hookStatus = getLatestHookEvent(agent.name);
-        if (!hookStatus) {
-          // No hook data — set based on liveness only
-          setAgentStatus(agent.name, 'busy');
-        }
-      }
       continue;
     }
 

@@ -65,7 +65,6 @@ describe('Input Block Unblock Auto-Flush', () => {
       name: 'worker-1',
       text: 'AutoFlushTest-QueuedMessage',
       to: 'leader-1',
-      mode: 'push',
     });
 
     // Wait a bit to ensure it's NOT delivered while blocked
@@ -79,7 +78,7 @@ describe('Input Block Unblock Auto-Flush', () => {
       name: 'leader-1',
     });
 
-    const data = JSON.parse(result.content[0].text);
+    const data = JSON.parse(result.content[0]!.text);
     expect(data.input_block_mode).toBe('off');
 
     // Wait a bit for tmux delivery
@@ -164,7 +163,6 @@ describe('Input Block Unblock Auto-Flush', () => {
       name: 'worker-1',
       text: 'FlushCountTest',
       to: 'leader-1',
-      mode: 'push',
     });
 
     // 4. Unblock — should report flushed_messages
@@ -173,7 +171,7 @@ describe('Input Block Unblock Auto-Flush', () => {
       name: 'leader-1',
     });
 
-    const data = JSON.parse(result.content[0].text);
+    const data = JSON.parse(result.content[0]!.text);
     expect(data.input_block_mode).toBe('off');
     expect(data.flushed_messages).toBeGreaterThanOrEqual(1);
   });

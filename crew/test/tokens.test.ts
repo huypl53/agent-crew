@@ -247,9 +247,10 @@ describe('codex token collection', () => {
     const threads = readCodexThreads();
     if (threads.length === 0) return;
     const first = threads[0];
+    expect(first).toBeDefined();
     expect(first).toHaveProperty('tokens_used');
     expect(first).toHaveProperty('model');
-    expect(typeof first.tokens_used).toBe('number');
+    expect(typeof first?.tokens_used).toBe('number');
   });
 });
 

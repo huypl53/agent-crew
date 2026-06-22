@@ -61,7 +61,7 @@ Each step fires one hook event and optionally asserts on the response and tmux s
 | Field | Type | Description |
 |-------|------|-------------|
 | `event` | `string` | Hook event name: `"Stop"`, `"UserPromptSubmit"`, `"PermissionRequest"`, or `"__skip__"` (uses payload field instead) |
-| `pane` | `string` | Tmux pane ID (defaults to first agent's pane) |
+| `pane` | `string \| null` | Tmux pane ID. Defaults to first agent's pane; set `null` to simulate no-pane hooks |
 | `payload` | `object` | Extra fields merged into the hook input JSON |
 | `delay` | `number` | Milliseconds to wait before firing (for timing tests) |
 | `expect` | `object` | Assertions (see below) |
@@ -110,6 +110,25 @@ Each key/value is compared with deep equality (null == undefined).
 ```
 
 Same fields as `tmux`. Fails if any matching entry is found.
+
+#### `hook_event` — assert latest persisted hook event for an agent
+
+```json
+"hook_event": {
+  "agent": "w1",
+  "event": "Stop",
+  "session_id": "sess-1",
+  "payload_contains": "sess-1"
+}
+```
+
+Set `"absent": true` to assert that no matching latest hook event exists.
+
+#### `hook_events_count` — assert total persisted hook event count in fixture DB
+
+```json
+"hook_events_count": 2
+```
 
 ## Common patterns
 
@@ -226,7 +245,9 @@ test/
 
 The fixture runner intercepts all tmux exports via `mock.module()`, recording `sendKeys`/`sendCommand` calls into a shared tap log. Each step gets its own slice of the log for step-scoped assertions. Stop events wait 2s (goal reminders use `setTimeout(1500ms)`); other events wait 50ms.
 
-## Existing fixtures (27)
+Within one fixture, steps now share a stable default session id per pane (and one shared id for no-pane flows) unless a step explicitly overrides `session_id` or `sessionId`. True overlap/concurrency is still better expressed in dedicated unit tests using `MockHook.concurrent()`; JSON fixtures remain best for deterministic replay sequences.
+
+## Existing fixtures
 
 | Fixture | What it tests |
 |---------|---------------|
@@ -242,6 +263,8 @@ The fixture runner intercepts all tmux exports via `mock.module()`, recording `s
 | `session-id-canonicalization` | session_id in payload triggers canonicalization + reminder |
 | `permission-request` | PermissionRequest → auto-allow with suggestions |
 | `permission-no-suggestions` | PermissionRequest without suggestions |
+| `permission-then-stop-session-only` | No-pane PermissionRequest then no-pane Stop on the same session |
+| `session-only-permission-request-cwd-fallback` | No-pane permission request resolves by session + cwd fallback |
 | `user-prompt-submit-hint` | Hint fires on cadence |
 | `submit-no-hint` | Submit without hint set |
 | `submit-hint-not-on-cadence` | Submit before cadence → no hint |
@@ -251,9 +274,15 @@ The fixture runner intercepts all tmux exports via `mock.module()`, recording `s
 | `unknown-event-type` | Unknown event type → ok |
 | `event-field-fallback` | `event`/`eventName` field fallback |
 | `rapid-stop-submit` | Rapid Stop then Submit sequence |
+| `session-only-stop-cwd-fallback` | No-pane Stop resolves by session + cwd fallback |
+| `session-bound-pane-mismatch-uses-registered-target` | Bound session continues targeting the registered pane after a mismatched pane Stop |
+| `session-rebind-after-pane-mismatch` | Bound worker session still persists later no-pane Stop events on the same session |
+| `ambiguous-session-only-stop-ignored` | Ambiguous no-pane Stop is ignored instead of misrouting |
 | `multi-agent-room-stop` | Multi-agent room goal isolation |
 | `multi-agent-race-stop` | Concurrent Stop events across agents |
 | `multi-agent-hint-isolation` | Per-agent hint isolation |
 | `leader-worker-interleave` | Interleaved leader/worker events |
+| `leader-worker-submit-permission-stop-completion` | Worker submit → permission → stop sequence preserved on one replay timeline |
 | `multi-worker-rapid-submit` | Rapid submits across workers |
+| `multi-worker-staggered-completion` | Two workers submit and stop at different times with per-step completion effects |
 | `multi-agent-mixed-events` | Mixed Stop+Submit storm across agents |

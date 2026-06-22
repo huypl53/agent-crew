@@ -99,18 +99,25 @@ function parseManifest(rawText: string): {
     workers.push({ name, file });
   }
 
-  if (
-    data.hintAfterSeconds !== undefined &&
-    (!Number.isInteger(data.hintAfterSeconds) || data.hintAfterSeconds <= 0)
-  ) {
-    return { error: 'hintAfterSeconds must be a positive integer' };
+  const rawHintAfterSeconds = data.hintAfterSeconds;
+  if (rawHintAfterSeconds !== undefined && rawHintAfterSeconds !== null) {
+    if (
+      typeof rawHintAfterSeconds !== 'number' ||
+      !Number.isInteger(rawHintAfterSeconds) ||
+      rawHintAfterSeconds <= 0
+    ) {
+      return { error: 'hintAfterSeconds must be a positive integer' };
+    }
   }
+
+  const hintAfterSeconds =
+    typeof rawHintAfterSeconds === 'number' ? rawHintAfterSeconds : undefined;
 
   return {
     value: {
       leader,
       workers,
-      hintAfterSeconds: data.hintAfterSeconds as number | undefined,
+      hintAfterSeconds,
     },
   };
 }
@@ -204,7 +211,13 @@ export async function handleSendBatch(
     return err(senderContext.error);
   }
 
-  const { sender, room: roomObj } = senderContext.value!;
+  const senderValue = senderContext.value;
+  if (!senderValue) {
+    return err('Failed to resolve sender context');
+  }
+
+  const sender = senderValue.sender;
+  const roomObj = senderValue.room;
   if (sender.role !== 'leader') {
     return err('Batch dispatch requires a leader sender');
   }

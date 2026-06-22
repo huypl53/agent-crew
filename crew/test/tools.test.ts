@@ -87,7 +87,7 @@ describe('MCP tools', () => {
         tmux_target: testPaneA,
       });
       expect(result.isError).toBeUndefined();
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.name).toBe('leader-1');
       expect(data.role).toBe('leader');
       expect(data.room).toBe('company');
@@ -100,7 +100,7 @@ describe('MCP tools', () => {
         tmux_target: testPaneA,
       });
       expect(result.isError).toBeUndefined();
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.name).toMatch(/^worker-[a-z]+-[a-z]+$/);
     });
 
@@ -112,7 +112,7 @@ describe('MCP tools', () => {
         tmux_target: testPaneA,
       });
       expect(result.isError).toBeUndefined();
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.name).toMatch(/^worker-[a-z]+-[a-z]+$/);
     });
 
@@ -130,7 +130,7 @@ describe('MCP tools', () => {
         tmux_target: testPaneA,
       });
       expect(result.isError).toBeUndefined();
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.name).toBe('agent-x');
       expect(data.role).toBe('leader');
     });
@@ -151,7 +151,7 @@ describe('MCP tools', () => {
           tmux_target: testPaneB,
         });
         expect(result.isError).toBeUndefined();
-        const data = JSON.parse(result.content[0]?.text);
+        const data = JSON.parse(result.content[0]!.text);
         expect(data.name).toMatch(/^leader-1-[a-z0-9]{4}$/);
       },
     );
@@ -205,7 +205,7 @@ describe('MCP tools', () => {
         room: 'company',
         name: 'leader-1',
       });
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.success).toBe(true);
     });
 
@@ -239,7 +239,7 @@ describe('MCP tools', () => {
         tmux_target: testPaneB,
       });
       const result = await handleListRooms();
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.rooms.length).toBe(1);
       expect(data.rooms[0].name).toBe('company');
       expect(data.rooms[0].member_count).toBe(2);
@@ -256,7 +256,7 @@ describe('MCP tools', () => {
         tmux_target: testPaneA,
       });
       const result = await handleListMembers({ room: 'company' });
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.members.length).toBe(1);
       expect(data.members[0].name).toBe('leader-1');
       expect(data.members[0].input_block_mode).toBe('off');
@@ -287,7 +287,7 @@ describe('MCP tools', () => {
       );
 
       const result = await handleListMembers({ room: 'company' });
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.members[0].status).toBe('busy');
       expect(data.members[0].input_block_mode).toBe('persist');
     });
@@ -392,6 +392,54 @@ describe('MCP tools', () => {
       expect(readData.messages[0].from).toBe('lead-1');
     });
 
+    test.serial('sender endpoint mismatch logs or errors by policy', async () => {
+      await handleJoinRoom({
+        room: 'frontend',
+        role: 'leader',
+        name: 'lead-1',
+        tmux_target: testPaneA,
+      });
+      await handleJoinRoom({
+        room: 'frontend',
+        role: 'worker',
+        name: 'builder-1',
+        tmux_target: testPaneB,
+      });
+
+      process.env.TMUX_PANE = testPaneB;
+      const originalWarn = console.warn;
+      const warnings: string[] = [];
+      console.warn = (...args: unknown[]) => {
+        warnings.push(args.map((arg) => String(arg)).join(' '));
+      };
+
+      try {
+        config.senderVerification = 'log';
+        const logResult = await handleSendMessage({
+          room: 'frontend',
+          text: 'Build the login page',
+          to: 'builder-1',
+          name: 'lead-1',
+        });
+        expect(logResult.isError).toBeUndefined();
+        expect(warnings.some((warning) => warning.includes('Sender mismatch'))).toBe(true);
+
+        config.senderVerification = 'enforce';
+        const enforceResult = await handleSendMessage({
+          room: 'frontend',
+          text: 'Build the login page',
+          to: 'builder-1',
+          name: 'lead-1',
+        });
+        expect(enforceResult.isError).toBe(true);
+        const enforceData = JSON.parse(enforceResult.content[0]!.text);
+        expect(enforceData.error).toContain('Sender mismatch');
+      } finally {
+        console.warn = originalWarn;
+        config.senderVerification = 'off';
+      }
+    });
+
     test.serial(
       'read_messages returns no messages when input block is active',
       async () => {
@@ -464,7 +512,7 @@ describe('MCP tools', () => {
         to: 'lead-1',
         name: 'builder-1',
       } as any);
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.queued).toBe(true);
       expect(data.delivered).toBe(true);
     });
@@ -576,7 +624,7 @@ describe('MCP tools', () => {
       });
 
       const result = await handleReadMessages({ name: 'a', room: 'r1' });
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.messages.length).toBe(1);
       expect(data.messages[0].room_id).toBeDefined();
     });
@@ -610,14 +658,14 @@ describe('MCP tools', () => {
           name: 'lead-1',
           room: 'frontend',
         });
-        const data = JSON.parse(result.content[0]?.text);
+        const data = JSON.parse(result.content[0]!.text);
         expect(data.messages.length).toBe(0);
 
         const workerResult = await handleReadMessages({
           name: 'w1',
           room: 'frontend',
         });
-        const workerData = JSON.parse(workerResult.content[0]?.text);
+        const workerData = JSON.parse(workerResult.content[0]!.text);
         expect(workerData.messages.length).toBe(1);
         expect(workerData.messages[0].text).toBe('build login');
       },
@@ -675,7 +723,7 @@ describe('MCP tools', () => {
         to: 'builder-1',
         name: 'lead-1',
       });
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.message_id).toBeDefined();
       expect(data.task_id).toBeUndefined();
     });
@@ -732,7 +780,7 @@ describe('MCP tools', () => {
         text: 'Hello team',
         name: 'lead',
       } as any);
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.broadcast).toBe(true);
       expect(data.recipients).toBe(3);
       expect(data.queued).toBe(3);
@@ -919,7 +967,7 @@ describe('MCP tools', () => {
         name: 'lead-1',
       });
       expect(result.isError).toBeUndefined();
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.topic).toBe('Build auth system');
 
       // Verify it shows in list_members
@@ -1016,7 +1064,7 @@ describe('MCP tools', () => {
         name: 'w1',
         tmux_target: testPaneB,
       });
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.name).toBe('w1');
       expect(data.room).toBe('r');
       expect(data.tmux_target).toMatch(/^%\d+$/);
@@ -1039,7 +1087,7 @@ describe('MCP tools', () => {
         name: 'lead',
         tmux_target: testPaneB,
       });
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.room).toBe('r1');
     });
 
@@ -1093,7 +1141,7 @@ describe('MCP tools', () => {
           name: 'lead-1',
         });
         expect(result.isError).toBeUndefined();
-        const data = JSON.parse(result.content[0]?.text);
+        const data = JSON.parse(result.content[0]!.text);
         expect(data.interrupted).toBe(true);
       },
       15_000,
@@ -1169,7 +1217,7 @@ describe('MCP tools', () => {
           room: 'test-room',
           name: 'lead-01',
         });
-        const data = JSON.parse(result.content[0]?.text);
+        const data = JSON.parse(result.content[0]!.text);
         if (result.isError) {
           expect(data.error).toMatch(/no longer exists|pane/i);
           return;
@@ -1303,7 +1351,7 @@ describe('MCP tools', () => {
           name: 'lead-1',
         });
         expect(result.isError).toBeUndefined();
-        const data = JSON.parse(result.content[0]?.text);
+        const data = JSON.parse(result.content[0]!.text);
         expect(data.reassigned).toBe(true);
       },
       15000,
@@ -1331,7 +1379,7 @@ describe('MCP tools', () => {
           text: 'Build signup instead',
           name: 'lead-1',
         });
-        const data = JSON.parse(result.content[0]?.text);
+        const data = JSON.parse(result.content[0]!.text);
         expect(data.reassigned).toBe(true);
       },
       15000,
@@ -1357,7 +1405,7 @@ describe('MCP tools', () => {
         text: 'Build login',
         name: 'lead-1',
       });
-      const data = JSON.parse(result.content[0]?.text);
+      const data = JSON.parse(result.content[0]!.text);
       expect(data.reassigned).toBe(true);
     });
 
@@ -1394,12 +1442,12 @@ describe('MCP tools', () => {
 
         class MockStdin extends Readable {
           isTTY = true;
-          _read() {}
+          override _read() {}
         }
         class MockStdout extends Writable {
           isTTY = true;
           output: string[] = [];
-          _write(chunk: any, encoding: any, callback: any) {
+          override _write(chunk: any, encoding: any, callback: any) {
             this.output.push(chunk.toString());
             callback();
           }
@@ -1420,12 +1468,12 @@ describe('MCP tools', () => {
 
       class MockStdin extends Readable {
         isTTY = true;
-        _read() {}
+        override _read() {}
       }
       class MockStdout extends Writable {
         isTTY = true;
         output: string[] = [];
-        _write(chunk: any, encoding: any, callback: any) {
+        override _write(chunk: any, encoding: any, callback: any) {
           this.output.push(chunk.toString());
           callback();
         }
@@ -1449,7 +1497,7 @@ describe('MCP tools', () => {
       class MockStdin extends Readable {
         isTTY = true;
         rawModeEnabled = false;
-        _read() {}
+        override _read() {}
         setRawMode(mode: boolean) {
           this.rawModeEnabled = mode;
           return this;
@@ -1462,7 +1510,7 @@ describe('MCP tools', () => {
       class MockStdout extends Writable {
         isTTY = true;
         output: string[] = [];
-        _write(chunk: any, encoding: any, callback: any) {
+        override _write(chunk: any, encoding: any, callback: any) {
           this.output.push(chunk.toString());
           callback();
         }
@@ -1521,7 +1569,7 @@ describe('MCP tools', () => {
       class MockStdin extends Readable {
         isTTY = true;
         rawModeEnabled = false;
-        _read() {}
+        override _read() {}
         setRawMode(mode: boolean) {
           this.rawModeEnabled = mode;
           return this;
@@ -1534,7 +1582,7 @@ describe('MCP tools', () => {
       class MockStdout extends Writable {
         isTTY = true;
         output: string[] = [];
-        _write(chunk: any, encoding: any, callback: any) {
+        override _write(chunk: any, encoding: any, callback: any) {
           this.output.push(chunk.toString());
           callback();
         }
@@ -1587,7 +1635,7 @@ describe('MCP tools', () => {
       class MockStdin extends Readable {
         isTTY = true;
         rawModeEnabled = false;
-        _read() {}
+        override _read() {}
         setRawMode(mode: boolean) {
           this.rawModeEnabled = mode;
           return this;
@@ -1600,7 +1648,7 @@ describe('MCP tools', () => {
       class MockStdout extends Writable {
         isTTY = true;
         output: string[] = [];
-        _write(chunk: any, encoding: any, callback: any) {
+        override _write(chunk: any, encoding: any, callback: any) {
           this.output.push(chunk.toString());
           callback();
         }
@@ -1664,7 +1712,7 @@ describe('MCP tools', () => {
       class MockStdin extends Readable {
         isTTY = true;
         rawModeEnabled = false;
-        _read() {}
+        override _read() {}
         setRawMode(mode: boolean) {
           this.rawModeEnabled = mode;
           return this;
@@ -1677,7 +1725,7 @@ describe('MCP tools', () => {
       class MockStdout extends Writable {
         isTTY = true;
         output: string[] = [];
-        _write(chunk: any, encoding: any, callback: any) {
+        override _write(chunk: any, encoding: any, callback: any) {
           this.output.push(chunk.toString());
           callback();
         }
@@ -1796,6 +1844,94 @@ describe('MCP tools', () => {
       expect(result.isError).toBe(true);
       const data = JSON.parse(result.content[0]!.text);
       expect(data.error).toContain('No registered agent found for session ID');
+    });
+
+    test.serial('reuses the initial pane probe for self json typing state', async () => {
+      const toolUrl = new URL('../src/tools/get-status.ts', import.meta.url).href;
+      const paneStatusUrl = new URL('../src/shared/pane-status.ts', import.meta.url)
+        .href;
+      const tmuxUrl = new URL('../src/tmux/index.ts', import.meta.url).href;
+      const stateDbUrl = new URL('../src/state/db.ts', import.meta.url).href;
+      const stateIndexUrl = new URL('../src/state/index.ts', import.meta.url).href;
+
+      const script = `
+        import { mock } from 'bun:test';
+
+        let getPaneStatusCalls = 0;
+        mock.module(${JSON.stringify(paneStatusUrl)}, () => ({
+          getPaneStatus: async () => {
+            getPaneStatusCalls += 1;
+            return {
+              status: 'busy',
+              contentChanged: false,
+              typingActive: true,
+              inputChars: 12,
+            };
+          },
+        }));
+
+        mock.module(${JSON.stringify(tmuxUrl)}, () => ({
+          paneCommandLooksAlive: async () => true,
+          isPaneDead: async () => false,
+          paneExists: async () => true,
+          capturePane: async () => '',
+          capturePaneTail: async () => '',
+          capturePaneWithAnsi: async () => '',
+          getPaneCwd: async () => null,
+          getPaneCurrentCommand: async () => 'node',
+          getPaneSessionName: async () => null,
+          sendKeys: async () => ({ delivered: true }),
+          sendCommand: async () => ({ delivered: true }),
+          sendEscape: async () => ({ delivered: true }),
+          sendSigint: async () => ({ delivered: true }),
+          sendClear: async () => ({ delivered: true }),
+          sendKey: async () => ({ delivered: true }),
+          sendKeyHex: async () => ({ delivered: true }),
+        }));
+
+        const { initDb, closeDb } = await import(${JSON.stringify(stateDbUrl)});
+        const { addAgent, getOrCreateRoom } = await import(${JSON.stringify(
+          stateIndexUrl,
+        )});
+        const { handleGetStatus } = await import(${JSON.stringify(toolUrl)});
+
+        initDb(':memory:');
+        const room = getOrCreateRoom('/test/status-json', 'status-json');
+        addAgent('self-json-worker', 'worker', room.id, '%20', 'claude-code');
+        process.env.TMUX_PANE = '%20';
+
+        const result = await handleGetStatus({ self: true, json: true });
+        console.log(
+          JSON.stringify({
+            getPaneStatusCalls,
+            payload: JSON.parse(result.content[0].text),
+          }),
+        );
+
+        delete process.env.TMUX_PANE;
+        closeDb();
+      `;
+
+      const proc = Bun.spawn(['bun', '-e', script], {
+        cwd: new URL('..', import.meta.url).pathname,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+
+      const exitCode = await proc.exited;
+      const stdout = await new Response(proc.stdout).text();
+      const stderr = await new Response(proc.stderr).text();
+
+      if (exitCode !== 0) {
+        throw new Error(
+          `probe failed with exit ${exitCode}\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+        );
+      }
+
+      const data = JSON.parse(stdout.trim());
+      expect(data.getPaneStatusCalls).toBe(1);
+      expect(data.payload.status).toBe('busy');
+      expect(data.payload.typing_active).toBe(true);
     });
   });
 });

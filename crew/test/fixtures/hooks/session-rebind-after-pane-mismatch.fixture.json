@@ -1,0 +1,79 @@
+{
+  "name": "session-rebind-after-pane-mismatch",
+  "description": "After a worker session is bound, a later no-pane Stop on the same session still resolves to the registered worker target",
+  "tags": ["scenario", "session-binding", "session-only", "fallback"],
+  "seed": {
+    "room": {
+      "name": "alpha",
+      "path": "/tmp/crew-alpha"
+    },
+    "agents": [
+      {
+        "name": "worker-1",
+        "pane": "%11",
+        "role": "worker"
+      }
+    ],
+    "goals": [
+      {
+        "agent": "worker-1",
+        "description": "Stay bound to the registered pane"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "Stop",
+      "pane": "%11",
+      "payload": {
+        "session_id": "sess-worker-1"
+      },
+      "delay": 0,
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "Stop",
+          "session_id": "sess-worker-1"
+        },
+        "tmux": [
+          {
+            "op": "sendKeys",
+            "target": "%11",
+            "contains": "(turn 1)"
+          }
+        ]
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": null,
+      "payload": {
+        "session_id": "sess-worker-1",
+        "cwd": "/tmp/crew-alpha/jobs/worker-1",
+        "message": "completed after pane mismatch"
+      },
+      "delay": 700,
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "Stop",
+          "session_id": "sess-worker-1",
+          "payload_contains": "completed after pane mismatch"
+        },
+        "tmux_absent": [
+          {
+            "op": "sendKeys",
+            "target": "%11",
+            "contains": "(turn 2)"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,127 @@
+{
+  "name": "multi-worker-staggered-completion",
+  "description": "Two workers submit and stop at different times; replay preserves per-step worker events and leader-targeted stop effects",
+  "tags": ["scenario", "multi-worker", "timeline", "completion"],
+  "seed": {
+    "room": {
+      "name": "alpha",
+      "path": "/tmp/crew-alpha"
+    },
+    "agents": [
+      {
+        "name": "leader-1",
+        "pane": "%10",
+        "role": "leader"
+      },
+      {
+        "name": "worker-1",
+        "pane": "%11",
+        "role": "worker"
+      },
+      {
+        "name": "worker-2",
+        "pane": "%12",
+        "role": "worker"
+      }
+    ],
+    "goals": [
+      {
+        "agent": "leader-1",
+        "description": "Track both worker completions",
+        "armed": true
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%11",
+      "payload": {
+        "session_id": "sess-worker-1"
+      },
+      "delay": 0,
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "UserPromptSubmit",
+          "session_id": "sess-worker-1"
+        }
+      }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%12",
+      "payload": {
+        "session_id": "sess-worker-2"
+      },
+      "delay": 150,
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "hook_event": {
+          "agent": "worker-2",
+          "event": "UserPromptSubmit",
+          "session_id": "sess-worker-2"
+        }
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": "%11",
+      "payload": {
+        "session_id": "sess-worker-1",
+        "message": "worker one done"
+      },
+      "delay": 900,
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "Stop",
+          "session_id": "sess-worker-1",
+          "payload_contains": "worker one done"
+        },
+        "tmux": [
+          {
+            "op": "sendKeys",
+            "target": "%10",
+            "contains": "worker one done"
+          }
+        ]
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": "%12",
+      "payload": {
+        "session_id": "sess-worker-2",
+        "message": "worker two done"
+      },
+      "delay": 1200,
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "hook_event": {
+          "agent": "worker-2",
+          "event": "Stop",
+          "session_id": "sess-worker-2",
+          "payload_contains": "worker two done"
+        },
+        "tmux": [
+          {
+            "op": "sendKeys",
+            "target": "%10",
+            "contains": "worker two done"
+          }
+        ]
+      }
+    }
+  ]
+}

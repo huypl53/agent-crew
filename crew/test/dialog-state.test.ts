@@ -70,7 +70,8 @@ describe('leader dialog state', () => {
       expect(d.answered_at).toBeNull();
       expect(d.current_question_index).toBe(0);
       expect(d.question_answers).toEqual([]);
-      expect(d.questions?.[0].options.map((o) => o.label)).toEqual([
+      const firstQuestion = d.questions?.[0];
+      expect(firstQuestion?.options.map((o) => o.label)).toEqual([
         'Red',
         'Green',
         'Blue',
@@ -254,7 +255,8 @@ describe('leader dialog state', () => {
       });
 
       expect(listPendingDialogs(room.id)).toHaveLength(1);
-      expect(listPendingDialogs(room.id)[0].id).not.toBe(d.id);
+      const pendingDialog = listPendingDialogs(room.id)[0];
+      expect(pendingDialog?.id).not.toBe(d.id);
     });
   });
 

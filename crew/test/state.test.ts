@@ -9,6 +9,7 @@ import {
   clearState,
   completeGoal,
   getAgent,
+  getAgentBySessionId,
   getAllRooms,
   getChangeVersions,
   getCursor,
@@ -31,9 +32,11 @@ import {
   tickHintCadence,
   unsetGoal,
   unsetHint,
+  upsertAgentSessionBinding,
   upsertPricing,
   validateLiveness,
 } from '../src/state/index.ts';
+import { processHookEventInput } from '../src/tools/hook-event.ts';
 
 function mkRoom(name: string) {
   return getOrCreateRoom(`/test/${name}`, name);
@@ -76,6 +79,17 @@ describe('state module', () => {
       removeAgent('lead-1', 'frontend');
       const agent = getAgent('lead-1');
       expect(agent?.room_name).toBe('company');
+    });
+
+    test('getAgentBySessionId fails closed when binding room agent is gone', () => {
+      const roomA = mkRoom('company');
+      const roomB = mkRoom('frontend');
+      const boundAgent = addAgent('shared-name', 'worker', roomA.id, '%101');
+      addAgent('shared-name', 'worker', roomB.id, '%102');
+      upsertAgentSessionBinding('sess-shared', roomA.id, boundAgent.name, boundAgent.tmux_target);
+      removeAgent('shared-name', 'company');
+      const resolved = getAgentBySessionId('sess-shared');
+      expect(resolved).toBeUndefined();
     });
   });
 
@@ -950,7 +964,38 @@ describe('state module', () => {
       const msgs = getRoomMessages('no-dedup-test');
       const completions = msgs.filter((m: any) => m.to === null);
       expect(completions.length).toBe(1);
-      expect(completions[0].text).toContain('Finished work!');
+      expect(completions[0]?.text).toContain('Finished work!');
+    });
+
+    test('Codex Stop with turn_id routes completion to leader', async () => {
+      const room = mkRoom('codex-turn-id');
+      addAgent('lead-codex', 'leader', room.id, '%930', 'claude-code');
+      addAgent('worker-codex', 'worker', room.id, '%931', 'codex');
+
+      addHookEvent('worker-codex', 'UserPromptSubmit', 'codex-turn-1', 'work');
+      const input = JSON.stringify({
+        hook_event_name: 'Stop',
+        turn_id: 'codex-turn-1',
+        cwd: '/test/codex-turn-id/jobs/task-1',
+        last_assistant_message: 'Codex worker final answer',
+      });
+
+      const result = await processHookEventInput(input, undefined);
+      const data = JSON.parse(result.content[0]!.text);
+      expect(data.ok).toBe(true);
+      expect(data.decision).toBe('allow');
+
+      const latest = getAgentBySessionId('codex-turn-1');
+      expect(latest?.name).toBe('worker-codex');
+
+      const messages = getRoomMessages('codex-turn-id');
+      const completions = messages.filter((m: any) => m.to === null);
+      expect(completions).toHaveLength(1);
+      expect(completions[0]?.from).toBe('worker-codex');
+      expect(completions[0]?.text).toContain('Codex worker final answer');
+
+      // The actual leader delivery path is verified in the fixture replay
+      // harness where tmux sendKeys calls are observable.
     });
 
     test('Stop event without last_assistant_message still sends fallback completion', () => {
@@ -988,8 +1033,8 @@ describe('state module', () => {
       );
       expect(completions.length).toBe(1);
       // Full text stored — tail marker survives the notifyMaxChars boundary
-      expect(completions[0].text).toContain('UNIQUE_TAIL_MARKER_PAST_5000');
-      expect(completions[0].text.length).toBe(longResponse.length);
+      expect(completions[0]?.text).toContain('UNIQUE_TAIL_MARKER_PAST_5000');
+      expect(completions[0]?.text.length).toBe(longResponse.length);
     });
 
     test('Stop hook suppresses completion while worker goal is active and allows next Stop after goal done', async () => {
@@ -1032,7 +1077,7 @@ describe('state module', () => {
         (m: any) => m.to === null,
       );
       expect(completions).toHaveLength(1);
-      expect(completions[0].text).toContain('Delivered after goal done');
+      expect(completions[0]?.text).toContain('Delivered after goal done');
 
       addHookEvent(
         'w4',
@@ -1087,7 +1132,7 @@ describe('state module', () => {
         (m: any) => m.to === null,
       );
       expect(completions).toHaveLength(1);
-      expect(completions[0].text).toContain('Delivered after unset');
+      expect(completions[0]?.text).toContain('Delivered after unset');
     });
 
     test('Stop hook sends completion when previous turn completion exists but new turn started', async () => {
@@ -1100,8 +1145,8 @@ describe('state module', () => {
       addMessage('lead-3', 'w3', 'multi-turn-test', 'Done 1', 'lead-3');
       addHookEvent('w3', 'Stop', 's1', '{"last_assistant_message":"Done 1"}');
 
-      // Wait 1s so Turn 2's UserPromptSubmit has a later timestamp
-      await Bun.sleep(1100);
+      // Wait long enough so Turn 2's UserPromptSubmit is later than Turn 1
+      await Bun.sleep(1600);
 
       // Turn 2: new prompt → old completion should NOT block new notification
       addHookEvent('w3', 'UserPromptSubmit', 's2', 'task 2');

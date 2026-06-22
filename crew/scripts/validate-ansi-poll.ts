@@ -8,13 +8,14 @@
  * Watch this while changing Claude Code's state to see which hashes change.
  */
 
-const target = process.argv[2];
+const paneArg = process.argv[2];
 const interval = parseInt(process.argv[3] || '1000', 10);
 
-if (!target) {
+if (!paneArg) {
   console.error('Usage: bun crew/scripts/validate-ansi-poll.ts <pane-id> [interval-ms]');
   process.exit(1);
 }
+const paneTarget: string = paneArg;
 
 function simpleHash(str: string): number {
   let hash = 0;
@@ -28,7 +29,7 @@ function simpleHash(str: string): number {
 
 async function capturePane(withAnsi: boolean, lines?: number): Promise<string | null> {
   try {
-    const args = ['tmux', 'capture-pane', '-t', target, '-p'];
+    const args: string[] = ['tmux', 'capture-pane', '-t', paneTarget, '-p'];
     if (withAnsi) args.push('-e');
     if (lines) args.push('-S', String(-lines));
     const proc = Bun.spawn(args, { stdout: 'pipe', stderr: 'pipe' });
@@ -115,7 +116,7 @@ async function poll() {
   prevState = state;
 }
 
-console.log(`Polling pane ${target} every ${interval}ms. Press Ctrl+C to stop.\n`);
+console.log(`Polling pane ${paneTarget} every ${interval}ms. Press Ctrl+C to stop.\n`);
 console.log('Legend: . = no change, CHANGES = what changed\n');
 
 setInterval(poll, interval);

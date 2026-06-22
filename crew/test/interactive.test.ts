@@ -5,7 +5,7 @@ import { selectMultiple, selectOne } from '../src/cli/interactive.ts';
 class MockStdin extends Readable {
   isTTY = true;
   rawModeEnabled = false;
-  _read() {}
+  override _read() {}
   setRawMode(mode: boolean) {
     this.rawModeEnabled = mode;
     return this;
@@ -18,7 +18,7 @@ class MockStdin extends Readable {
 class MockStdout extends Writable {
   isTTY = true;
   output: string[] = [];
-  _write(
+  override _write(
     chunk: string | Buffer | Uint8Array,
     _encoding: string,
     callback: () => void,

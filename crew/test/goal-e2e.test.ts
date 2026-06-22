@@ -30,8 +30,8 @@ async function runCli(
   }
   const out = await new Response(proc.stdout).text();
   const err = await new Response(proc.stderr).text();
-  await proc.exited;
-  return { out, err, exitCode: proc.exitCode };
+  const exitCode = await proc.exited;
+  return { out, err, exitCode };
 }
 
 /** Simulate a hook event (UserPromptSubmit or Stop) for a registered agent. */

@@ -25,14 +25,16 @@ describe('extractDialogFromPermission', () => {
     expect(ex).not.toBeNull();
     expect(ex!.dialogType).toBe('ask_question');
     expect(ex!.toolName).toBe('AskUserQuestion');
-    expect(ex!.questions?.[0].question).toBe('Pick a color');
-    expect(ex!.questions?.[0].header).toBe('Color');
-    expect(ex!.questions?.[0].multiSelect).toBe(false);
-    expect(ex!.questions?.[0].options.map((o) => o.label)).toEqual([
+    const firstQuestion = ex!.questions?.[0];
+    expect(firstQuestion).toBeDefined();
+    expect(firstQuestion?.question).toBe('Pick a color');
+    expect(firstQuestion?.header).toBe('Color');
+    expect(firstQuestion?.multiSelect).toBe(false);
+    expect(firstQuestion?.options.map((o) => o.label)).toEqual([
       'Red',
       'Green',
     ]);
-    expect(ex!.questions?.[0].options[1].description).toBe('eco');
+    expect(firstQuestion?.options[1]?.description).toBe('eco');
   });
 
   test('identifies ExitPlanMode as plan approval', () => {
