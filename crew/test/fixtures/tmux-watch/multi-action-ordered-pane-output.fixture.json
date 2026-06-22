@@ -1,0 +1,52 @@
+{
+  "name": "multi-action-ordered-pane-output",
+  "description": "Live tmux-watch fixture proves multiple trigger actions land in pane output in the expected order on the isolated socket",
+  "tags": ["tmux-watch", "ordered", "multi-action"],
+  "setup": {
+    "panes": [
+      {
+        "name": "target",
+        "command": "cat",
+        "settleMs": 100
+      }
+    ]
+  },
+  "trigger": {
+    "actions": [
+      {
+        "type": "tmux-send-keys",
+        "pane": "target",
+        "text": "FIRST-LIVE-MARKER"
+      },
+      {
+        "type": "send-text",
+        "pane": "target",
+        "text": "SECOND-LIVE-MARKER"
+      },
+      {
+        "type": "tmux-send-keys",
+        "pane": "target",
+        "text": "THIRD-LIVE-MARKER"
+      }
+    ]
+  },
+  "watch": {
+    "pane": "target",
+    "contains": "THIRD-LIVE-MARKER",
+    "timeoutMs": 4000
+  },
+  "expect": {
+    "timedOut": false,
+    "settleMs": 200,
+    "finalCaptureContains": [
+      "FIRST-LIVE-MARKER",
+      "SECOND-LIVE-MARKER",
+      "THIRD-LIVE-MARKER"
+    ],
+    "finalCaptureOrdered": [
+      "FIRST-LIVE-MARKER",
+      "SECOND-LIVE-MARKER",
+      "THIRD-LIVE-MARKER"
+    ]
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "name": "leader-worker-two-stage-completion-delivery",
+  "description": "Two workers stop in sequence; replay shows each completion reaching the leader in staged replay without claiming strict delivery ordering or full all-done gating semantics",
+  "tags": ["scenario", "leader-worker", "timeline", "completion"],
+  "seed": {
+    "room": {
+      "name": "alpha",
+      "path": "/tmp/leader-worker-two-stage"
+    },
+    "agents": [
+      {
+        "name": "leader-1",
+        "pane": "%90",
+        "role": "leader"
+      },
+      {
+        "name": "worker-1",
+        "pane": "%91",
+        "role": "worker"
+      },
+      {
+        "name": "worker-2",
+        "pane": "%92",
+        "role": "worker"
+      }
+    ],
+    "goals": [
+      {
+        "agent": "leader-1",
+        "description": "Review both worker completions",
+        "armed": true
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%91",
+      "payload": {
+        "session_id": "two-stage-worker-1"
+      },
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "UserPromptSubmit",
+          "session_id": "two-stage-worker-1"
+        }
+      }
+    },
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%92",
+      "payload": {
+        "session_id": "two-stage-worker-2"
+      },
+      "delay": 150,
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "hook_event": {
+          "agent": "worker-2",
+          "event": "UserPromptSubmit",
+          "session_id": "two-stage-worker-2"
+        }
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": "%91",
+      "payload": {
+        "session_id": "two-stage-worker-1",
+        "message": "worker one complete"
+      },
+      "delay": 900,
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "Stop",
+          "session_id": "two-stage-worker-1",
+          "payload_contains": "worker one complete"
+        },
+        "tmux": [
+          {
+            "op": "sendKeys",
+            "target": "%90",
+            "contains": "worker one complete"
+          }
+        ],
+        "tmux_absent": [
+          {
+            "op": "sendKeys",
+            "target": "%90",
+            "contains": "Review both worker completions"
+          }
+        ]
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": "%92",
+      "payload": {
+        "session_id": "two-stage-worker-2",
+        "message": "worker two complete"
+      },
+      "delay": 1200,
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "hook_event": {
+          "agent": "worker-2",
+          "event": "Stop",
+          "session_id": "two-stage-worker-2",
+          "payload_contains": "worker two complete"
+        },
+        "hook_events_count": 4,
+        "tmux": [
+          {
+            "op": "sendKeys",
+            "target": "%90",
+            "contains": "worker two complete"
+          }
+        ],
+        "tmux_absent": [
+          {
+            "op": "sendKeys",
+            "target": "%90",
+            "contains": "Review both worker completions"
+          }
+        ]
+      }
+    }
+  ]
+}

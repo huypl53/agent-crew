@@ -1,0 +1,86 @@
+{
+  "name": "session-only-stop-no-misroute-after-binding",
+  "description": "After a worker session is bound on-pane, a later no-pane Stop on the same session persists against that worker and does not misroute to a sibling worker",
+  "tags": ["scenario", "session-binding", "session-only", "no-misroute"],
+  "seed": {
+    "room": {
+      "name": "alpha",
+      "path": "/tmp/session-only-no-misroute"
+    },
+    "agents": [
+      {
+        "name": "worker-1",
+        "pane": "%101",
+        "role": "worker"
+      },
+      {
+        "name": "worker-2",
+        "pane": "%102",
+        "role": "worker"
+      }
+    ],
+    "goals": [
+      {
+        "agent": "worker-1",
+        "description": "Stay mapped to the original session"
+      },
+      {
+        "agent": "worker-2",
+        "description": "Do not receive worker-1 stop events"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%101",
+      "payload": {
+        "session_id": "bound-session-1"
+      },
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "UserPromptSubmit",
+          "session_id": "bound-session-1"
+        },
+        "hook_events_count": 1
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": null,
+      "payload": {
+        "session_id": "bound-session-1",
+        "cwd": "/tmp/session-only-no-misroute/jobs/worker-1",
+        "message": "bound worker finished after pane loss"
+      },
+      "delay": 600,
+      "expect": {
+        "stdout": {
+          "ok": true,
+          "decision": "allow"
+        },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "Stop",
+          "session_id": "bound-session-1",
+          "payload_contains": "bound worker finished after pane loss"
+        },
+        "hook_events_count": 2,
+        "tmux_absent": [
+          {
+            "op": "sendKeys",
+            "target": "%101"
+          },
+          {
+            "op": "sendKeys",
+            "target": "%102"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -6,8 +6,6 @@ import { err, generateRandomName, ok, randomSuffix } from "../shared/types.ts";
 import {
   detectAgentRuntimeFromPane,
   inferAgentTypeFromProcesses,
-  getRuntimeCommandPrefix,
-  resolveAgentRuntime,
 } from "../shared/hook-runtime.ts";
 import {
   addAgent,
@@ -140,8 +138,6 @@ export async function handleJoinRoom(
   try {
     if (target) {
       const { getQueue } = await import("../delivery/pane-queue.ts");
-      const runtime = await resolveAgentRuntime(agentType, target);
-      // const commandPrefix = getRuntimeCommandPrefix(runtime);
       await getQueue(target, { role: role as AgentRole }).enqueue({
         type: "command",
         text: `/rename ${name}@${roomObj.name}`,

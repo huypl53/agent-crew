@@ -3,10 +3,6 @@ import { assertRole } from "../shared/role-guard.ts";
 import type { ToolResult } from "../shared/types.ts";
 import { err, ok } from "../shared/types.ts";
 import { getAgent } from "../state/index.ts";
-import {
-  getRuntimeCommandPrefix,
-  resolveAgentRuntime,
-} from "../shared/hook-runtime.ts";
 
 interface ClearWorkerSessionParams {
   worker_name: string;
@@ -47,17 +43,10 @@ export async function handleClearWorkerSession(
     return err(`Worker "${worker_name}" has no tmux target`);
   }
 
-  const workerRuntime = await resolveAgentRuntime(
-    worker.agent_type,
-    worker.tmux_target,
-  );
-  const commandPrefix = getRuntimeCommandPrefix(workerRuntime);
-
   // Step 1: Send clear to the worker's pane
   try {
     await getQueue(worker.tmux_target).enqueue({
       type: "command",
-      // text: `${commandPrefix}clear`,
       text: `/clear`,
     });
   } catch (e) {
@@ -67,11 +56,13 @@ export async function handleClearWorkerSession(
   // Step 2: Wait 2 seconds for CC to process /clear
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
-  // Step 3: Send refresh command to re-register the worker
+  // Step 3: Send refresh command to re-register the worker.
+  // CLI subcommand → use `crew-command` queue type (emits `!crew refresh …` + BSpace
+  // to exit bang mode). `!` is the CLI-command prefix for both Claude Code and Codex.
   try {
     await getQueue(worker.tmux_target).enqueue({
-      type: "command",
-      text: `${commandPrefix}crew refresh --name ${worker_name}`,
+      type: "crew-command",
+      text: `refresh --name ${worker_name}`,
     });
   } catch (e) {
     return err(e instanceof Error ? e.message : String(e));

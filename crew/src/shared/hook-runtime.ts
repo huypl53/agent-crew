@@ -7,7 +7,15 @@ export interface ProcessInfo {
 
 type HookEventCandidate = unknown;
 
-const COMMAND_PREFIX_BY_RUNTIME: Record<AgentRuntime, '$' | '/'> = {
+/**
+ * Prefix for SKILL/prompt invocations only (e.g. `crew:leader`, `crew:worker`).
+ * Claude Code uses `/`, Codex uses `$`.
+ *
+ * This is NOT the prefix for the two other command categories:
+ *  - built-in REPL commands (`/clear`, `/compact`, `/rename`) → always `/` in every runtime
+ *  - CLI subcommands (`crew refresh`, `crew goal done`) → always `!` (see `crew-command` queue type)
+ */
+const SKILL_PREFIX_BY_RUNTIME: Record<AgentRuntime, '$' | '/'> = {
   'claude-code': '/',
   codex: '$',
   unknown: '/',
@@ -141,8 +149,8 @@ export function extractHookCompletionMessage(payload: string | null): string {
   return '';
 }
 
-export function getRuntimeCommandPrefix(runtime: AgentRuntime): '$' | '/' {
-  return COMMAND_PREFIX_BY_RUNTIME[runtime] ?? '/';
+export function getRuntimeSkillPrefix(runtime: AgentRuntime): '$' | '/' {
+  return SKILL_PREFIX_BY_RUNTIME[runtime] ?? '/';
 }
 
 function getTmuxSocketArgs(): string[] {

@@ -1,3 +1,7 @@
+import { closeDb, initDb } from '../../src/state/db.ts';
+import { processHookEventInput } from '../../src/tools/hook-event.ts';
+import { handleInputBlock } from '../../src/tools/input-block.ts';
+import { handleJoinRoom } from '../../src/tools/join-room.ts';
 import { sendCommand, sendKeys } from '../../src/tmux/index.ts';
 import {
   captureFromPane,
@@ -17,7 +21,36 @@ interface WatchFixturePane {
 type TriggerAction =
   | { type: 'send-text'; pane: string; text: string }
   | { type: 'tmux-send-keys'; pane: string; text: string }
-  | { type: 'tmux-send-command'; pane: string; text: string };
+  | { type: 'tmux-send-command'; pane: string; text: string }
+  | {
+      type: 'crew-join-room';
+      pane: string;
+      role: string;
+      room: string;
+      name?: string;
+    }
+  | {
+      type: 'crew-input-block';
+      name: string;
+      subcommand?: string;
+      persist?: boolean;
+    }
+  | {
+      type: 'crew-hook-event';
+      pane?: string;
+      payload?: Record<string, unknown>;
+      rawInput?: string;
+    }
+  | { type: 'capture-pane'; pane: string };
+
+interface ActionResultExpectation {
+  index: number;
+  path: string;
+  equals?: unknown;
+  min?: number;
+  contains?: string;
+  absent?: string;
+}
 
 interface WatchFixture {
   name: string;
@@ -41,6 +74,7 @@ interface WatchFixture {
     finalCaptureContains?: string[];
     finalCaptureAbsent?: string[];
     finalCaptureOrdered?: string[];
+    actionResults?: ActionResultExpectation[];
   };
 }
 
@@ -78,6 +112,8 @@ export async function runTmuxWatchFixture(
   const paneTargets = new Map<string, string>();
 
   try {
+    initDb(':memory:');
+
     for (const paneDef of fixture.setup.panes) {
       const created = await createTestSession(paneDef.name);
       paneTargets.set(paneDef.name, created.pane);
@@ -89,7 +125,7 @@ export async function runTmuxWatchFixture(
       }
     }
 
-    const watchTarget = paneTargets.get(fixture.watch.pane);
+    const watchTarget = resolvePaneTarget(paneTargets, fixture.watch.pane);
     if (!watchTarget) {
       failures.push({
         check: 'watch.pane',
@@ -105,14 +141,20 @@ export async function runTmuxWatchFixture(
         ? new RegExp(fixture.watch.matches)
         : watchPattern ?? '';
 
+    let actionResults: unknown[] = [];
+    let actionsPromise: Promise<unknown[]> | null = null;
     const watchResult = await waitForPaneOutput(
       watchTarget,
       watchRegex,
       fixture.watch.timeoutMs ?? 5000,
       async () => {
-        await runActions(fixture.trigger.actions, paneTargets);
+        actionsPromise = runActions(fixture.trigger.actions, paneTargets);
+        actionResults = await actionsPromise;
       },
     );
+    if (actionsPromise) {
+      actionResults = await actionsPromise;
+    }
 
     const expectedTimeout = fixture.expect?.timedOut === true;
     if (expectedTimeout) {
@@ -129,6 +171,44 @@ export async function runTmuxWatchFixture(
         expected: fixture.watch.contains ?? fixture.watch.matches,
         actual: watchResult.seen,
       });
+    }
+
+    for (const check of fixture.expect?.actionResults ?? []) {
+      const actual = getByPath(actionResults[check.index], check.path);
+      if (check.equals !== undefined && !deepEqual(actual, check.equals)) {
+        failures.push({
+          check: `actionResults[${check.index}].${check.path}`,
+          expected: check.equals,
+          actual,
+        });
+      }
+      if (check.min !== undefined) {
+        if (typeof actual !== 'number' || actual < check.min) {
+          failures.push({
+            check: `actionResults[${check.index}].${check.path}`,
+            expected: `>= ${check.min}`,
+            actual,
+          });
+        }
+      }
+      if (check.contains !== undefined) {
+        if (typeof actual !== 'string' || !actual.includes(check.contains)) {
+          failures.push({
+            check: `actionResults[${check.index}].${check.path}`,
+            expected: `contains ${check.contains}`,
+            actual,
+          });
+        }
+      }
+      if (check.absent !== undefined) {
+        if (typeof actual === 'string' && actual.includes(check.absent)) {
+          failures.push({
+            check: `actionResults[${check.index}].${check.path}`,
+            expected: `not containing ${check.absent}`,
+            actual,
+          });
+        }
+      }
     }
 
     const settleMs = fixture.expect?.settleMs ?? 150;
@@ -168,6 +248,11 @@ export async function runTmuxWatchFixture(
     }
   } finally {
     await cleanupAllTestSessions().catch(() => {});
+    try {
+      closeDb();
+    } catch {
+      // Already closed.
+    }
   }
 
   return { name: fixture.name, passed: failures.length === 0, failures };
@@ -220,30 +305,69 @@ export function printTmuxWatchResults(results: WatchFixtureResult[]): {
 async function runActions(
   actions: TriggerAction[],
   paneTargets: Map<string, string>,
-): Promise<void> {
+): Promise<unknown[]> {
+  const results: unknown[] = [];
+
   for (const action of actions) {
-    const target = paneTargets.get(action.pane);
-    if (!target) {
-      throw new Error(`Unknown pane in trigger action: ${action.pane}`);
+    if (action.type === 'crew-input-block') {
+      results.push(await parseToolResult(handleInputBlock(action)));
+      continue;
+    }
+
+    const paneRef = 'pane' in action && action.pane ? action.pane : undefined;
+    const target = paneRef ? resolvePaneTarget(paneTargets, paneRef) : undefined;
+    if (paneRef && !target) {
+      throw new Error(`Unknown pane in trigger action: ${paneRef}`);
     }
 
     if (action.type === 'send-text') {
-      await sendToPane(target, action.text);
+      await sendToPane(target!, action.text);
+      results.push({ delivered: true, type: action.type, pane: target });
       continue;
     }
     if (action.type === 'tmux-send-keys') {
-      const result = await sendKeys(target, action.text);
+      const result = await sendKeys(target!, action.text);
       if (!result.delivered) {
         throw new Error(result.error ?? `sendKeys failed for ${action.pane}`);
       }
+      results.push(result);
+      continue;
+    }
+    if (action.type === 'tmux-send-command') {
+      const result = await sendCommand(target!, action.text);
+      if (!result.delivered) {
+        throw new Error(result.error ?? `sendCommand failed for ${action.pane}`);
+      }
+      results.push(result);
+      continue;
+    }
+    if (action.type === 'crew-join-room') {
+      results.push(
+        await parseToolResult(
+          handleJoinRoom({
+            room: action.room,
+            role: action.role,
+            name: action.name,
+            tmux_target: target,
+          }),
+        ),
+      );
+      continue;
+    }
+    if (action.type === 'crew-hook-event') {
+      const input = action.rawInput ?? JSON.stringify(action.payload ?? {});
+      results.push(await parseToolResult(processHookEventInput(input, target)));
+      continue;
+    }
+    if (action.type === 'capture-pane') {
+      results.push({ pane: target, capture: await captureFromPane(target!) });
       continue;
     }
 
-    const result = await sendCommand(target, action.text);
-    if (!result.delivered) {
-      throw new Error(result.error ?? `sendCommand failed for ${action.pane}`);
-    }
+    throw new Error(`Unsupported trigger action: ${(action as { type: string }).type}`);
   }
+
+  return results;
 }
 
 function validateWatchFixture(fixture: WatchFixture): string | null {
@@ -269,4 +393,42 @@ function validateWatchFixture(fixture: WatchFixture): string | null {
     return 'fixture.watch must include contains or matches';
   }
   return null;
+}
+
+function resolvePaneTarget(
+  paneTargets: Map<string, string>,
+  paneRef: string,
+): string | undefined {
+  return paneTargets.get(paneRef) ?? (paneRef.startsWith('%') ? paneRef : undefined);
+}
+
+async function parseToolResult(
+  resultPromise: Promise<{ content: Array<{ text: string }>; isError?: boolean }>,
+): Promise<unknown> {
+  const result = await resultPromise;
+  const text = result.content[0]?.text ?? '{}';
+  const parsed = JSON.parse(text) as Record<string, unknown>;
+  if (result.isError === true) {
+    throw new Error(
+      typeof parsed.error === 'string' ? parsed.error : `crew action failed: ${text}`,
+    );
+  }
+  if (typeof parsed.error === 'string' && parsed.error.length > 0) {
+    throw new Error(parsed.error);
+  }
+  return parsed;
+}
+
+function getByPath(value: unknown, path: string): unknown {
+  return path.split('.').reduce<unknown>((current, segment) => {
+    if (!segment) return current;
+    if (current && typeof current === 'object' && segment in current) {
+      return (current as Record<string, unknown>)[segment];
+    }
+    return undefined;
+  }, value);
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }

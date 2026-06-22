@@ -1,0 +1,36 @@
+{
+  "name": "eventname-turnid-camelcase-ambiguous-stop-ignored",
+  "description": "A raw no-pane Stop using eventName plus camelCase turnId stays unresolved when cwd fallback matches multiple workers",
+  "tags": ["ambiguity", "eventname", "turnid", "fallback"],
+  "seed": {
+    "room": { "name": "shared-room", "path": "/tmp/eventname-turnid-ambiguous" },
+    "agents": [
+      { "name": "worker-a", "pane": "%161", "role": "worker" },
+      { "name": "worker-b", "pane": "%162", "role": "worker" }
+    ]
+  },
+  "steps": [
+    {
+      "event": "__skip__",
+      "pane": null,
+      "payload": {
+        "event": "Stop",
+        "__raw_input__": "{\"eventName\":\"Stop\",\"turnId\":\"ambiguous-camel-turn-1\",\"cwd\":\"/tmp/eventname-turnid-ambiguous/jobs\"}"
+      },
+      "expect": {
+        "stdout": { "ok": true, "decision": "allow" },
+        "hook_events_count": 0,
+        "hook_event": {
+          "agent": "worker-a",
+          "event": "Stop",
+          "session_id": "ambiguous-camel-turn-1",
+          "absent": true
+        },
+        "tmux_absent": [
+          { "op": "sendKeys", "target": "%161" },
+          { "op": "sendKeys", "target": "%162" }
+        ]
+      }
+    }
+  ]
+}

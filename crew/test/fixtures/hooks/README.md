@@ -245,7 +245,7 @@ test/
 
 The fixture runner intercepts all tmux exports via `mock.module()`, recording `sendKeys`/`sendCommand` calls into a shared tap log. Each step gets its own slice of the log for step-scoped assertions. Stop events wait 2s (goal reminders use `setTimeout(1500ms)`); other events wait 50ms.
 
-Within one fixture, steps now share a stable default session id per pane (and one shared id for no-pane flows) unless a step explicitly overrides `session_id` or `sessionId`. True overlap/concurrency is still better expressed in dedicated unit tests using `MockHook.concurrent()`; JSON fixtures remain best for deterministic replay sequences.
+Within one fixture, steps now share a stable default session id per pane (and one shared id for no-pane flows) unless a step explicitly overrides `session_id`, or fully replaces the payload via raw `__raw_input__`. A plain fixture `payload.sessionId` does not override the harness-injected `session_id`. True overlap/concurrency is still better expressed in dedicated unit tests using `MockHook.concurrent()`; JSON fixtures remain best for deterministic replay sequences.
 
 ## Existing fixtures
 
@@ -261,8 +261,10 @@ Within one fixture, steps now share a stable default session id per pane (and on
 | `stop-worker-turn-count` | Turn count increments on Stop |
 | `same-agent-rapid-stop` | Two rapid Stops on same agent → turn 1, turn 2 |
 | `session-id-canonicalization` | session_id in payload triggers canonicalization + reminder |
+| `session-id-camelcase-canonicalization` | raw payloads using camelCase sessionId still canonicalize and stay bound to the registered pane |
 | `permission-request` | PermissionRequest → auto-allow with suggestions |
 | `permission-no-suggestions` | PermissionRequest without suggestions |
+| `eventname-sessionid-camelcase-permission-request` | Raw no-pane PermissionRequest using eventName + camelCase sessionId still resolves and persists correctly |
 | `permission-then-stop-session-only` | No-pane PermissionRequest then no-pane Stop on the same session |
 | `session-only-permission-request-cwd-fallback` | No-pane permission request resolves by session + cwd fallback |
 | `user-prompt-submit-hint` | Hint fires on cadence |
@@ -273,11 +275,14 @@ Within one fixture, steps now share a stable default session id per pane (and on
 | `unknown-pane` | Unknown pane → ok (no agent found) |
 | `unknown-event-type` | Unknown event type → ok |
 | `event-field-fallback` | `event`/`eventName` field fallback |
+| `eventname-turnid-camelcase-stop-delivery` | Raw no-pane eventName + camelCase turnId payloads still associate the Stop with the same worker and deliver it to the leader |
+| `eventname-turnid-camelcase-ambiguous-stop-ignored` | Raw no-pane eventName + camelCase turnId Stop is ignored when cwd fallback is ambiguous |
 | `rapid-stop-submit` | Rapid Stop then Submit sequence |
 | `session-only-stop-cwd-fallback` | No-pane Stop resolves by session + cwd fallback |
 | `session-bound-pane-mismatch-uses-registered-target` | Bound session continues targeting the registered pane after a mismatched pane Stop |
 | `session-rebind-after-pane-mismatch` | Bound worker session still persists later no-pane Stop events on the same session |
 | `ambiguous-session-only-stop-ignored` | Ambiguous no-pane Stop is ignored instead of misrouting |
+| `ambiguous-session-only-permission-request-ignored` | Ambiguous no-pane PermissionRequest is ignored instead of persisting against the wrong worker |
 | `multi-agent-room-stop` | Multi-agent room goal isolation |
 | `multi-agent-race-stop` | Concurrent Stop events across agents |
 | `multi-agent-hint-isolation` | Per-agent hint isolation |
@@ -285,4 +290,8 @@ Within one fixture, steps now share a stable default session id per pane (and on
 | `leader-worker-submit-permission-stop-completion` | Worker submit → permission → stop sequence preserved on one replay timeline |
 | `multi-worker-rapid-submit` | Rapid submits across workers |
 | `multi-worker-staggered-completion` | Two workers submit and stop at different times with per-step completion effects |
+| `permission-between-submit-and-stop` | One worker session stays bound across submit → permission → stop on a single replay timeline |
+| `leader-worker-two-stage-completion-delivery` | Two workers stop in sequence and each completion reaches the leader in staged replay without claiming strict delivery ordering |
+| `session-only-stop-no-misroute-after-binding` | A pane-bound worker session later stops without pane context and still resolves to the bound worker |
+| `session-id-precedence-over-turn-id` | When both session_id and turn_id exist, replay binds against session_id and leaves the stale turn_id unresolved |
 | `multi-agent-mixed-events` | Mixed Stop+Submit storm across agents |

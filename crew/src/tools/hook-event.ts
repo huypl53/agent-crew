@@ -4,7 +4,7 @@ import { flushPushQueueForAgent } from "../delivery/index.ts";
 import type { Agent, ToolResult } from "../shared/types.ts";
 import { ok } from "../shared/types.ts";
 import {
-  getRuntimeCommandPrefix,
+  getRuntimeSkillPrefix,
   resolveHookEventName,
   resolveAgentRuntime,
 } from "../shared/hook-runtime.ts";
@@ -347,7 +347,7 @@ export async function processHookEventInput(
         // Re-check goal state before sending in case it changed while waiting.
         setTimeout(async () => {
           try {
-            const commandPrefix = getRuntimeCommandPrefix(
+            const skillPrefix = getRuntimeSkillPrefix(
               await resolveAgentRuntime(agent.agent_type, agent.tmux_target),
             );
             const latestGoal = getGoalByAgent(agent.name, agent.room_id);
@@ -357,11 +357,13 @@ export async function processHookEventInput(
               latestGoal.description.length > 500
                 ? latestGoal.description.slice(0, 497) + "…"
                 : latestGoal.description;
+            // `crew:leader`/`crew:worker` are SKILL invocations → runtime prefix ($ for codex).
+            // `crew goal done`/`crew goal unset` are CLI subcommands → `!` prefix (both runtimes).
             const latestReminder = `🎯 Goal: ${latestDesc} (turn ${latestGoal.turn_count})\n✅ If done, ${
               agent.role === "leader"
-                ? `${commandPrefix}crew:leader`
-                : `${commandPrefix}crew:worker`
-            } run command: ${commandPrefix}crew goal done\n❌ If unreachable, run command: ${commandPrefix}crew goal unset\n📝 Edit: crew goal update "new description"`;
+                ? `${skillPrefix}crew:leader`
+                : `${skillPrefix}crew:worker`
+            } run command: !crew goal done\n❌ If unreachable, run command: !crew goal unset\n📝 Edit: crew goal update "new description"`;
 
             await sendKeys(agent.tmux_target!, latestReminder).catch(() => {});
           } catch {

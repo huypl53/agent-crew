@@ -74,9 +74,16 @@ fixture JSONs are best for deterministic replay sequences.
   `%output` lines — more reliable than polling `capture-pane`. Prefer it for new
   tests; pass the triggering action in `onReady` (fires after `%end`) to avoid a
   startup race.
+- `test/lib/tmux-watch-runner.ts` powers JSON fixtures in
+  `test/fixtures/tmux-watch/*.fixture.json`. In addition to plain tmux text
+  triggers, it now has a deliberately tiny set of crew-aware actions:
+  `crew-join-room`, `crew-input-block`, and `crew-hook-event`.
+  It also has a runner utility, `capture-pane`, for mid-sequence absence checks.
+  Keep that surface narrow; it is there to prove live runtime contracts, not to
+  become a second generic tool API.
 - Used by `test/send-batch.test.ts`, `test/block-unblock-flush.test.ts`,
   `test/input-block-unblock-flush.test.ts`, `test/pane-queue-bootstrap.test.ts`,
-  and similar.
+  `test/tmux-watch.test.ts`, and similar.
 
 **Boundary:** real-tmux tests are inherently timing-sensitive (polling /
 control-mode / `Bun.sleep`). Keep timeouts generous, prefer event-driven waits

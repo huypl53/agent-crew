@@ -1,0 +1,38 @@
+{
+  "name": "timeout-when-pattern-never-appears",
+  "description": "Live tmux-watch fixture proves timeout expectations and final-capture absence checks work when the watched pattern never appears",
+  "tags": ["tmux-watch", "timeout", "negative"],
+  "setup": {
+    "panes": [
+      {
+        "name": "target",
+        "command": "cat",
+        "settleMs": 100
+      }
+    ]
+  },
+  "trigger": {
+    "actions": [
+      {
+        "type": "tmux-send-keys",
+        "pane": "target",
+        "text": "ONLY-THIS-LINE-APPEARS"
+      }
+    ]
+  },
+  "watch": {
+    "pane": "target",
+    "contains": "NEVER-SHOWS-UP",
+    "timeoutMs": 1200
+  },
+  "expect": {
+    "timedOut": true,
+    "settleMs": 150,
+    "finalCaptureContains": [
+      "ONLY-THIS-LINE-APPEARS"
+    ],
+    "finalCaptureAbsent": [
+      "NEVER-SHOWS-UP"
+    ]
+  }
+}

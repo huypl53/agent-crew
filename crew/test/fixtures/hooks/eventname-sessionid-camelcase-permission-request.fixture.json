@@ -1,0 +1,37 @@
+{
+  "name": "eventname-sessionid-camelcase-permission-request",
+  "description": "A raw no-pane PermissionRequest using eventName plus camelCase sessionId still resolves by cwd fallback and persists the permission hook event",
+  "tags": ["fallback", "eventname", "sessionid", "permission"],
+  "seed": {
+    "room": { "name": "codex-room", "path": "/tmp/eventname-sessionid-room" },
+    "agents": [
+      { "name": "worker-1", "pane": "%151", "role": "worker" }
+    ]
+  },
+  "steps": [
+    {
+      "event": "__skip__",
+      "pane": null,
+      "payload": {
+        "__raw_input__": "{\"eventName\":\"PermissionRequest\",\"sessionId\":\"camel-permission-1\",\"cwd\":\"/tmp/eventname-sessionid-room/jobs/task-1\",\"tool_name\":\"Bash\"}"
+      },
+      "expect": {
+        "stdout": { "ok": true },
+        "stdout_path": [
+          { "path": "hookSpecificOutput.hookEventName", "value": "PermissionRequest" },
+          { "path": "hookSpecificOutput.decision.behavior", "value": "allow" }
+        ],
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "PermissionRequest",
+          "session_id": "camel-permission-1",
+          "payload_contains": "camel-permission-1"
+        },
+        "hook_events_count": 1,
+        "tmux_absent": [
+          { "op": "sendKeys", "target": "%151" }
+        ]
+      }
+    }
+  ]
+}

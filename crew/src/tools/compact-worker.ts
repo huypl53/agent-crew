@@ -3,10 +3,6 @@ import { assertRole } from '../shared/role-guard.ts';
 import type { ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
 import { getAgent } from '../state/index.ts';
-import {
-  getRuntimeCommandPrefix,
-  resolveAgentRuntime,
-} from '../shared/hook-runtime.ts';
 
 interface CompactWorkerParams {
   worker_name: string;
@@ -48,14 +44,7 @@ export async function handleCompactWorker(
     return err(`Worker "${worker_name}" has no tmux target`);
   }
 
-  const runtime = await resolveAgentRuntime(
-    worker.agent_type,
-    worker.tmux_target,
-  );
-  const commandPrefix = getRuntimeCommandPrefix(runtime);
-  const commandText = message
-    ? `${commandPrefix}compact ${message}`
-    : `${commandPrefix}compact`;
+  const commandText = message ? `/compact ${message}` : `/compact`;
   try {
     await getQueue(worker.tmux_target).enqueue({
       type: 'command',

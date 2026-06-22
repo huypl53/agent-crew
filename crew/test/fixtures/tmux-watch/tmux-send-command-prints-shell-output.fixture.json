@@ -1,0 +1,33 @@
+{
+  "name": "tmux-send-command-prints-shell-output",
+  "description": "Live tmux-watch fixture proves tmux sendCommand can execute a shell command whose emitted marker becomes watchable pane output",
+  "tags": ["tmux-watch", "command", "shell-output"],
+  "setup": {
+    "panes": [
+      {
+        "name": "target",
+        "settleMs": 100
+      }
+    ]
+  },
+  "trigger": {
+    "actions": [
+      {
+        "type": "tmux-send-command",
+        "pane": "target",
+        "text": "printf '\\124\\115\\125\\130-\\103\\117\\115\\115\\101\\116\\104-\\117\\113\\n'"
+      }
+    ]
+  },
+  "watch": {
+    "pane": "target",
+    "contains": "TMUX-COMMAND-OK",
+    "timeoutMs": 4000
+  },
+  "expect": {
+    "timedOut": false,
+    "finalCaptureContains": [
+      "TMUX-COMMAND-OK"
+    ]
+  }
+}

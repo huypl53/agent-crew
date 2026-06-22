@@ -1,0 +1,90 @@
+{
+  "name": "session-id-precedence-over-turn-id",
+  "description": "When both session_id and turn_id are present, replay binds and persists against session_id instead of the fallback turn_id value",
+  "tags": ["canonicalization", "precedence", "session-id", "turn-id"],
+  "seed": {
+    "room": {
+      "name": "dev",
+      "path": "/tmp/session-id-precedence"
+    },
+    "agents": [
+      {
+        "name": "worker-1",
+        "pane": "%131",
+        "role": "worker"
+      }
+    ],
+    "goals": [
+      {
+        "agent": "worker-1",
+        "description": "Prefer session_id over turn_id"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "__skip__",
+      "pane": "%131",
+      "payload": {
+        "event": "Stop",
+        "__raw_input__": "{\"hook_event_name\":\"Stop\",\"session_id\":\"primary-session-1\",\"turn_id\":\"stale-turn-1\"}"
+      },
+      "expect": {
+        "stdout": {
+          "ok": true,
+          "decision": "allow"
+        },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "Stop",
+          "session_id": "primary-session-1"
+        },
+        "hook_events_count": 1,
+        "tmux": [
+          {
+            "op": "sendKeys",
+            "target": "%131",
+            "contains": "Prefer session_id over turn_id"
+          },
+          {
+            "op": "sendKeys",
+            "target": "%131",
+            "contains": "(turn 1)"
+          }
+        ]
+      }
+    },
+    {
+      "event": "__skip__",
+      "pane": "%999",
+      "payload": {
+        "event": "Stop",
+        "__raw_input__": "{\"hook_event_name\":\"Stop\",\"turn_id\":\"stale-turn-1\"}"
+      },
+      "expect": {
+        "stdout": {
+          "ok": true,
+          "decision": "allow"
+        },
+        "hook_events_count": 1,
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "Stop",
+          "session_id": "stale-turn-1",
+          "absent": true
+        },
+        "tmux_absent": [
+          {
+            "op": "sendKeys",
+            "target": "%131",
+            "contains": "(turn 2)"
+          },
+          {
+            "op": "sendKeys",
+            "target": "%999"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "name": "blocked-stop-flush-after-unblock",
+  "description": "Live tmux-watch fixture proves a worker Stop completion stays queued while the leader is blocked and flushes only after explicit unblock",
+  "tags": ["tmux-watch", "blocked", "flush", "runtime"],
+  "setup": {
+    "panes": [
+      {
+        "name": "leader",
+        "settleMs": 100
+      },
+      {
+        "name": "worker",
+        "settleMs": 100
+      }
+    ]
+  },
+  "trigger": {
+    "actions": [
+      {
+        "type": "crew-join-room",
+        "pane": "leader",
+        "role": "leader",
+        "room": "company",
+        "name": "leader-1"
+      },
+      {
+        "type": "crew-join-room",
+        "pane": "worker",
+        "role": "worker",
+        "room": "company",
+        "name": "worker-1"
+      },
+      {
+        "type": "crew-input-block",
+        "name": "leader-1",
+        "subcommand": "block",
+        "persist": true
+      },
+      {
+        "type": "crew-hook-event",
+        "pane": "worker",
+        "payload": {
+          "hook_event_name": "Stop",
+          "session_id": "blocked-stop-session-1",
+          "last_assistant_message": "BLOCKED-STOP-COMPLETION"
+        }
+      },
+      {
+        "type": "capture-pane",
+        "pane": "leader"
+      },
+      {
+        "type": "send-text",
+        "pane": "leader",
+        "text": "UNBLOCK-MARKER"
+      },
+      {
+        "type": "crew-input-block",
+        "name": "leader-1",
+        "subcommand": "off"
+      }
+    ]
+  },
+  "watch": {
+    "pane": "leader",
+    "contains": "BLOCKED-STOP-COMPLETION",
+    "timeoutMs": 5000
+  },
+  "expect": {
+    "timedOut": false,
+    "settleMs": 1000,
+    "actionResults": [
+      {
+        "index": 2,
+        "path": "input_block_mode",
+        "equals": "persist"
+      },
+      {
+        "index": 4,
+        "path": "capture",
+        "absent": "BLOCKED-STOP-COMPLETION"
+      },
+      {
+        "index": 6,
+        "path": "input_block_mode",
+        "equals": "off"
+      },
+      {
+        "index": 6,
+        "path": "flushed_messages",
+        "min": 1
+      }
+    ],
+    "finalCaptureContains": [
+      "UNBLOCK-MARKER",
+      "BLOCKED-STOP-COMPLETION"
+    ],
+    "finalCaptureOrdered": [
+      "UNBLOCK-MARKER",
+      "BLOCKED-STOP-COMPLETION"
+    ]
+  }
+}

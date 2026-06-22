@@ -1,0 +1,62 @@
+{
+  "name": "eventname-turnid-camelcase-stop-delivery",
+  "description": "Raw no-pane payloads using eventName plus camelCase turnId still associate the Stop with the same worker and deliver the final stop message to the leader",
+  "tags": ["fallback", "eventname", "turnid", "codex"],
+  "seed": {
+    "room": { "name": "codex-room", "path": "/tmp/eventname-turnid-room" },
+    "agents": [
+      { "name": "leader-1", "pane": "%141", "role": "leader" },
+      { "name": "worker-1", "pane": "%142", "role": "worker" }
+    ]
+  },
+  "steps": [
+    {
+      "event": "__skip__",
+      "pane": null,
+      "payload": {
+        "__raw_input__": "{\"eventName\":\"UserPromptSubmit\",\"turnId\":\"camel-turn-42\",\"cwd\":\"/tmp/eventname-turnid-room/jobs/task-42\"}"
+      },
+      "expect": {
+        "stdout": { "ok": true, "decision": "allow" },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "UserPromptSubmit",
+          "session_id": "camel-turn-42"
+        },
+        "hook_events_count": 1
+      }
+    },
+    {
+      "event": "__skip__",
+      "pane": null,
+      "payload": {
+        "event": "Stop",
+        "__raw_input__": "{\"eventName\":\"Stop\",\"turnId\":\"camel-turn-42\",\"cwd\":\"/tmp/eventname-turnid-room/jobs/task-42\",\"last_assistant_message\":\"Camel turnId final answer\"}"
+      },
+      "expect": {
+        "stdout": { "ok": true, "decision": "allow" },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "Stop",
+          "session_id": "camel-turn-42",
+          "payload_contains": "Camel turnId final answer"
+        },
+        "hook_events_count": 2,
+        "tmux": [
+          {
+            "op": "sendKeys",
+            "target": "%141",
+            "contains": "Camel turnId final answer"
+          }
+        ],
+        "tmux_absent": [
+          {
+            "op": "sendKeys",
+            "target": "%142",
+            "contains": "Camel turnId final answer"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "name": "permission-between-submit-and-stop",
+  "description": "One worker session submits, requests permission, then stops; replay preserves one pane-bound session chain and worker reminder behavior",
+  "tags": ["scenario", "permission", "submit", "stop"],
+  "seed": {
+    "room": {
+      "name": "alpha",
+      "path": "/tmp/permission-between-submit-stop"
+    },
+    "agents": [
+      {
+        "name": "worker-1",
+        "pane": "%81",
+        "role": "worker"
+      }
+    ],
+    "goals": [
+      {
+        "agent": "worker-1",
+        "description": "Finish the permission-guarded task"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "UserPromptSubmit",
+      "pane": "%81",
+      "payload": {
+        "session_id": "permission-chain-1"
+      },
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "UserPromptSubmit",
+          "session_id": "permission-chain-1"
+        },
+        "hook_events_count": 1
+      }
+    },
+    {
+      "event": "PermissionRequest",
+      "pane": "%81",
+      "payload": {
+        "session_id": "permission-chain-1",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "ls"
+        }
+      },
+      "delay": 250,
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "stdout_path": [
+          {
+            "path": "hookSpecificOutput.hookEventName",
+            "value": "PermissionRequest"
+          },
+          {
+            "path": "hookSpecificOutput.decision.behavior",
+            "value": "allow"
+          }
+        ],
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "PermissionRequest",
+          "session_id": "permission-chain-1"
+        },
+        "hook_events_count": 2
+      }
+    },
+    {
+      "event": "Stop",
+      "pane": "%81",
+      "payload": {
+        "session_id": "permission-chain-1",
+        "message": "permission chain complete"
+      },
+      "delay": 700,
+      "expect": {
+        "stdout": {
+          "ok": true
+        },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "Stop",
+          "session_id": "permission-chain-1",
+          "payload_contains": "permission chain complete"
+        },
+        "hook_events_count": 3,
+        "tmux": [
+          {
+            "op": "sendKeys",
+            "target": "%81",
+            "contains": "Finish the permission-guarded task"
+          }
+        ]
+      }
+    }
+  ]
+}

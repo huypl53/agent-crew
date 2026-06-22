@@ -1,0 +1,57 @@
+{
+  "name": "ambiguous-session-only-permission-request-ignored",
+  "description": "No-pane PermissionRequest stays unresolved when cwd fallback matches multiple workers in the same room path",
+  "tags": ["ambiguity", "permission", "session-only", "fallback"],
+  "seed": {
+    "room": {
+      "name": "shared-room",
+      "path": "/tmp/ambiguous-permission-room"
+    },
+    "agents": [
+      {
+        "name": "worker-a",
+        "pane": "%111",
+        "role": "worker"
+      },
+      {
+        "name": "worker-b",
+        "pane": "%112",
+        "role": "worker"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "PermissionRequest",
+      "pane": null,
+      "payload": {
+        "session_id": "ambiguous-permission-1",
+        "cwd": "/tmp/ambiguous-permission-room/jobs/task-1",
+        "tool_name": "Bash"
+      },
+      "expect": {
+        "stdout": {
+          "ok": true,
+          "decision": "allow"
+        },
+        "hook_events_count": 0,
+        "hook_event": {
+          "agent": "worker-a",
+          "event": "PermissionRequest",
+          "session_id": "ambiguous-permission-1",
+          "absent": true
+        },
+        "tmux_absent": [
+          {
+            "op": "sendKeys",
+            "target": "%111"
+          },
+          {
+            "op": "sendKeys",
+            "target": "%112"
+          }
+        ]
+      }
+    }
+  ]
+}

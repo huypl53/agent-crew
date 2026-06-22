@@ -1,0 +1,91 @@
+{
+  "name": "session-id-camelcase-canonicalization",
+  "description": "Raw payloads using camelCase sessionId still canonicalize a worker goal and keep later pane-mismatch Stop delivery bound to the registered tmux target",
+  "tags": ["canonicalization", "session-id", "pane-mismatch", "raw-input"],
+  "seed": {
+    "room": {
+      "name": "dev",
+      "path": "/tmp/sessionid-camelcase"
+    },
+    "agents": [
+      {
+        "name": "worker-1",
+        "pane": "%121",
+        "role": "worker"
+      }
+    ],
+    "goals": [
+      {
+        "agent": "worker-1",
+        "description": "Canonicalize from camelCase sessionId"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "event": "__skip__",
+      "pane": "%121",
+      "payload": {
+        "event": "Stop",
+        "__raw_input__": "{\"hook_event_name\":\"Stop\",\"sessionId\":\"camel-session-1\"}"
+      },
+      "expect": {
+        "stdout": {
+          "ok": true,
+          "decision": "allow"
+        },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "Stop",
+          "session_id": "camel-session-1"
+        },
+        "hook_events_count": 1,
+        "tmux": [
+          {
+            "op": "sendKeys",
+            "target": "%121",
+            "contains": "Canonicalize from camelCase sessionId"
+          },
+          {
+            "op": "sendKeys",
+            "target": "%121",
+            "contains": "(turn 1)"
+          }
+        ]
+      }
+    },
+    {
+      "event": "__skip__",
+      "pane": "%999",
+      "payload": {
+        "event": "Stop",
+        "__raw_input__": "{\"hook_event_name\":\"Stop\",\"sessionId\":\"camel-session-1\"}"
+      },
+      "expect": {
+        "stdout": {
+          "ok": true,
+          "decision": "allow"
+        },
+        "hook_event": {
+          "agent": "worker-1",
+          "event": "Stop",
+          "session_id": "camel-session-1"
+        },
+        "hook_events_count": 2,
+        "tmux": [
+          {
+            "op": "sendKeys",
+            "target": "%121",
+            "contains": "(turn 2)"
+          }
+        ],
+        "tmux_absent": [
+          {
+            "op": "sendKeys",
+            "target": "%999"
+          }
+        ]
+      }
+    }
+  ]
+}
