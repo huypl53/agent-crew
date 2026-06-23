@@ -20,10 +20,9 @@ interface HelpEntry {
   desc: string;
   /** additional usage lines shown below the first line */
   cont?: string[];
-  /** Roles that can see this command in help. Defaults to all. */
+  /** Roles allowed to run this command. Hidden only from a confirmed `worker`;
+   *  `leader`/`user` (unregistered) always see the full reference. */
   allowedRoles?: Array<'leader' | 'worker' | 'user'>;
-  /** Optional label shown in help when command has role restrictions */
-  hint?: string;
 }
 
 interface HelpGroup {
@@ -85,7 +84,6 @@ const HELP_GROUPS: HelpGroup[] = [
         usage: '--room <name> --manifest <path> --name <name>',
         desc: 'Send batch messages to workers',
         allowedRoles: ['leader'],
-        hint: 'leader',
       },
       {
         name: 'read',
@@ -144,21 +142,52 @@ const HELP_GROUPS: HelpGroup[] = [
         usage: '[--name <name>]',
         desc: 'Mute idle notifications (leader only)',
         allowedRoles: ['leader'],
-        hint: 'leader',
       },
       {
         name: 'unmute idle',
         usage: '[--name <name>]',
         desc: 'Unmute idle notifications',
         allowedRoles: ['leader'],
-        hint: 'leader',
       },
       {
         name: 'auto-self',
         usage: 'on|off [--name <leader>]',
         desc: 'Toggle auto --self on leader idle',
         allowedRoles: ['leader'],
-        hint: 'leader',
+      },
+    ],
+  },
+  {
+    heading: 'Party',
+    entries: [
+      {
+        name: 'party start',
+        usage: '--room <name> --topic <t> --name <leader>',
+        desc: 'Start a round-gated worker discussion',
+        allowedRoles: ['leader'],
+      },
+      {
+        name: 'party next',
+        usage: '--room <name> --topic <t> --name <leader>',
+        desc: 'Advance to next round (digests prev)',
+        allowedRoles: ['leader'],
+      },
+      {
+        name: 'party end',
+        usage: '--room <name> --name <leader>',
+        desc: 'End the active party',
+        allowedRoles: ['leader'],
+      },
+      {
+        name: 'party skip',
+        usage: '--room <name> --worker <w> --name <leader>',
+        desc: 'Skip a worker for this round',
+        allowedRoles: ['leader'],
+      },
+      {
+        name: 'party status',
+        usage: '[--room <name> | --name <agent>]',
+        desc: 'Show round, responses & pending',
       },
     ],
   },
@@ -222,14 +251,12 @@ const HELP_GROUPS: HelpGroup[] = [
         usage: '<worker> --pick N[,M] [--room <name>]',
         desc: 'Drive worker AskUserQuestion',
         allowedRoles: ['leader'],
-        hint: 'leader',
       },
       {
         name: 'dialog approve',
         usage: '<worker> [--room <name>]',
         desc: 'Approve worker plan (Enter)',
         allowedRoles: ['leader'],
-        hint: 'leader',
       },
     ],
   },
@@ -242,35 +269,30 @@ const HELP_GROUPS: HelpGroup[] = [
         desc: 'Inspect worker session transcript',
         cont: ['[--room <name>] [--turns N]'],
         allowedRoles: ['leader'],
-        hint: 'leader',
       },
       {
         name: 'interrupt',
         usage: '--worker <name> --room <name> [--name <name>]',
         desc: 'Interrupt worker',
         allowedRoles: ['leader'],
-        hint: 'leader',
       },
       {
         name: 'clear',
         usage: '--worker <name> --room <name> [--name <name>]',
         desc: 'Clear worker session',
         allowedRoles: ['leader'],
-        hint: 'leader',
       },
       {
         name: 'compact',
         usage: '--worker <name> --room <name> [message] [--name <name>]',
         desc: 'Compact worker context (send /compact)',
         allowedRoles: ['leader'],
-        hint: 'leader',
       },
       {
         name: 'reassign',
         usage: '--worker <name> --room <name> --text <t> [--name <name>]',
         desc: 'Replace current assignment',
         allowedRoles: ['leader'],
-        hint: 'leader',
       },
     ],
   },
@@ -292,17 +314,28 @@ const INDENT = 2;
 const NAME_WIDTH = 14; // fixed width for the command name column (including 1-space gap)
 const DESC_COL = 44; // column where descriptions start
 
+/**
+ * Visibility rule:
+ *  - open entries (no allowedRoles): visible to everyone
+ *  - role-restricted entries: hidden ONLY from a confirmed `worker`
+ *
+ * `user` (unregistered — e.g. exploring in a shell, or a leader in a fresh
+ * pane) sees the full reference so `crew help` is a complete discovery
+ * surface. Runtime role checks still gate the commands themselves, so a
+ * worker who glimpses a command cannot actually misuse it.
+ */
 function isEntryVisible(
   entry: HelpEntry,
   role: 'leader' | 'worker' | 'user',
 ): boolean {
-  if (!entry.allowedRoles || entry.allowedRoles.length === 0) {
-    return true;
-  }
+  if (!entry.allowedRoles || entry.allowedRoles.length === 0) return true;
+  if (role !== 'worker') return true;
   return entry.allowedRoles.includes(role);
 }
 
-export function formatHelp(role: 'leader' | 'worker' | 'user' = 'user'): string {
+export function formatHelp(
+  role: 'leader' | 'worker' | 'user' = 'user',
+): string {
   const lines: string[] = [];
   lines.push('crew - multi-agent coordination CLI');
   lines.push('');
@@ -319,15 +352,18 @@ export function formatHelp(role: 'leader' | 'worker' | 'user' = 'user'): string 
     lines.push(group.heading);
     for (const e of entries) {
       const pad = ' '.repeat(INDENT);
-      const hint = e.hint ? ` [${e.hint}]` : '';
 
       if (!e.usage) {
         // Command with no flags: name then description
-        const nameField = `${e.name}${hint}`.padEnd(DESC_COL - INDENT);
+        const nameField = e.name.padEnd(DESC_COL - INDENT);
         lines.push(`${pad}${nameField}${e.desc}`);
       } else {
-        // First line: name + usage
-        const nameField = `${e.name}${hint}`.padEnd(NAME_WIDTH - INDENT);
+        // First line: name + usage. Pad to the column, or to name+1
+        // (whichever larger) so a long name keeps a separating space
+        // before the usage flags (e.g. "polling busy <auto|...>").
+        const nameField = e.name.padEnd(
+          Math.max(NAME_WIDTH - INDENT, e.name.length + 1),
+        );
         const firstLine = `${pad}${nameField}${e.usage}`;
 
         if (firstLine.length + 2 <= DESC_COL) {
