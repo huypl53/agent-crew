@@ -81,6 +81,9 @@ fixture JSONs are best for deterministic replay sequences.
   It also has a runner utility, `capture-pane`, for mid-sequence absence checks.
   Keep that surface narrow; it is there to prove live runtime contracts, not to
   become a second generic tool API.
+- Current live proof point: `test/fixtures/tmux-watch/blocked-stop-flush-after-unblock.fixture.json`
+  joins real leader/worker panes, blocks the leader, injects a worker `Stop`
+  hook, then verifies completion stays queued until explicit unblock.
 - Used by `test/send-batch.test.ts`, `test/block-unblock-flush.test.ts`,
   `test/input-block-unblock-flush.test.ts`, `test/pane-queue-bootstrap.test.ts`,
   `test/tmux-watch.test.ts`, and similar.
