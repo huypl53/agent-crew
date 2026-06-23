@@ -1,6 +1,7 @@
 import { initDb } from '../state/db.ts';
 import {
   completeGoal,
+  clearGoalOutputs,
   flushGoalCompletionIfReady,
   getAgentByPane,
   getAgentByRoomAndName,
@@ -12,6 +13,7 @@ import {
   getRoomGoalOverview,
   setGoal,
   unsetGoal,
+  unpauseGoalReminder,
   updateGoalDescription,
 } from '../state/index.ts';
 import { logServer } from '../shared/server-log.ts';
@@ -164,10 +166,14 @@ export async function handleGoalUpdate(params: {
     return err(`No active goal found for ${target.agentName} in ${target.roomName}`);
   }
 
+  // New description = new context. Reset the stuck-detector window and resume
+  // reminders in case the loop was paused.
   const goal = getGoalByAgent(target.agentName, target.roomId);
   if (!goal) {
     return err(`Goal updated but could not reload the active goal for ${target.agentName} in ${target.roomName}`);
   }
+  clearGoalOutputs(goal.id);
+  unpauseGoalReminder(goal.id);
 
   return ok({
     ok: true,

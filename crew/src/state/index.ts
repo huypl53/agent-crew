@@ -66,6 +66,11 @@ import {
   tickGoalTurnCount,
   unsetGoal,
   updateGoalDescription,
+  recordAndEvaluateGoalStuck,
+  clearGoalOutputs,
+  isGoalReminderPaused,
+  pauseGoalReminder,
+  unpauseGoalReminder,
 } from './goal-state.ts';
 import {
   createLeaderDialog,
@@ -123,6 +128,11 @@ export {
   tickGoalTurnCount,
   unsetGoal,
   updateGoalDescription,
+  recordAndEvaluateGoalStuck,
+  clearGoalOutputs,
+  isGoalReminderPaused,
+  pauseGoalReminder,
+  unpauseGoalReminder,
 };
 
 // --- Helpers ---

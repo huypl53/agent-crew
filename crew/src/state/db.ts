@@ -561,6 +561,29 @@ export function initDb(path?: string): void {
       'ALTER TABLE agent_goals ADD COLUMN leader_reminder_armed INTEGER NOT NULL DEFAULT 0',
     );
   }
+  // Goal stuck-detector: when true, the goal reminder loop is paused after a
+  // tight near-identical output loop was detected. Goal stays `active`; the
+  // agent itself must run crew goal done/update/unset to resolve.
+  if (!goalCols.some((c) => c.name === 'reminder_paused')) {
+    _db.exec(
+      'ALTER TABLE agent_goals ADD COLUMN reminder_paused INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+
+  // Rolling window of recent completion-output hashes per active goal, used by
+  // the stuck detector. CASCADE-deleted with the goal row (unset/new set).
+  _db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_goal_recent_outputs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      goal_id INTEGER NOT NULL REFERENCES agent_goals(id) ON DELETE CASCADE,
+      message_hash TEXT NOT NULL,
+      ts_ms INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  _db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_goal_outputs_goal ON agent_goal_recent_outputs(goal_id, id)',
+  );
 
   const scopes = [
     'agents',

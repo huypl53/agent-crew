@@ -6,6 +6,11 @@ import {
   getRoomMembers,
 } from './index.ts';
 import { logServer } from '../shared/server-log.ts';
+import {
+  isGoalStuck,
+  STUCK_DEFAULTS,
+  type GoalOutputEntry,
+} from './goal-stuck.ts';
 
 // --- Types ---
 
@@ -26,6 +31,7 @@ export interface GoalRecord {
   pending_completion_message: string | null;
   pending_completion_batch_id: string | null;
   pending_completion_created_at: string | null;
+  reminder_paused: number;
 }
 
 // --- Helpers ---
@@ -53,6 +59,7 @@ function rowToGoal(row: Record<string, unknown>): GoalRecord {
     pending_completion_batch_id: (row.pending_completion_batch_id as string | null) ?? null,
     pending_completion_created_at:
       (row.pending_completion_created_at as string | null) ?? null,
+    reminder_paused: (row.reminder_paused as number) ?? 0,
   };
 }
 
@@ -498,4 +505,123 @@ export function canonicalizeGoalIdentity(
   ]);
   bumpChangeLog('goals');
   logServer('INFO', `[goal] canonicalize: ${agentName} pane=${pane} → session=${sessionId}`);
+}
+
+// --- Stuck-detector state ---
+// Rolling window of recent completion outputs per active goal. Used to detect a
+// tight near-identical loop (weak-LLM agent never running `crew goal done`).
+
+/** Keep this many recent outputs per goal (buffer over the detection window). */
+const GOAL_OUTPUT_BUFFER = 8;
+
+export interface GoalOutputRecord {
+  message: string;
+  tsMs: number;
+}
+
+/** Append a completion output, prune to the buffer window. Returns full window. */
+export function recordGoalOutput(
+  goalId: number,
+  message: string,
+  tsMs: number,
+): GoalOutputRecord[] {
+  const db = getDb();
+  const ts = now();
+  db.run(
+    `INSERT INTO agent_goal_recent_outputs (goal_id, message_hash, ts_ms, created_at)
+     VALUES (?, ?, ?, ?)`,
+    [goalId, message, tsMs, ts],
+  );
+  // Prune to last N by id, keeping the newest buffer entries.
+  db.run(
+    `DELETE FROM agent_goal_recent_outputs
+     WHERE goal_id = ? AND id NOT IN (
+       SELECT id FROM agent_goal_recent_outputs
+       WHERE goal_id = ?
+       ORDER BY id DESC LIMIT ?
+     )`,
+    [goalId, goalId, GOAL_OUTPUT_BUFFER],
+  );
+  return getRecentGoalOutputs(goalId);
+}
+
+/** Recent outputs for a goal, oldest→newest. */
+export function getRecentGoalOutputs(
+  goalId: number,
+  limit = GOAL_OUTPUT_BUFFER,
+): GoalOutputRecord[] {
+  const db = getDb();
+  const rows = db
+    .query(
+      `SELECT message_hash AS message, ts_ms AS tsMs
+       FROM agent_goal_recent_outputs
+       WHERE goal_id = ?
+       ORDER BY id ASC LIMIT ?`,
+    )
+    .all(goalId, Math.max(1, limit)) as Array<{ message: string; tsMs: number }>;
+  return rows.map((r) => ({ message: r.message ?? '', tsMs: r.tsMs }));
+}
+
+/** Clear the output window — called on `goal update` (new context resets loop). */
+export function clearGoalOutputs(goalId: number): void {
+  const db = getDb();
+  db.run('DELETE FROM agent_goal_recent_outputs WHERE goal_id = ?', [goalId]);
+}
+
+/** Is the reminder loop paused for this goal (stuck-detector tripped)? */
+export function isGoalReminderPaused(goalId: number): boolean {
+  const db = getDb();
+  const row = db
+    .query('SELECT reminder_paused FROM agent_goals WHERE id = ?')
+    .get(goalId) as { reminder_paused: number } | undefined;
+  return row?.reminder_paused === 1;
+}
+
+/** Pause the reminder loop. Goal stays `active`; agent must resolve manually. */
+export function pauseGoalReminder(goalId: number): boolean {
+  const db = getDb();
+  const ts = now();
+  const result = db.run(
+    `UPDATE agent_goals SET reminder_paused = 1, updated_at = ?
+     WHERE id = ? AND reminder_paused = 0`,
+    [ts, goalId],
+  );
+  if (result.changes > 0) {
+    bumpChangeLog('goals');
+    logServer('INFO', `[goal] reminder-paused (stuck): goal_id=${goalId}`);
+  }
+  return result.changes > 0;
+}
+
+/** Resume reminders + reset the output window (new context via `goal update`). */
+export function unpauseGoalReminder(goalId: number): boolean {
+  const db = getDb();
+  const ts = now();
+  const result = db.run(
+    `UPDATE agent_goals SET reminder_paused = 0, updated_at = ?
+     WHERE id = ? AND reminder_paused = 1`,
+    [ts, goalId],
+  );
+  if (result.changes > 0) {
+    bumpChangeLog('goals');
+    logServer('DEBUG', `[goal] reminder-resumed: goal_id=${goalId}`);
+  }
+  return result.changes > 0;
+}
+
+/**
+ * Record an output then evaluate stuck-ness for the active goal in one call.
+ * Returns { stuck, entries } so the caller decides the stuck-notice action.
+ */
+export function recordAndEvaluateGoalStuck(
+  goalId: number,
+  message: string,
+  tsMs: number,
+): { stuck: boolean; entries: GoalOutputEntry[] } {
+  const records = recordGoalOutput(goalId, message, tsMs);
+  const entries: GoalOutputEntry[] = records.map((r) => ({
+    message: r.message,
+    tsMs: r.tsMs,
+  }));
+  return { stuck: isGoalStuck(entries, STUCK_DEFAULTS), entries };
 }

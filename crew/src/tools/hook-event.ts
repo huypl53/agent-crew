@@ -4,10 +4,12 @@ import { flushPushQueueForAgent } from "../delivery/index.ts";
 import type { Agent, ToolResult } from "../shared/types.ts";
 import { ok } from "../shared/types.ts";
 import {
+  extractHookCompletionMessage,
   getRuntimeSkillPrefix,
   resolveHookEventName,
   resolveAgentRuntime,
 } from "../shared/hook-runtime.ts";
+import { STUCK_DEFAULTS } from "../state/goal-stuck.ts";
 import { getDb, initDbWithRetry, withRetry } from "../state/db.ts";
 import type { HintRecord } from "../state/index.ts";
 import {
@@ -26,6 +28,8 @@ import {
   getRoomMembers,
   isAgentAutoSelfOnIdle,
   notifyLeadersOnWorkerStop,
+  pauseGoalReminder,
+  recordAndEvaluateGoalStuck,
   tickGoalTurnCount,
   tickHintCadence,
 } from "../state/index.ts";
@@ -346,39 +350,73 @@ export async function processHookEventInput(
 
   // Goal reminder: workers remind on every Stop; leaders remind only after
   // the queue has drained and a prior crew delivery armed the reminder state.
+  // Stuck-detector: if the last few outputs are a tight near-identical loop,
+  // pause the reminder and send ONE explicit notice so the agent itself
+  // resolves the goal (weak-LLM agents never run `crew goal done` on their own).
   if (isStopLikeEvent(eventType)) {
     try {
       const goal =
         agent.role === "leader"
           ? consumeLeaderGoalReminder(pane, sessionId, agent.room_id)
           : tickGoalTurnCount(pane, sessionId, agent.room_id);
+
       if (goal && goal.status === "active" && agent.tmux_target) {
-        // Delay 1.5s so agent finishes idle transition before reminder arrives.
-        // Re-check goal state before sending in case it changed while waiting.
-        setTimeout(async () => {
-          try {
-            const skillPrefix = getRuntimeSkillPrefix(
-              await resolveAgentRuntime(agent.agent_type, agent.tmux_target),
-            );
-            const latestGoal = getGoalByAgent(agent.name, agent.room_id);
-            if (!latestGoal || latestGoal.status !== "active") return;
+        if (goal.reminder_paused === 1) {
+          // Already tripped by stuck-detector → stay silent (no nag, no record).
+        } else {
+          // Record this completion output and evaluate loop-iness.
+          const message = extractHookCompletionMessage(input);
+          const { stuck } = recordAndEvaluateGoalStuck(
+            goal.id,
+            message,
+            Date.now(),
+          );
+          // Pause only on the trip; pauseGoalReminder is a no-op if already
+          // paused, so `justPaused` is true exactly once → exactly-one notice.
+          const justPaused = stuck ? pauseGoalReminder(goal.id) : false;
 
-            const latestDesc =
-              latestGoal.description.length > 500
-                ? latestGoal.description.slice(0, 497) + "…"
-                : latestGoal.description;
-            // `crew:leader`/`crew:worker` are SKILL invocations → runtime prefix ($ for codex).
-            // `crew goal done`/`crew goal unset` are CLI subcommands → `!` prefix (both runtimes).
-            const latestReminder = `🎯 Goal: ${latestDesc} (turn ${latestGoal.turn_count})\n✅ If done, ${agent.role === "leader"
-                ? `${skillPrefix}crew:leader`
-                : `${skillPrefix}crew:worker`
-              } run bash command: crew goal done\n❌ If unreachable, run bash command: crew goal unset\n📝 Edit: crew goal update "new description"`;
+          // Delay 1.5s so agent finishes idle transition before reminder arrives.
+          // Re-check goal state before sending in case it changed while waiting.
+          setTimeout(async () => {
+            try {
+              const skillPrefix = getRuntimeSkillPrefix(
+                await resolveAgentRuntime(agent.agent_type, agent.tmux_target),
+              );
+              const latestGoal = getGoalByAgent(agent.name, agent.room_id);
+              if (!latestGoal || latestGoal.status !== "active") return;
 
-            await sendKeys(agent.tmux_target!, latestReminder).catch(() => { });
-          } catch {
-            // fail-open: skip reminder if anything goes wrong in re-check
-          }
-        }, 1500);
+              const latestDesc =
+                latestGoal.description.length > 500
+                  ? latestGoal.description.slice(0, 497) + "…"
+                  : latestGoal.description;
+
+              // Stuck-notice: hand the decision to the agent itself, exactly once.
+              if (justPaused && latestGoal.reminder_paused === 1) {
+                const notice =
+                  `⚠️ Goal looks stuck (${STUCK_DEFAULTS.window} turns, near-identical output).\n` +
+                  `Goal: ${latestDesc}\n` +
+                  `Decide — run a bash command:\n` +
+                  `✅ crew goal done            — if finished\n` +
+                  `📝 crew goal update "..."    — to redirect\n` +
+                  `❌ crew goal unset           — if unreachable\n` +
+                  `(No more auto-reminders after this notice.)`;
+                await sendKeys(agent.tmux_target!, notice).catch(() => { });
+                return;
+              }
+
+              // `crew:leader`/`crew:worker` are SKILL invocations → runtime prefix ($ for codex).
+              // `crew goal done`/`crew goal unset` are CLI subcommands → `!` prefix (both runtimes).
+              const latestReminder = `🎯 Goal: ${latestDesc} (turn ${latestGoal.turn_count})\n✅ If done, ${agent.role === "leader"
+                  ? `${skillPrefix}crew:leader`
+                  : `${skillPrefix}crew:worker`
+                } run bash command: crew goal done\n❌ If unreachable, run bash command: crew goal unset\n📝 Edit: crew goal update "new description"`;
+
+              await sendKeys(agent.tmux_target!, latestReminder).catch(() => { });
+            } catch {
+              // fail-open: skip reminder if anything goes wrong in re-check
+            }
+          }, 1500);
+        }
       }
     } catch (e) {
       console.error(
