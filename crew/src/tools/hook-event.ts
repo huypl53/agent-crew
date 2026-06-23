@@ -51,13 +51,17 @@ function extractString(
 }
 
 function extractSessionId(payload: Record<string, unknown>): string | null {
-  return extractString(payload, ["session_id", "sessionId", "turn_id", "turnId"]);
+  return extractString(payload, [
+    "session_id",
+    "sessionId",
+    "turn_id",
+    "turnId",
+  ]);
 }
 
 function extractCwd(payload: Record<string, unknown>): string | null {
   return extractString(payload, ["cwd"]);
 }
-
 
 function okResult(
   payload: Record<string, unknown> = { ok: true, decision: "allow" },
@@ -157,7 +161,13 @@ export async function processHookEventInput(
     }
     // Session-only hook events can still be used for completion/instrumentation.
     if (isStopLikeEvent(eventType)) {
-      capturePartyResponseIfActive(agent.name, input, hookEventId, agent.room_id, sessionId);
+      capturePartyResponseIfActive(
+        agent.name,
+        input,
+        hookEventId,
+        agent.room_id,
+        sessionId,
+      );
       notifyLeadersOnWorkerStop(agent.name, input, agent.room_id, sessionId);
     }
     return okResult();
@@ -216,7 +226,7 @@ export async function processHookEventInput(
               sendKeys(
                 leader.tmux_target!,
                 `(dialog #${dialog.id}) ${notice}`,
-              ).catch(() => {}),
+              ).catch(() => { }),
             1500,
           );
         }
@@ -359,13 +369,12 @@ export async function processHookEventInput(
                 : latestGoal.description;
             // `crew:leader`/`crew:worker` are SKILL invocations → runtime prefix ($ for codex).
             // `crew goal done`/`crew goal unset` are CLI subcommands → `!` prefix (both runtimes).
-            const latestReminder = `🎯 Goal: ${latestDesc} (turn ${latestGoal.turn_count})\n✅ If done, ${
-              agent.role === "leader"
+            const latestReminder = `🎯 Goal: ${latestDesc} (turn ${latestGoal.turn_count})\n✅ If done, ${agent.role === "leader"
                 ? `${skillPrefix}crew:leader`
                 : `${skillPrefix}crew:worker`
-            } run command: !crew goal done\n❌ If unreachable, run command: !crew goal unset\n📝 Edit: crew goal update "new description"`;
+              } run bash command: crew goal done\n❌ If unreachable, run bash command: crew goal unset\n📝 Edit: crew goal update "new description"`;
 
-            await sendKeys(agent.tmux_target!, latestReminder).catch(() => {});
+            await sendKeys(agent.tmux_target!, latestReminder).catch(() => { });
           } catch {
             // fail-open: skip reminder if anything goes wrong in re-check
           }
