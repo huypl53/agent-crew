@@ -236,7 +236,9 @@ export const COMMANDS: Record<
   },
   'hook-event': {
     handler: handleHookEvent,
-    buildParams: () => ({}),
+    buildParams: (f) => ({
+      event: typeof f.event === 'string' ? f.event : undefined,
+    }),
   },
   'input-block': {
     handler: handleInputBlock,

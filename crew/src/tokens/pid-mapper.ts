@@ -4,6 +4,11 @@ import { join } from 'node:path';
 const HOME = process.env.HOME ?? '';
 const CLAUDE_SESSIONS_DIR = join(HOME, '.claude', 'sessions');
 
+// AGY (Antigravity) transcript paths
+const AGY_BRAIN_DIR_CLI = join(HOME, '.gemini', 'antigravity-cli', 'brain');
+const AGY_BRAIN_DIR_DESKTOP = join(HOME, '.gemini', 'antigravity', 'brain');
+const AGY_TRANSCRIPT_SUFFIX = join('.system_generated', 'logs', 'transcript.jsonl');
+
 interface ClaudeSession {
   pid: number;
   sessionId: string;
@@ -115,3 +120,19 @@ export async function resolveAgentSession(paneTarget: string): Promise<{
     name: session.name,
   };
 }
+
+/**
+ * Resolve the transcript path for an AGY (Antigravity) conversation.
+ * AGY uses conversationId (UUID) directly — no PID mapping needed.
+ * Checks CLI path first, then Desktop path.
+ */
+export function resolveAgyTranscriptPath(conversationId: string): string | null {
+  const cliPath = join(AGY_BRAIN_DIR_CLI, conversationId, AGY_TRANSCRIPT_SUFFIX);
+  if (existsSync(cliPath)) return cliPath;
+
+  const desktopPath = join(AGY_BRAIN_DIR_DESKTOP, conversationId, AGY_TRANSCRIPT_SUFFIX);
+  if (existsSync(desktopPath)) return desktopPath;
+
+  return null;
+}
+

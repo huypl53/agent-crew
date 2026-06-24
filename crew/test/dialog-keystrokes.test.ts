@@ -130,7 +130,7 @@ describe('buildKeystrokes: normalization & edge cases', () => {
         questionIndex: 1,
         totalQuestions: 2,
       }),
-    ).toEqual(['Space', 'Down', 'Down', 'Space', 'Right']);
+    ).toEqual(['Space', 'Down', 'Down', 'Space', 'Right', 'Enter']);
   });
 
   test('filters out-of-range picks', () => {
@@ -143,7 +143,7 @@ describe('buildKeystrokes: normalization & edge cases', () => {
         questionIndex: 0,
         totalQuestions: 1,
       }),
-    ).toEqual(['Space', 'Down', 'Down', 'Right', 'Enter']);
+    ).toEqual(['Space', 'Right', 'Enter']);
   });
 
   test('returns empty when no options', () => {
@@ -176,7 +176,7 @@ describe('buildKeystrokes: normalization & edge cases', () => {
         },
         keymap,
       ),
-    ).toEqual(['Space', 'Down', 'Down', 'Right', 'Enter']);
+    ).toEqual(['Space', 'Right', 'Enter']);
   });
 });
 

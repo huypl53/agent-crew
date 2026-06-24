@@ -77,3 +77,56 @@ export function extractRecentClaudeTurns(
 
   return turns.slice(-limit);
 }
+
+// ---------------------------------------------------------------------------
+// AGY (Antigravity) transcript parser
+// AGY transcript schema per step:
+//   { step_index, source: "MODEL"|"USER_EXPLICIT"|"SYSTEM", type: "PLANNER_RESPONSE"|"USER_INPUT"|..., content: string, ... }
+// ---------------------------------------------------------------------------
+
+interface AgyTranscriptEntry {
+  step_index?: number;
+  source?: string;
+  type?: string;
+  status?: string;
+  content?: string;
+}
+
+export function extractRecentAgyTurns(
+  content: string,
+  limit: number,
+): InspectionTurn[] {
+  if (!content.trim() || limit <= 0) return [];
+
+  const turns: InspectionTurn[] = [];
+
+  for (const line of content.split('\n')) {
+    if (!line.trim()) continue;
+
+    let entry: AgyTranscriptEntry;
+    try {
+      entry = JSON.parse(line) as AgyTranscriptEntry;
+    } catch {
+      continue;
+    }
+
+    // Only include user-visible turns
+    const type = entry.type ?? '';
+    if (type !== 'PLANNER_RESPONSE' && type !== 'USER_INPUT') continue;
+
+    const source = entry.source ?? '';
+    const role: 'user' | 'assistant' | null =
+      source === 'MODEL' ? 'assistant'
+      : source === 'USER_EXPLICIT' || source === 'USER' ? 'user'
+      : null;
+
+    if (!role) continue;
+
+    const text = typeof entry.content === 'string' ? entry.content.trim() : '';
+    if (!text) continue;
+
+    turns.push({ role, text, timestamp: null });
+  }
+
+  return turns.slice(-limit);
+}

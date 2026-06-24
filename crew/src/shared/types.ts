@@ -20,7 +20,7 @@ export interface Agent {
   name: string;
   role: AgentRole;
   tmux_target: string | null;
-  agent_type: 'claude-code' | 'codex' | 'unknown';
+  agent_type: 'claude-code' | 'codex' | 'agy' | 'unknown';
   status: string | null;
   input_block_mode: InputBlockMode;
   persona: string | null;

@@ -175,7 +175,8 @@ cmd_antigravity() {
 
 cmd_antigravity_project() {
   check_prereqs
-  local target_project_dir="${2:-$(pwd)}"
+  local target_project_dir
+  target_project_dir=$(readlink -f "${2:-$(pwd)}")
   local agents_dir="$target_project_dir/.agents"
 
   ensure_repo
@@ -201,16 +202,26 @@ try:
 except Exception:
     data = {}
 
-data['crew-hooks'] = {
-    'UserPromptSubmit': [{
-        'matcher': '',
-        'hooks': [{'type': 'command', 'command': 'crew hook-event --json || true'}]
-    }],
-    'Stop': [{
-        'matcher': '',
-        'hooks': [{'type': 'command', 'command': 'crew hook-event --json || true'}]
-    }]
-}
+if 'crew-hooks' not in data or not isinstance(data['crew-hooks'], dict):
+    data['crew-hooks'] = {}
+
+hooks_dict = data['crew-hooks']
+for event in ['PreInvocation', 'Stop']:
+    if event not in hooks_dict or not isinstance(hooks_dict[event], list):
+        hooks_dict[event] = []
+    
+    already_installed = False
+    for entry in hooks_dict[event]:
+        if isinstance(entry, dict) and 'crew hook-event' in str(entry.get('command', '')):
+            already_installed = True
+            break
+    
+    if not already_installed:
+        hooks_dict[event].append({
+            'type': 'command',
+            'command': 'crew hook-event --event ' + event + ' || true',
+            'shell': 'bash'
+        })
 
 with open('$hooks_file', 'w') as f:
     json.dump(data, f, indent=2)
@@ -221,26 +232,18 @@ with open('$hooks_file', 'w') as f:
     cat > "$hooks_file" <<'EOF'
 {
   "crew-hooks": {
-    "UserPromptSubmit": [
+    "PreInvocation": [
       {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "crew hook-event --json || true"
-          }
-        ]
+        "type": "command",
+        "command": "crew hook-event --event PreInvocation || true",
+        "shell": "bash"
       }
     ],
     "Stop": [
       {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "crew hook-event --json || true"
-          }
-        ]
+        "type": "command",
+        "command": "crew hook-event --event Stop || true",
+        "shell": "bash"
       }
     ]
   }
@@ -253,7 +256,7 @@ EOF
   ok "crew installed for Antigravity in project scope!"
   echo ""
   echo "  Skills: /crew:join-room  /crew:leader  /crew:worker  /crew:refresh"
-  echo "  Hooks: Stop, UserPromptSubmit (calls: crew hook-event --json)"
+  echo "  Hooks: Stop, PreInvocation (calls: crew hook-event)"
   echo ""
 }
 
@@ -323,7 +326,8 @@ cmd_uninstall_antigravity() {
 }
 
 cmd_uninstall_antigravity_project() {
-  local target_project_dir="${2:-$(pwd)}"
+  local target_project_dir
+  target_project_dir=$(readlink -f "${2:-$(pwd)}")
   local agents_dir="$target_project_dir/.agents"
 
   info "Removing crew from Antigravity in project scope at $target_project_dir..."
@@ -345,6 +349,28 @@ try:
         data = json.load(f)
     if 'crew-hooks' in data:
         del data['crew-hooks']
+    if 'hooks' in data and isinstance(data['hooks'], dict):
+        hooks_dict = data['hooks']
+        for event in list(hooks_dict.keys()):
+            if isinstance(hooks_dict[event], list):
+                new_list = []
+                for entry in hooks_dict[event]:
+                    if isinstance(entry, dict) and isinstance(entry.get('hooks'), list):
+                        has_crew = False
+                        for h in entry['hooks']:
+                            if isinstance(h, dict) and 'crew hook-event' in str(h.get('command', '')):
+                                has_crew = True
+                                break
+                        if not has_crew:
+                            new_list.append(entry)
+                    else:
+                        new_list.append(entry)
+                if new_list:
+                    hooks_dict[event] = new_list
+                else:
+                    del hooks_dict[event]
+        if not hooks_dict:
+            del data['hooks']
     with open('$hooks_file', 'w') as f:
         json.dump(data, f, indent=2)
         f.write('\n')

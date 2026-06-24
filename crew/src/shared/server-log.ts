@@ -7,7 +7,11 @@ import {
 } from 'fs';
 import { dirname } from 'path';
 
-const STATE_DIR = process.env.CREW_STATE_DIR ?? '/tmp/crew/state';
+const STATE_DIR = (() => {
+  if (process.env.CREW_STATE_DIR) return process.env.CREW_STATE_DIR;
+  if (existsSync('.agents')) return '.agents/state';
+  return '/tmp/crew/state';
+})();
 const LOG_PATH = `${STATE_DIR}/server.log`;
 const MAX_BYTES = 1_000_000; // 1MB
 const TRUNCATE_LINES = 500;

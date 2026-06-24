@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite';
 import { existsSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 
 let _db: Database | null = null;
 
@@ -219,13 +219,28 @@ const SCHEMA = `
   BEGIN UPDATE change_log SET version=version+1, updated_at=datetime('now') WHERE scope='room-templates'; END;
 `;
 
-export function getDbPath(): string {
-  const stateDir = process.env.CREW_STATE_DIR ?? '/tmp/crew/state';
-  return `${stateDir}/crew.db`;
+export function getDbPath(cwd?: string): string {
+  if (process.env.CREW_STATE_DIR) {
+    return `${process.env.CREW_STATE_DIR}/crew.db`;
+  }
+  if (cwd) {
+    const projectDb = join(cwd, '.agents', 'state', 'crew.db');
+    if (existsSync(join(cwd, '.agents'))) {
+      return projectDb;
+    }
+  }
+  if (existsSync('.agents')) {
+    return '.agents/state/crew.db';
+  }
+  return '/tmp/crew/state/crew.db';
 }
 
 // Track which DB path the current handle is connected to.
 let _dbPath: string | null = null;
+
+export function getActiveDbPath(): string | null {
+  return _dbPath;
+}
 
 export function initDb(path?: string): void {
   const dbPath = path ?? getDbPath();
@@ -667,11 +682,11 @@ export function withRetry<T>(fn: () => T, maxRetries = 3, baseDelayMs = 200): T 
  * write locks, so concurrent initDb() calls from multiple processes are
  * the primary source of SQLITE_BUSY errors.
  */
-export function initDbWithRetry(path?: string, maxRetries = 4): void {
+export function initDbWithRetry(cwd?: string, maxRetries = 4): void {
   let lastError: unknown;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      initDb(path);
+      initDb(getDbPath(cwd));
       return;
     } catch (e: unknown) {
       lastError = e;

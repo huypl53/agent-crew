@@ -140,7 +140,7 @@ Recent validation notes for Codex plugin flow:
 
 ### Manual Install — Antigravity CLI
 
-You can install the plugin natively for the **Antigravity CLI** (`agy`) in either **global** or **project** scope:
+You can install the plugin natively for the **Antigravity CLI** (`agy`) in either **global** or **project** scope. For detailed information on event hooks, dynamic database routing, and troubleshooting, see the [Antigravity Integration Guide](docs/antigravity-integration.md):
 
 #### Global Scope
 ```bash

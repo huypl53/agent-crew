@@ -1,16 +1,26 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, appendFileSync } from "node:fs";
 import { spawnSync } from "bun";
 import { flushPushQueueForAgent } from "../delivery/index.ts";
+
+function logDebug(message: string): void {
+  try {
+    const logLine = `[${new Date().toISOString()}] ${message}\n`;
+    appendFileSync("/tmp/crew-hook-debug.log", logLine, "utf8");
+  } catch {
+    // ignore
+  }
+}
 import type { Agent, ToolResult } from "../shared/types.ts";
 import { ok } from "../shared/types.ts";
 import {
   extractHookCompletionMessage,
   getRuntimeSkillPrefix,
   resolveHookEventName,
+  normalizeHookEventName,
   resolveAgentRuntime,
 } from "../shared/hook-runtime.ts";
 import { STUCK_DEFAULTS } from "../state/goal-stuck.ts";
-import { getDb, initDbWithRetry, withRetry } from "../state/db.ts";
+import { getDb, initDbWithRetry, withRetry, getActiveDbPath, getDbPath } from "../state/db.ts";
 import type { HintRecord } from "../state/index.ts";
 import {
   addHookEvent,
@@ -58,13 +68,21 @@ function extractSessionId(payload: Record<string, unknown>): string | null {
   return extractString(payload, [
     "session_id",
     "sessionId",
+    "conversationId",   // agy (Antigravity)
     "turn_id",
     "turnId",
   ]);
 }
 
 function extractCwd(payload: Record<string, unknown>): string | null {
-  return extractString(payload, ["cwd"]);
+  const cwd = extractString(payload, ["cwd"]);
+  if (cwd) return cwd;
+
+  const workspacePaths = payload.workspacePaths;
+  if (Array.isArray(workspacePaths) && typeof workspacePaths[0] === "string") {
+    return workspacePaths[0].trim();
+  }
+  return null;
 }
 
 function okResult(
@@ -116,28 +134,43 @@ function permissionAllowResult(input: Record<string, unknown>): ToolResult {
 export async function processHookEventInput(
   input: string,
   pane: string | undefined,
+  eventOverride?: string,
 ): Promise<ToolResult> {
+  logDebug(`[hook-event] Input: ${input.trim()}, resolvedPaneId: ${pane}`);
   let payload: Record<string, unknown>;
   try {
     payload = JSON.parse(input);
-  } catch {
+  } catch (err) {
+    logDebug(`[hook-event] JSON parse error: ${err instanceof Error ? err.message : String(err)}`);
     // Malformed JSON — silently exit
     return okResult();
-  }
-
-  // Use retry-aware init — concurrent hook processes all contend on the
-  // same SQLite file, and schema migrations hold write locks.  The retry
-  // wrapper handles SQLITE_BUSY with exponential backoff.
-  try {
-    getDb();
-  } catch {
-    initDbWithRetry();
   }
 
   const sessionId = extractSessionId(payload);
   const cwd = extractCwd(payload);
 
-  const eventType = resolveHookEventName(payload);
+  // Use retry-aware init — concurrent hook processes all contend on the
+  // same SQLite file, and schema migrations hold write locks.  The retry
+  // wrapper handles SQLITE_BUSY with exponential backoff.
+  const targetDbPath = getDbPath(cwd ? cwd : undefined);
+  let dbInitialized = false;
+  try {
+    getDb();
+    const activePath = getActiveDbPath();
+    if (activePath === ":memory:" || activePath === targetDbPath) {
+      dbInitialized = true;
+    }
+  } catch {
+    // not initialized
+  }
+  if (!dbInitialized) {
+    initDbWithRetry(cwd ? cwd : undefined);
+  }
+
+  const eventType = eventOverride
+    ? normalizeHookEventName(eventOverride)
+    : resolveHookEventName(payload);
+  logDebug(`[hook-event] Event: ${eventType}, sessionId: ${sessionId}, cwd: ${cwd}`);
 
   let agent =
     (pane ? getAgentByPane(pane) : undefined) ??
@@ -147,12 +180,17 @@ export async function processHookEventInput(
   }
   if (!agent) {
     if (sessionId) {
+      logDebug(`[hook-event] Agent not found for pane ${pane} session ${sessionId} event ${eventType}`);
       console.error(
         `[crew hook-event] could not resolve agent for pane ${pane} session ${sessionId} event ${eventType}`,
       );
+    } else {
+      logDebug(`[hook-event] Agent not found and no sessionId. Pane: ${pane}, event: ${eventType}`);
     }
     return okResult();
   }
+
+  logDebug(`[hook-event] Agent found: ${agent.name} (role: ${agent.role}, room: ${agent.room_id})`);
 
   if (!pane) {
     const hookEventId = withRetry(() =>
@@ -272,7 +310,7 @@ export async function processHookEventInput(
   // Hint injection: on every Nth UserPromptSubmit (where N = cadence),
   // emit the user-defined message to stdout. Claude Code injects hook
   // stdout into the conversation, providing custom context reminders.
-  if (eventType === "UserPromptSubmit") {
+  if (eventType === "UserPromptSubmit" || eventType === "PreInvocation") {
     const wasBlocked = clearArmedInputBlock(agent.name);
 
     // Flush pending push messages that accumulated while blocked
@@ -554,7 +592,7 @@ export function resolvePaneId(): string | undefined {
   return undefined;
 }
 
-export async function handleHookEvent(_params?: unknown): Promise<ToolResult> {
+export async function handleHookEvent(params?: { event?: string }): Promise<ToolResult> {
   const input = await Bun.stdin.text();
-  return processHookEventInput(input, resolvePaneId());
+  return processHookEventInput(input, resolvePaneId(), params?.event);
 }

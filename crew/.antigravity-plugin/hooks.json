@@ -1,26 +1,20 @@
 {
   "crew-hooks": {
-    "UserPromptSubmit": [
+    "PreInvocation": [
       {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "crew hook-event --json || true"
-          }
-        ]
+        "type": "command",
+        "command": "crew hook-event --event PreInvocation || true",
+        "shell": "bash"
       }
     ],
     "Stop": [
       {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "crew hook-event --json || true"
-          }
-        ]
+        "type": "command",
+        "command": "crew hook-event --event Stop || true",
+        "shell": "bash"
       }
     ]
   }
 }
+
+

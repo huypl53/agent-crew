@@ -2,13 +2,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { assertAgentCanInspectWorker } from '../shared/role-guard.ts';
 import { getAllAgents, getLatestHookEvent } from '../state/index.ts';
 import { capturePane } from '../tmux/index.ts';
-import { resolveAgentSession } from '../tokens/pid-mapper.ts';
+import { resolveAgentSession, resolveAgyTranscriptPath } from '../tokens/pid-mapper.ts';
 import {
   extractHookCompletionMessage,
   resolveAgentRuntime,
 } from '../shared/hook-runtime.ts';
 import {
   extractRecentClaudeTurns,
+  extractRecentAgyTurns,
   type InspectionTurn,
 } from './claude-transcript.ts';
 import type {
@@ -71,7 +72,7 @@ function detectBlockHint(
 async function buildHookFallback(
   workerName: string,
   roomName: string,
-  agentType: 'claude-code' | 'codex' | 'unknown',
+  agentType: 'claude-code' | 'codex' | 'agy' | 'unknown',
   sessionId: string | null,
   degradationReason: DegradationReason,
 ): Promise<InspectionSnapshot> {
@@ -143,6 +144,61 @@ export async function inspectWorkerTurns(
     worker.agent_type,
     worker.tmux_target,
   );
+
+  // ── AGY fast-path ────────────────────────────────────────────────────────
+  // AGY passes conversationId in hook payload (stored as session_id).
+  // No PID mapping needed — resolve transcript path directly.
+  if (resolvedAgentType === 'agy') {
+    const latestEvent = getLatestHookEvent(worker.name);
+    const conversationId = latestEvent?.session_id ?? null;
+    if (conversationId) {
+      const transcriptPath = resolveAgyTranscriptPath(conversationId);
+      if (transcriptPath) {
+        let transcriptContent: string | null = null;
+        try {
+          transcriptContent = readFileSync(transcriptPath, 'utf-8');
+        } catch {
+          // fallthrough
+        }
+        if (transcriptContent) {
+          const turns = extractRecentAgyTurns(transcriptContent, limit);
+          if (turns.length > 0) {
+            const status = deriveHookStatus(latestEvent);
+            return {
+              agent_name: worker.name,
+              room_name: worker.room_name,
+              provider: resolvedAgentType,
+              session_id: conversationId,
+              status,
+              updated_at: null,
+              block_hint: detectBlockHint(status, turns),
+              source: 'transcript',
+              turns,
+              degraded: false,
+              degradation_reason: 'none',
+            };
+          }
+        }
+      }
+      // conversationId known but transcript not yet readable — hook-events fallback
+      return await buildHookFallback(
+        worker.name,
+        worker.room_name,
+        resolvedAgentType,
+        conversationId,
+        'transcript_unavailable',
+      );
+    }
+    // No conversationId yet — need at least one hook event from AGY
+    return await buildHookFallback(
+      worker.name,
+      worker.room_name,
+      resolvedAgentType,
+      null,
+      'session_unresolved',
+    );
+  }
+  // ── end AGY fast-path ────────────────────────────────────────────────────
 
   const sessionResolver =
     deps.sessionResolver ??

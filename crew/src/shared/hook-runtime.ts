@@ -1,4 +1,4 @@
-export type AgentRuntime = 'claude-code' | 'codex' | 'unknown';
+export type AgentRuntime = 'claude-code' | 'codex' | 'agy' | 'unknown';
 
 export interface ProcessInfo {
   comm: string;
@@ -18,6 +18,7 @@ type HookEventCandidate = unknown;
 const SKILL_PREFIX_BY_RUNTIME: Record<AgentRuntime, '$' | '/'> = {
   'claude-code': '/',
   codex: '$',
+  agy: '/',
   unknown: '/',
 };
 
@@ -50,6 +51,10 @@ export function normalizeHookEventName(raw: HookEventCandidate): string {
     case 'permissionrequestevent':
     case 'permission':
       return 'PermissionRequest';
+    case 'preinvocation':
+      return 'PreInvocation';
+    case 'postinvocation':
+      return 'PostInvocation';
     case 'stopfailure':
       return 'StopFailure';
     case 'subagentstop':
@@ -162,6 +167,14 @@ function resolveRuntimeFromCommand(command: string): AgentRuntime {
   const normalized = command.trim().toLowerCase();
   if (normalized === '') return 'unknown';
   if (
+    normalized === 'agy' ||
+    normalized.startsWith('agy') ||
+    normalized.includes('/agy') ||
+    normalized.includes('antigravity')
+  ) {
+    return 'agy';
+  }
+  if (
     normalized === 'claude' ||
     normalized.startsWith('claude') ||
     normalized.includes('/claude')
@@ -208,6 +221,18 @@ export function inferAgentTypeFromProcesses(
   if (
     normalized.some(
       (process) =>
+        process.comm === 'agy' ||
+        process.comm.startsWith('agy') ||
+        process.args.includes('agy') ||
+        process.args.includes('antigravity'),
+    )
+  ) {
+    return 'agy';
+  }
+
+  if (
+    normalized.some(
+      (process) =>
         process.comm.includes('claude') || process.args.includes('claude'),
     )
   ) {
@@ -228,7 +253,7 @@ export function inferAgentTypeFromProcesses(
 
 export async function detectAgentRuntimeFromPane(
   paneTarget: string,
-): Promise<'claude-code' | 'codex' | 'unknown'> {
+): Promise<AgentRuntime> {
   try {
     const currentCommandProc = Bun.spawn(
       [

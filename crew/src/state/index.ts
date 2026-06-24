@@ -1,4 +1,14 @@
 import { config } from '../config.ts';
+import { appendFileSync } from 'node:fs';
+
+function logDebug(message: string): void {
+  try {
+    const logLine = `[${new Date().toISOString()}] ${message}\n`;
+    appendFileSync("/tmp/crew-hook-debug.log", logLine, "utf8");
+  } catch {
+    // ignore
+  }
+}
 import type {
   Agent,
   AgentRole,
@@ -174,6 +184,7 @@ function dbRowToAgent(row: Record<string, unknown>): Agent {
     agent_type: ((row.agent_type as string) ?? 'unknown') as
       | 'claude-code'
       | 'codex'
+      | 'agy'
       | 'unknown',
     status: (row.status as string | null) ?? null,
     input_block_mode: ((row.input_block_mode as string) ??
@@ -434,7 +445,7 @@ export function addAgent(
   role: AgentRole,
   roomId: number,
   tmuxTarget: string | null,
-  agentType: 'claude-code' | 'codex' | 'unknown' = 'unknown',
+  agentType: 'claude-code' | 'codex' | 'agy' | 'unknown' = 'unknown',
   persona?: string,
   capabilities?: string,
 ): Agent {
@@ -1409,24 +1420,38 @@ function notifyLeadersOnWorkerStop(
   roomId?: number,
   sessionId?: string | null,
 ): void {
+  logDebug(`[notify] notifyLeadersOnWorkerStop called. Worker: ${agentName}, roomId: ${roomId}, sessionId: ${sessionId}`);
   const agent =
     roomId !== undefined
       ? (getAgentByRoomAndName(roomId, agentName) ?? getAgent(agentName))
       : getAgent(agentName);
-  if (!agent || agent.role !== 'worker') return;
+  if (!agent) {
+    logDebug(`[notify] Agent not found: ${agentName}`);
+    return;
+  }
+  if (agent.role !== 'worker') {
+    logDebug(`[notify] Agent ${agentName} is not a worker (role: ${agent.role})`);
+    return;
+  }
 
   // Skip if party mode is active — party has its own notification flow
   const partyState = getPartyState(agent.room_id);
-  if (partyState?.active) return;
+  if (partyState?.active) {
+    logDebug(`[notify] Party mode active for room ${agent.room_id}, skipping worker notification`);
+    return;
+  }
 
   // Extract response
   const response =
     extractHookCompletionMessage(payload) ||
     (sessionId ? `Task completed for session ${sessionId}` : "");
 
+  logDebug(`[notify] Extracted response length: ${response.length}, starts with: "${response.slice(0, 50)}..."`);
+
   const goal = getGoalByAgent(agentName, agent.room_id);
   if (goal?.status === 'active') {
     const activeBatch = getOpenBatchForWorker(agentName, agent.room_id);
+    logDebug(`[notify] Active goal found: ${goal.id}. Setting pending completion.`);
     setGoalPendingCompletion(agentName, agent.room_id, response, activeBatch?.batchId);
     return;
   }
@@ -1439,6 +1464,7 @@ function notifyLeadersOnWorkerStop(
   });
 
   if (batchTerminal) {
+    logDebug(`[notify] Batch terminal message recorded for batch ${batchTerminal.batchId}. shouldFinalize: ${batchTerminal.shouldFinalize}`);
     if (batchTerminal.shouldFinalize) {
       const rendered = renderBatchFinalMessage(
         getRenderableBatchWorkers(batchTerminal.batchId),
@@ -1449,6 +1475,7 @@ function notifyLeadersOnWorkerStop(
         batchTerminal.roomId,
         rendered,
       ).catch((e) => {
+        logDebug(`[notify] Batch final delivery queue failed: ${e instanceof Error ? e.message : String(e)}`);
         console.error(
           `[crew batch] final delivery failed for ${batchTerminal.batchId}: ${e instanceof Error ? e.message : String(e)}`,
         );
@@ -1469,14 +1496,21 @@ function notifyLeadersOnWorkerStop(
     latestBatch.final_message === response &&
     !hasNewerTurnThanLatestBatch
   ) {
+    logDebug(`[notify] Skipping notification because response matches latest batch final message`);
     return;
   }
 
-  if (!response.trim()) return;
+  if (!response.trim()) {
+    logDebug(`[notify] Response is empty, skipping`);
+    return;
+  }
 
   // Turn-scoped dedup: if worker already sent a notifiable message since
   // their last UserPromptSubmit, crew send handled it — Stop hook should skip.
-  if (alreadyNotifiedThisTurn(agent.room_id, agentName)) return;
+  if (alreadyNotifiedThisTurn(agent.room_id, agentName)) {
+    logDebug(`[notify] Worker already notified this turn, skipping notification`);
+    return;
+  }
 
   sendWorkerCompletionToLeaders(agentName, agent.room_id, response);
 }
@@ -1486,11 +1520,18 @@ function sendWorkerCompletionToLeaders(
   roomId: number,
   response: string,
 ): void {
-  if (!response.trim()) return;
+  logDebug(`[notify] sendWorkerCompletionToLeaders called. Worker: ${agentName}, roomId: ${roomId}`);
+  if (!response.trim()) {
+    logDebug(`[notify] Empty response in sendWorkerCompletionToLeaders`);
+    return;
+  }
 
   // Turn-scoped dedup: if worker already sent a notifiable message since
   // their last UserPromptSubmit, crew send handled it — Stop hook should skip.
-  if (alreadyNotifiedThisTurn(roomId, agentName)) return;
+  if (alreadyNotifiedThisTurn(roomId, agentName)) {
+    logDebug(`[notify] Worker ${agentName} already notified this turn, skipping`);
+    return;
+  }
 
   const room = getRoom(roomId);
   const roomName = room?.name ?? 'unknown';
@@ -1498,16 +1539,21 @@ function sendWorkerCompletionToLeaders(
 
   // Record the FULL completion message in DB (always, even if leader has no pane)
   const msg = addMessage(roomName, agentName, roomName, response, null); // broadcast
+  logDebug(`[notify] Recorded message to DB: sequence=${msg.sequence}`);
 
   // Deliver a CAPPED preview to leaders' tmux panes via the shared queue so
   // queue-drain semantics stay consistent with other leader-targeted messages.
   const leaders = getRoomMembers(roomId).filter(
     (m) => m.role === 'leader' && m.tmux_target,
   );
+  logDebug(`[notify] Found ${leaders.length} leaders in room. Names: ${leaders.map(l => l.name).join(', ')}`);
   const message = `[${agentName}@${roomName}] completed:\n${truncated}`;
 
   for (const leader of leaders) {
-    deliverWithRetry(leader, message, msg.sequence).catch(() => {});
+    logDebug(`[notify] Attempting delivery to leader: ${leader.name}`);
+    deliverWithRetry(leader, message, msg.sequence).catch((err) => {
+      logDebug(`[notify] Delivery failed to ${leader.name}: ${err instanceof Error ? err.message : String(err)}`);
+    });
   }
 }
 
@@ -1523,7 +1569,9 @@ async function deliverWithRetry(
   const RETRY_DELAY_MS = 1500;
   const MAX_RETRIES = 2;
 
+  logDebug(`[notify] deliverWithRetry to ${leader.name}. input_block_mode: ${getAgentInputBlockMode(leader.name)}`);
   if (getAgentInputBlockMode(leader.name) !== 'off') {
+    logDebug(`[notify] leader ${leader.name} input block mode is not off, skipping tmux delivery`);
     return;
   }
 
@@ -1532,8 +1580,10 @@ async function deliverWithRetry(
   if (latestEvent?.event_type === 'UserPromptSubmit') {
     const eventAge =
       Date.now() - new Date(`${latestEvent.created_at}Z`).getTime();
+    logDebug(`[notify] leader ${leader.name} recently submitted a prompt ${eventAge}ms ago`);
     // If leader submitted within last 2s, wait for them to settle
     if (eventAge < 2000) {
+      logDebug(`[notify] leader ${leader.name} is busy. Sleeping ${RETRY_DELAY_MS}ms before attempt`);
       await Bun.sleep(RETRY_DELAY_MS);
     }
   }
@@ -1542,20 +1592,25 @@ async function deliverWithRetry(
 
   // Try delivery with retries
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    logDebug(`[notify] leader ${leader.name} delivery attempt ${attempt}`);
     if (getAgentInputBlockMode(leader.name) !== 'off') {
+      logDebug(`[notify] input block mode active on attempt ${attempt}, aborting`);
       return;
     }
 
     try {
+      logDebug(`[notify] Enqueuing notice to tmux target ${leader.tmux_target}`);
       await getQueue(leader.tmux_target!, { role: leader.role }).enqueue({
         type: 'paste',
         text: message,
         skipLeaderPacing: true,
       });
+      logDebug(`[notify] Enqueued successfully. Arming goal reminder & advancing push cursor`);
       armLeaderGoalReminder(leader.name, leader.room_id);
       advancePushCursor(leader.name, sequence);
       return;
-    } catch {
+    } catch (err) {
+      logDebug(`[notify] Attempt ${attempt} failed with error: ${err instanceof Error ? err.message : String(err)}`);
       if (attempt < MAX_RETRIES) {
         await Bun.sleep(RETRY_DELAY_MS);
       }
