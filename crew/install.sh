@@ -90,53 +90,40 @@ cmd_codex() {
 
   ensure_repo
 
-  mkdir -p "$CODEX_PLUGINS_DIR" "$CODEX_MARKETPLACE_DIR"
+  # The repo ships its own marketplace file (.claude-plugin/marketplace.json ->
+  # "crew-plugins"), shared with Claude. Register that single marketplace with
+  # Codex and install through it. Do NOT invent a separate "local-crew-plugins"
+  # marketplace — that is what produced duplicate crew entries.
+
+  # Clean up stale registrations so re-running the installer is idempotent:
+  # the legacy manual symlink, both possible marketplace qualifiers, their
+  # caches, and the legacy ~/.agents/plugins/marketplace.json from older installs.
+  info "Cleaning up stale crew registrations..."
+  rm -f "$CODEX_PLUGINS_DIR/crew" 2>/dev/null || true
+  rm -rf "$CODEX_PLUGINS_DIR/cache/crew-plugins" \
+         "$CODEX_PLUGINS_DIR/cache/local-crew-plugins" 2>/dev/null || true
+  rm -f "$CODEX_MARKETPLACE" 2>/dev/null || true
+  codex plugin remove 'crew@crew-plugins' >/dev/null 2>&1 || true
+  codex plugin remove 'crew@local-crew-plugins' >/dev/null 2>&1 || true
+
+  info "Registering crew-plugins marketplace..."
+  codex plugin marketplace add "$INSTALL_DIR" >/dev/null 2>&1 \
+    || warn "Marketplace crew-plugins may already be registered"
 
   info "Installing crew plugin..."
-  rm -f "$CODEX_PLUGINS_DIR/crew"
-  ln -s "$INSTALL_DIR/crew" "$CODEX_PLUGINS_DIR/crew"
-  ok "Plugin symlinked"
-
-  info "Updating Codex marketplace..."
-  python3 -c "
-import json
-import os
-path = '$CODEX_MARKETPLACE'
-plugin = {
-    'name': 'crew',
-    'source': {'source': 'local', 'path': './.codex/plugins/crew'},
-    'policy': {'installation': 'AVAILABLE', 'authentication': 'ON_INSTALL'},
-    'category': 'Productivity',
-}
-data = {
-    'name': 'local-crew-plugins',
-    'interface': {'displayName': 'Local Crew Plugins'},
-    'plugins': [],
-}
-if os.path.exists(path):
-    try:
-        with open(path, 'r') as f:
-            loaded = json.load(f)
-        if isinstance(loaded, dict):
-            if isinstance(loaded.get('interface'), dict):
-                data['interface'].update(loaded['interface'])
-            if isinstance(loaded.get('plugins'), list):
-                data['plugins'] = loaded['plugins']
-    except Exception:
-        pass
-if not any(p.get('name') == 'crew' for p in data['plugins']):
-    data['plugins'].append(plugin)
-with open(path, 'w') as f:
-    json.dump(data, f, indent=2)
-    f.write('\n')
-" 2>/dev/null && ok "Marketplace updated" || warn "Could not update marketplace.json — add manually"
+  if ! codex plugin add 'crew@crew-plugins' >/dev/null 2>&1; then
+    fail "Could not install crew@crew-plugins. Ensure the repo is cloned at $INSTALL_DIR."
+  fi
+  ok "crew installed for Codex CLI (marketplace: crew-plugins)"
 
   echo ""
-  ok "crew installed for Codex CLI!"
+  echo "  Marketplace: crew-plugins (shared with Claude)"
+  echo "  CLI: crew (on PATH via 'bun link')"
+  echo "  Verify: codex plugin list   → crew@crew-plugins"
   echo ""
-  echo "  Skills: crew:join-room  crew:leader  crew:worker  crew:refresh"
-  echo ""
-  echo "  Verify: codex → /plugins → crew should show 'Installed'"
+  echo "  Note: on first run Codex will ask to TRUST the crew hooks"
+  echo "  (Stop / UserPromptSubmit / PermissionRequest). Accept them, or run:"
+  echo "    codex --dangerously-bypass-hook-trust"
   echo ""
 }
 
@@ -282,29 +269,16 @@ cmd_uninstall_claude() {
 cmd_uninstall_codex() {
   info "Removing crew from Codex CLI..."
 
-  # Remove plugin symlink
-  if [ -L "$CODEX_PLUGINS_DIR/crew" ]; then
-    rm -f "$CODEX_PLUGINS_DIR/crew"
-    ok "Plugin symlink removed"
-  fi
+  # Remove through Codex's own plugin system. This only touches Codex
+  # config/cache; Claude's marketplace file (~/.crew/.claude-plugin/marketplace.json)
+  # is left intact so the Claude install keeps working.
+  codex plugin remove 'crew@crew-plugins' >/dev/null 2>&1 && ok "Plugin removed" || warn "Plugin may not be installed"
+  codex plugin marketplace remove 'crew-plugins' >/dev/null 2>&1 && ok "Marketplace crew-plugins unregistered" || true
 
-  # Remove from marketplace.json
-  if [ -f "$CODEX_MARKETPLACE" ]; then
-    python3 -c "
-import json
-path = '$CODEX_MARKETPLACE'
-try:
-    with open(path, 'r') as f:
-        data = json.load(f)
-except Exception:
-    raise SystemExit(0)
-if isinstance(data, dict) and isinstance(data.get('plugins'), list):
-    data['plugins'] = [p for p in data['plugins'] if p.get('name') != 'crew']
-    with open(path, 'w') as f:
-        json.dump(data, f, indent=2)
-        f.write('\n')
-" 2>/dev/null && ok "Removed from marketplace" || warn "Could not update marketplace.json"
-  fi
+  # Sweep legacy artifacts left by older installers.
+  rm -rf "$CODEX_PLUGINS_DIR/cache/crew-plugins" \
+         "$CODEX_PLUGINS_DIR/cache/local-crew-plugins" 2>/dev/null || true
+  rm -f "$CODEX_PLUGINS_DIR/crew" "$CODEX_MARKETPLACE" 2>/dev/null || true
 
   echo ""
   ok "crew removed from Codex CLI."
