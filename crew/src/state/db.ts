@@ -651,7 +651,11 @@ export function closeDb(): void {
  * on the same SQLite file — WAL mode allows concurrent reads but serializes
  * writes, and busy_timeout may be exceeded under heavy contention.
  */
-export function withRetry<T>(fn: () => T, maxRetries = 3, baseDelayMs = 200): T {
+export function withRetry<T>(
+  fn: () => T,
+  maxRetries = 3,
+  baseDelayMs = 200,
+): T {
   let lastError: unknown;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -660,11 +664,16 @@ export function withRetry<T>(fn: () => T, maxRetries = 3, baseDelayMs = 200): T 
       lastError = e;
       const msg = e instanceof Error ? e.message : String(e);
       // Only retry on SQLITE_BUSY or "database is locked" errors
-      if (!msg.includes('BUSY') && !msg.includes('locked') && !msg.includes('busy')) {
+      if (
+        !msg.includes('BUSY') &&
+        !msg.includes('locked') &&
+        !msg.includes('busy')
+      ) {
         throw e;
       }
       if (attempt < maxRetries) {
-        const delay = baseDelayMs * Math.pow(2, attempt) + Math.floor(Math.random() * 100);
+        const delay =
+          baseDelayMs * 2 ** attempt + Math.floor(Math.random() * 100);
         // Synchronous sleep for Bun — use Atomics.wait in a worker-like pattern
         const end = Date.now() + delay;
         while (Date.now() < end) {
@@ -691,11 +700,15 @@ export function initDbWithRetry(cwd?: string, maxRetries = 4): void {
     } catch (e: unknown) {
       lastError = e;
       const msg = e instanceof Error ? e.message : String(e);
-      if (!msg.includes('BUSY') && !msg.includes('locked') && !msg.includes('busy')) {
+      if (
+        !msg.includes('BUSY') &&
+        !msg.includes('locked') &&
+        !msg.includes('busy')
+      ) {
         throw e;
       }
       if (attempt < maxRetries) {
-        const delay = 300 * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
+        const delay = 300 * 2 ** attempt + Math.floor(Math.random() * 200);
         const end = Date.now() + delay;
         while (Date.now() < end) {
           // busy-wait

@@ -392,53 +392,58 @@ describe('MCP tools', () => {
       expect(readData.messages[0].from).toBe('lead-1');
     });
 
-    test.serial('sender endpoint mismatch logs or errors by policy', async () => {
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'leader',
-        name: 'lead-1',
-        tmux_target: testPaneA,
-      });
-      await handleJoinRoom({
-        room: 'frontend',
-        role: 'worker',
-        name: 'builder-1',
-        tmux_target: testPaneB,
-      });
-
-      process.env.TMUX_PANE = testPaneB;
-      const originalWarn = console.warn;
-      const warnings: string[] = [];
-      console.warn = (...args: unknown[]) => {
-        warnings.push(args.map((arg) => String(arg)).join(' '));
-      };
-
-      try {
-        config.senderVerification = 'log';
-        const logResult = await handleSendMessage({
+    test.serial(
+      'sender endpoint mismatch logs or errors by policy',
+      async () => {
+        await handleJoinRoom({
           room: 'frontend',
-          text: 'Build the login page',
-          to: 'builder-1',
+          role: 'leader',
           name: 'lead-1',
+          tmux_target: testPaneA,
         });
-        expect(logResult.isError).toBeUndefined();
-        expect(warnings.some((warning) => warning.includes('Sender mismatch'))).toBe(true);
-
-        config.senderVerification = 'enforce';
-        const enforceResult = await handleSendMessage({
+        await handleJoinRoom({
           room: 'frontend',
-          text: 'Build the login page',
-          to: 'builder-1',
-          name: 'lead-1',
+          role: 'worker',
+          name: 'builder-1',
+          tmux_target: testPaneB,
         });
-        expect(enforceResult.isError).toBe(true);
-        const enforceData = JSON.parse(enforceResult.content[0]!.text);
-        expect(enforceData.error).toContain('Sender mismatch');
-      } finally {
-        console.warn = originalWarn;
-        config.senderVerification = 'off';
-      }
-    });
+
+        process.env.TMUX_PANE = testPaneB;
+        const originalWarn = console.warn;
+        const warnings: string[] = [];
+        console.warn = (...args: unknown[]) => {
+          warnings.push(args.map((arg) => String(arg)).join(' '));
+        };
+
+        try {
+          config.senderVerification = 'log';
+          const logResult = await handleSendMessage({
+            room: 'frontend',
+            text: 'Build the login page',
+            to: 'builder-1',
+            name: 'lead-1',
+          });
+          expect(logResult.isError).toBeUndefined();
+          expect(
+            warnings.some((warning) => warning.includes('Sender mismatch')),
+          ).toBe(true);
+
+          config.senderVerification = 'enforce';
+          const enforceResult = await handleSendMessage({
+            room: 'frontend',
+            text: 'Build the login page',
+            to: 'builder-1',
+            name: 'lead-1',
+          });
+          expect(enforceResult.isError).toBe(true);
+          const enforceData = JSON.parse(enforceResult.content[0]!.text);
+          expect(enforceData.error).toContain('Sender mismatch');
+        } finally {
+          console.warn = originalWarn;
+          config.senderVerification = 'off';
+        }
+      },
+    );
 
     test.serial(
       'read_messages returns no messages when input block is active',
@@ -1846,15 +1851,21 @@ describe('MCP tools', () => {
       expect(data.error).toContain('No registered agent found for session ID');
     });
 
-    test.serial('reuses the initial pane probe for self json typing state', async () => {
-      const toolUrl = new URL('../src/tools/get-status.ts', import.meta.url).href;
-      const paneStatusUrl = new URL('../src/shared/pane-status.ts', import.meta.url)
-        .href;
-      const tmuxUrl = new URL('../src/tmux/index.ts', import.meta.url).href;
-      const stateDbUrl = new URL('../src/state/db.ts', import.meta.url).href;
-      const stateIndexUrl = new URL('../src/state/index.ts', import.meta.url).href;
+    test.serial(
+      'reuses the initial pane probe for self json typing state',
+      async () => {
+        const toolUrl = new URL('../src/tools/get-status.ts', import.meta.url)
+          .href;
+        const paneStatusUrl = new URL(
+          '../src/shared/pane-status.ts',
+          import.meta.url,
+        ).href;
+        const tmuxUrl = new URL('../src/tmux/index.ts', import.meta.url).href;
+        const stateDbUrl = new URL('../src/state/db.ts', import.meta.url).href;
+        const stateIndexUrl = new URL('../src/state/index.ts', import.meta.url)
+          .href;
 
-      const script = `
+        const script = `
         import { mock } from 'bun:test';
 
         let getPaneStatusCalls = 0;
@@ -1912,26 +1923,27 @@ describe('MCP tools', () => {
         closeDb();
       `;
 
-      const proc = Bun.spawn(['bun', '-e', script], {
-        cwd: new URL('..', import.meta.url).pathname,
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
+        const proc = Bun.spawn(['bun', '-e', script], {
+          cwd: new URL('..', import.meta.url).pathname,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        });
 
-      const exitCode = await proc.exited;
-      const stdout = await new Response(proc.stdout).text();
-      const stderr = await new Response(proc.stderr).text();
+        const exitCode = await proc.exited;
+        const stdout = await new Response(proc.stdout).text();
+        const stderr = await new Response(proc.stderr).text();
 
-      if (exitCode !== 0) {
-        throw new Error(
-          `probe failed with exit ${exitCode}\nstdout:\n${stdout}\nstderr:\n${stderr}`,
-        );
-      }
+        if (exitCode !== 0) {
+          throw new Error(
+            `probe failed with exit ${exitCode}\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+          );
+        }
 
-      const data = JSON.parse(stdout.trim());
-      expect(data.getPaneStatusCalls).toBe(1);
-      expect(data.payload.status).toBe('busy');
-      expect(data.payload.typing_active).toBe(true);
-    });
+        const data = JSON.parse(stdout.trim());
+        expect(data.getPaneStatusCalls).toBe(1);
+        expect(data.payload.status).toBe('busy');
+        expect(data.payload.typing_active).toBe(true);
+      },
+    );
   });
 });

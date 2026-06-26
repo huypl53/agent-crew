@@ -1,15 +1,18 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { assertAgentCanInspectWorker } from '../shared/role-guard.ts';
-import { getAllAgents, getLatestHookEvent } from '../state/index.ts';
-import { capturePane } from '../tmux/index.ts';
-import { resolveAgentSession, resolveAgyTranscriptPath } from '../tokens/pid-mapper.ts';
 import {
   extractHookCompletionMessage,
   resolveAgentRuntime,
 } from '../shared/hook-runtime.ts';
+import { assertAgentCanInspectWorker } from '../shared/role-guard.ts';
+import { getAllAgents, getLatestHookEvent } from '../state/index.ts';
+import { capturePane } from '../tmux/index.ts';
 import {
-  extractRecentClaudeTurns,
+  resolveAgentSession,
+  resolveAgyTranscriptPath,
+} from '../tokens/pid-mapper.ts';
+import {
   extractRecentAgyTurns,
+  extractRecentClaudeTurns,
   type InspectionTurn,
 } from './claude-transcript.ts';
 import type {
@@ -30,9 +33,7 @@ interface InspectWorkerDeps {
   paneLoader?: (tmuxTarget: string) => Promise<string | null>;
 }
 
-function isCompletionHookEvent(
-  eventType: string | null | undefined,
-): boolean {
+function isCompletionHookEvent(eventType: string | null | undefined): boolean {
   return eventType === 'Stop' || eventType === 'StopFailure';
 }
 
@@ -93,7 +94,7 @@ async function buildHookFallback(
       ? latestStop.id > latestStopFailure.id
         ? latestStop
         : latestStopFailure
-      : latestStop ?? latestStopFailure;
+      : (latestStop ?? latestStopFailure);
   const latestRelevantEvent =
     latestCompletionEvent &&
     (!latestEvent || latestCompletionEvent.id >= latestEvent.id)
@@ -104,15 +105,14 @@ async function buildHookFallback(
   );
   const turns = assistantText
     ? [
-      {
-        role: 'assistant' as const,
-        text: assistantText,
-        timestamp: latestRelevantEvent?.created_at ?? null,
-      },
-    ]
+        {
+          role: 'assistant' as const,
+          text: assistantText,
+          timestamp: latestRelevantEvent?.created_at ?? null,
+        },
+      ]
     : [];
-  const status =
-    deriveHookStatus(latestEvent);
+  const status = deriveHookStatus(latestEvent);
 
   return {
     agent_name: workerName,

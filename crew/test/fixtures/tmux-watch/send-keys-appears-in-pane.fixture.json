@@ -27,8 +27,6 @@
   },
   "expect": {
     "timedOut": false,
-    "finalCaptureContains": [
-      "HELLO-TMUX-WATCH"
-    ]
+    "finalCaptureContains": ["HELLO-TMUX-WATCH"]
   }
 }

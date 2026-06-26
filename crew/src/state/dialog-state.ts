@@ -1,4 +1,3 @@
-import { getDb } from './db.ts';
 import type {
   DialogQuestion,
   LeaderDialog,
@@ -6,6 +5,7 @@ import type {
   LeaderDialogStatus,
   LeaderDialogType,
 } from '../shared/types.ts';
+import { getDb } from './db.ts';
 
 export interface CreateLeaderDialogInput {
   roomId: number;
@@ -64,13 +64,15 @@ function parseQuestionAnswers(raw: string | null): number[][] | null {
 
 function ensureDialogProgressColumns(): void {
   const db = getDb();
-  const cols = db
-    .query('PRAGMA table_info(leader_dialogs)')
-    .all() as Array<{ name: string }>;
+  const cols = db.query('PRAGMA table_info(leader_dialogs)').all() as Array<{
+    name: string;
+  }>;
   const hasCurrent = cols.some((c) => c.name === 'current_question_index');
   const hasAnswers = cols.some((c) => c.name === 'question_answers');
   if (!hasCurrent) {
-    db.run('ALTER TABLE leader_dialogs ADD COLUMN current_question_index INTEGER NOT NULL DEFAULT 0');
+    db.run(
+      'ALTER TABLE leader_dialogs ADD COLUMN current_question_index INTEGER NOT NULL DEFAULT 0',
+    );
   }
   if (!hasAnswers) {
     db.run('ALTER TABLE leader_dialogs ADD COLUMN question_answers TEXT');
@@ -90,15 +92,14 @@ function rowToDialog(row: Record<string, unknown>): LeaderDialog {
     questions: parseQuestions((row.questions as string | null) ?? null),
     current_question_index:
       Number.parseInt(String(row.current_question_index ?? 0), 10) || 0,
-    question_answers: parseQuestionAnswers(
-      (row.question_answers as string | null) ?? null,
-    ) ?? [],
+    question_answers:
+      parseQuestionAnswers((row.question_answers as string | null) ?? null) ??
+      [],
     status: parseStatus(row.status),
     answer: parseAnswer((row.answer as string | null) ?? null),
     created_at: row.created_at as string,
     answered_at: (row.answered_at as string | null) ?? null,
-    source_hook_event_id:
-      (row.source_hook_event_id as number | null) ?? null,
+    source_hook_event_id: (row.source_hook_event_id as number | null) ?? null,
   };
 }
 
@@ -142,9 +143,11 @@ export function createLeaderDialog(
       ],
     );
 
-    const id = (db.query('SELECT last_insert_rowid() AS id').get() as {
-      id: number;
-    }).id;
+    const id = (
+      db.query('SELECT last_insert_rowid() AS id').get() as {
+        id: number;
+      }
+    ).id;
     return getDialogById(id)!;
   })();
 }
@@ -228,15 +231,13 @@ export function markDialogStepAnswered(
               question_answers
        FROM leader_dialogs WHERE id = ?`,
     )
-    .get(id) as
-    | {
-        status: LeaderDialogStatus;
-        dialog_type: string;
-        questions: string | null;
-        current_question_index: number | null;
-        question_answers: string | null;
-      }
-    | null;
+    .get(id) as {
+    status: LeaderDialogStatus;
+    dialog_type: string;
+    questions: string | null;
+    current_question_index: number | null;
+    question_answers: string | null;
+  } | null;
 
   if (
     !row ||
@@ -246,7 +247,8 @@ export function markDialogStepAnswered(
     return { dialog: null, isComplete: false };
   }
 
-  const qIndex = Number.parseInt(String(row.current_question_index ?? 0), 10) || 0;
+  const qIndex =
+    Number.parseInt(String(row.current_question_index ?? 0), 10) || 0;
   if (!Number.isInteger(questionIndex) || questionIndex !== qIndex) {
     return { dialog: null, isComplete: false };
   }

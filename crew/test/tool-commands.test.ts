@@ -3,10 +3,9 @@
  * These are CLI-level handlers (not hook-event), tested with in-memory DB.
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 
 // Mock tmux before importing anything that touches it
 const tmuxModulePath = resolve(import.meta.dir, '../src/tmux/index.ts');
@@ -22,7 +21,10 @@ const _realGetDb = origDb.getDb;
 mock.module(dbModulePath, () => ({
   ...origDb,
   initDb: (path?: string) => {
-    try { _realGetDb(); if (!path) return; } catch {}
+    try {
+      _realGetDb();
+      if (!path) return;
+    } catch {}
     _realInitDb(path);
   },
 }));
@@ -70,38 +72,64 @@ mock.module(tmuxModulePath, () => ({
 }));
 
 import {
-  initDb,
-  closeDb,
+  armLeaderGoalReminder,
+  completeGoal,
+  consumeLeaderGoalReminder,
+  getGoalByAgent,
+  setGoal,
+  tickGoalTurnCount,
+  unsetGoal,
+  updateGoalDescription,
+} from '../src/state/goal-state.ts';
+import {
   addAgent,
-  getOrCreateRoom,
-  setHint,
+  closeDb,
   getHint,
+  getOrCreateRoom,
+  initDb,
+  setHint,
   unsetHint,
 } from '../src/state/index.ts';
 import {
-  setGoal,
-  getGoalByAgent,
-  completeGoal,
-  updateGoalDescription,
-  unsetGoal,
-  tickGoalTurnCount,
-  armLeaderGoalReminder,
-  consumeLeaderGoalReminder,
-} from '../src/state/goal-state.ts';
-import { handleGoalSet, handleGoalDone, handleGoalUpdate, handleGoalUnset, handleGoalLookup } from '../src/tools/goal.ts';
-import { handleHintSet, handleHintUnset, handleHintLookup } from '../src/tools/hint.ts';
+  handleGoalDone,
+  handleGoalLookup,
+  handleGoalSet,
+  handleGoalUnset,
+  handleGoalUpdate,
+} from '../src/tools/goal.ts';
+import {
+  handleHintLookup,
+  handleHintSet,
+  handleHintUnset,
+} from '../src/tools/hint.ts';
 import { handleSendBatch } from '../src/tools/send-batch.ts';
 
-function parseResult(result: { content?: Array<{ type: string; text?: string }> }): Record<string, unknown> {
-  const text = result.content?.filter((c): c is { type: 'text'; text: string } => c.type === 'text').map(c => c.text).join('') ?? '';
-  try { return JSON.parse(text); } catch { return { _raw: text }; }
+function parseResult(result: {
+  content?: Array<{ type: string; text?: string }>;
+}): Record<string, unknown> {
+  const text =
+    result.content
+      ?.filter((c): c is { type: 'text'; text: string } => c.type === 'text')
+      .map((c) => c.text)
+      .join('') ?? '';
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { _raw: text };
+  }
 }
 
 // ─── Goal State ─────────────────────────────────────────────────
 
 describe('goal state', () => {
-  beforeEach(() => { initDb(':memory:'); });
-  afterEach(() => { try { closeDb(); } catch {} });
+  beforeEach(() => {
+    initDb(':memory:');
+  });
+  afterEach(() => {
+    try {
+      closeDb();
+    } catch {}
+  });
 
   test('setGoal + getGoalByAgent round-trip', () => {
     const room = getOrCreateRoom('/tmp/g', 'dev');
@@ -249,20 +277,30 @@ describe('goal state', () => {
 // ─── Goal Tool Handlers ─────────────────────────────────────────
 
 describe('goal tool handlers', () => {
-  beforeEach(() => { initDb(':memory:'); });
-  afterEach(() => { try { closeDb(); } catch {} });
+  beforeEach(() => {
+    initDb(':memory:');
+  });
+  afterEach(() => {
+    try {
+      closeDb();
+    } catch {}
+  });
 
   test('handleGoalSet with explicit agent+room', async () => {
     const room = getOrCreateRoom('/tmp/g', 'dev');
     addAgent('w1', 'worker', room.id, '%10');
-    const result = parseResult(await handleGoalSet({ agent: 'w1', room: 'dev', message: 'Build it' }));
+    const result = parseResult(
+      await handleGoalSet({ agent: 'w1', room: 'dev', message: 'Build it' }),
+    );
     expect(result.ok).toBe(true);
     expect((result.goal as any).description).toBe('Build it');
     expect((result.goal as any).status).toBe('active');
   });
 
   test('handleGoalSet rejects empty message', async () => {
-    const result = parseResult(await handleGoalSet({ agent: 'w1', room: 'dev', message: '' }));
+    const result = parseResult(
+      await handleGoalSet({ agent: 'w1', room: 'dev', message: '' }),
+    );
     expect(result.ok).toBeFalsy();
   });
 
@@ -270,7 +308,9 @@ describe('goal tool handlers', () => {
     const room = getOrCreateRoom('/tmp/g', 'dev');
     addAgent('w1', 'worker', room.id, '%10');
     setGoal('w1', room.id, 'Do stuff');
-    const result = parseResult(await handleGoalDone({ agent: 'w1', room: 'dev' }));
+    const result = parseResult(
+      await handleGoalDone({ agent: 'w1', room: 'dev' }),
+    );
     expect(result.ok).toBe(true);
     expect(result.goal_status).toBe('done');
   });
@@ -278,7 +318,9 @@ describe('goal tool handlers', () => {
   test('handleGoalDone errors without active goal', async () => {
     const room = getOrCreateRoom('/tmp/g', 'dev');
     addAgent('w1', 'worker', room.id, '%10');
-    const result = parseResult(await handleGoalDone({ agent: 'w1', room: 'dev' }));
+    const result = parseResult(
+      await handleGoalDone({ agent: 'w1', room: 'dev' }),
+    );
     expect(result.ok).toBeFalsy();
   });
 
@@ -301,7 +343,9 @@ describe('goal tool handlers', () => {
     const room = getOrCreateRoom('/tmp/g', 'dev');
     addAgent('w1', 'worker', room.id, '%10');
     setGoal('w1', room.id, 'Will remove');
-    const result = parseResult(await handleGoalUnset({ agent: 'w1', room: 'dev' }));
+    const result = parseResult(
+      await handleGoalUnset({ agent: 'w1', room: 'dev' }),
+    );
     expect(result.ok).toBe(true);
     expect(result.removed).toBe(true);
     expect(getGoalByAgent('w1', room.id)).toBeNull();
@@ -311,7 +355,9 @@ describe('goal tool handlers', () => {
     const room = getOrCreateRoom('/tmp/g', 'dev');
     addAgent('w1', 'worker', room.id, '%10');
     setGoal('w1', room.id, 'Lookup me');
-    const result = parseResult(await handleGoalLookup({ agent: 'w1', room: 'dev' }));
+    const result = parseResult(
+      await handleGoalLookup({ agent: 'w1', room: 'dev' }),
+    );
     expect(result.ok).toBe(true);
     expect((result.goal as any)?.description).toBe('Lookup me');
   });
@@ -319,7 +365,9 @@ describe('goal tool handlers', () => {
   test('handleGoalLookup returns null when no goal', async () => {
     const room = getOrCreateRoom('/tmp/g', 'dev');
     addAgent('w1', 'worker', room.id, '%10');
-    const result = parseResult(await handleGoalLookup({ agent: 'w1', room: 'dev' }));
+    const result = parseResult(
+      await handleGoalLookup({ agent: 'w1', room: 'dev' }),
+    );
     expect(result.ok).toBe(true);
     expect(result.goal).toBeNull();
   });
@@ -329,7 +377,13 @@ describe('goal tool handlers', () => {
     addAgent('lead', 'leader', room.id, '%10');
     addAgent('w1', 'worker', room.id, '%11');
     // Simulate leader setting goal for worker via explicit params
-    const result = parseResult(await handleGoalSet({ agent: 'w1', room: 'dev', message: 'Task from leader' }));
+    const result = parseResult(
+      await handleGoalSet({
+        agent: 'w1',
+        room: 'dev',
+        message: 'Task from leader',
+      }),
+    );
     expect(result.ok).toBe(true);
   });
 });
@@ -337,8 +391,14 @@ describe('goal tool handlers', () => {
 // ─── Hint State ─────────────────────────────────────────────────
 
 describe('hint state', () => {
-  beforeEach(() => { initDb(':memory:'); });
-  afterEach(() => { try { closeDb(); } catch {} });
+  beforeEach(() => {
+    initDb(':memory:');
+  });
+  afterEach(() => {
+    try {
+      closeDb();
+    } catch {}
+  });
 
   test('setHint + getHint round-trip', () => {
     const room = getOrCreateRoom('/tmp/h', 'dev');
@@ -397,27 +457,44 @@ describe('hint state', () => {
 // ─── Hint Tool Handlers ─────────────────────────────────────────
 
 describe('hint tool handlers', () => {
-  beforeEach(() => { initDb(':memory:'); });
-  afterEach(() => { try { closeDb(); } catch {} });
+  beforeEach(() => {
+    initDb(':memory:');
+  });
+  afterEach(() => {
+    try {
+      closeDb();
+    } catch {}
+  });
 
   test('handleHintSet with explicit agent+room', async () => {
     const room = getOrCreateRoom('/tmp/h', 'dev');
     addAgent('w1', 'worker', room.id, '%10');
-    const result = parseResult(await handleHintSet({ agent: 'w1', room: 'dev', message: 'Remember TypeScript', cadence: 5 }));
+    const result = parseResult(
+      await handleHintSet({
+        agent: 'w1',
+        room: 'dev',
+        message: 'Remember TypeScript',
+        cadence: 5,
+      }),
+    );
     expect(result.ok).toBe(true);
     expect((result.hint as any).message).toBe('Remember TypeScript');
     expect((result.hint as any).cadence).toBe(5);
   });
 
   test('handleHintSet rejects empty message', async () => {
-    const result = parseResult(await handleHintSet({ agent: 'w1', room: 'dev', message: '' }));
+    const result = parseResult(
+      await handleHintSet({ agent: 'w1', room: 'dev', message: '' }),
+    );
     expect(result.ok).toBeFalsy();
   });
 
   test('handleHintSet defaults cadence to 3', async () => {
     const room = getOrCreateRoom('/tmp/h', 'dev');
     addAgent('w1', 'worker', room.id, '%10');
-    const result = parseResult(await handleHintSet({ agent: 'w1', room: 'dev', message: 'Default' }));
+    const result = parseResult(
+      await handleHintSet({ agent: 'w1', room: 'dev', message: 'Default' }),
+    );
     expect((result.hint as any).cadence).toBe(3);
   });
 
@@ -425,7 +502,9 @@ describe('hint tool handlers', () => {
     const room = getOrCreateRoom('/tmp/h', 'dev');
     addAgent('w1', 'worker', room.id, '%10');
     setHint('w1', room.id, 'Remove me');
-    const result = parseResult(await handleHintUnset({ agent: 'w1', room: 'dev' }));
+    const result = parseResult(
+      await handleHintUnset({ agent: 'w1', room: 'dev' }),
+    );
     expect(result.ok).toBe(true);
     expect(getHint('%10', null, room.id)).toBeNull();
   });
@@ -433,7 +512,9 @@ describe('hint tool handlers', () => {
   test('handleHintUnset errors without hint', async () => {
     const room = getOrCreateRoom('/tmp/h', 'dev');
     addAgent('w1', 'worker', room.id, '%10');
-    const result = parseResult(await handleHintUnset({ agent: 'w1', room: 'dev' }));
+    const result = parseResult(
+      await handleHintUnset({ agent: 'w1', room: 'dev' }),
+    );
     expect(result.ok).toBeFalsy();
   });
 
@@ -470,8 +551,12 @@ describe('send-batch', () => {
 
   afterEach(() => {
     _tapLog.length = 0;
-    try { closeDb(); } catch {}
-    try { rmSync(tmpDir, { recursive: true }); } catch {}
+    try {
+      closeDb();
+    } catch {}
+    try {
+      rmSync(tmpDir, { recursive: true });
+    } catch {}
   });
 
   function writePromptFile(name: string, content: string): string {
@@ -501,21 +586,30 @@ describe('send-batch', () => {
       ],
     });
 
-    const result = parseResult(await handleSendBatch({
-      room: 'dev',
-      manifest,
-      name: 'lead',
-    }));
+    const result = parseResult(
+      await handleSendBatch({
+        room: 'dev',
+        manifest,
+        name: 'lead',
+      }),
+    );
 
     expect(result.batch_id).toBeTruthy();
-    const workers = result.workers as Array<{ name: string; dispatch_status: string }>;
+    const workers = result.workers as Array<{
+      name: string;
+      dispatch_status: string;
+    }>;
     expect(workers.length).toBe(2);
-    expect(workers.every(w => w.dispatch_status === 'sent')).toBe(true);
+    expect(workers.every((w) => w.dispatch_status === 'sent')).toBe(true);
 
     // Verify tmux sends happened
-    await new Promise(r => setTimeout(r, 500));
-    const w1Sends = _tapLog.filter(e => e.op === 'sendKeys' && e.target === '%11');
-    const w2Sends = _tapLog.filter(e => e.op === 'sendKeys' && e.target === '%12');
+    await new Promise((r) => setTimeout(r, 500));
+    const w1Sends = _tapLog.filter(
+      (e) => e.op === 'sendKeys' && e.target === '%11',
+    );
+    const w2Sends = _tapLog.filter(
+      (e) => e.op === 'sendKeys' && e.target === '%12',
+    );
     expect(w1Sends.length).toBeGreaterThan(0);
     expect(w2Sends.length).toBeGreaterThan(0);
   });
@@ -530,11 +624,13 @@ describe('send-batch', () => {
       workers: [{ name: 'w1', file: p1 }],
     });
 
-    const result = parseResult(await handleSendBatch({
-      room: 'dev',
-      manifest,
-      name: 'w1',
-    }));
+    const result = parseResult(
+      await handleSendBatch({
+        room: 'dev',
+        manifest,
+        name: 'w1',
+      }),
+    );
 
     expect(result.error).toBeTruthy();
     expect(result.batch_id).toBeUndefined();
@@ -547,11 +643,13 @@ describe('send-batch', () => {
     const path = `${tmpDir}/bad-manifest.json`;
     writeFileSync(path, 'not json{{{');
 
-    const result = parseResult(await handleSendBatch({
-      room: 'dev',
-      manifest: path,
-      name: 'lead',
-    }));
+    const result = parseResult(
+      await handleSendBatch({
+        room: 'dev',
+        manifest: path,
+        name: 'lead',
+      }),
+    );
 
     expect(result.error).toBeTruthy();
   });
@@ -561,11 +659,13 @@ describe('send-batch', () => {
     addAgent('lead', 'leader', room.id, '%10');
 
     const manifest = writeManifest({ workers: [] });
-    const result = parseResult(await handleSendBatch({
-      room: 'dev',
-      manifest,
-      name: 'lead',
-    }));
+    const result = parseResult(
+      await handleSendBatch({
+        room: 'dev',
+        manifest,
+        name: 'lead',
+      }),
+    );
 
     expect(result.error).toBeTruthy();
   });
@@ -580,11 +680,13 @@ describe('send-batch', () => {
       workers: [{ name: 'ghost', file: p1 }],
     });
 
-    const result = parseResult(await handleSendBatch({
-      room: 'dev',
-      manifest,
-      name: 'lead',
-    }));
+    const result = parseResult(
+      await handleSendBatch({
+        room: 'dev',
+        manifest,
+        name: 'lead',
+      }),
+    );
 
     expect(result.error).toBeTruthy();
   });
@@ -602,11 +704,13 @@ describe('send-batch', () => {
       ],
     });
 
-    const result = parseResult(await handleSendBatch({
-      room: 'dev',
-      manifest,
-      name: 'lead',
-    }));
+    const result = parseResult(
+      await handleSendBatch({
+        room: 'dev',
+        manifest,
+        name: 'lead',
+      }),
+    );
 
     expect(result.error).toBeTruthy();
   });
@@ -622,11 +726,13 @@ describe('send-batch', () => {
       workers: [{ name: 'w1', file: p1 }],
     });
 
-    const result = parseResult(await handleSendBatch({
-      room: 'dev',
-      manifest,
-      name: 'lead',
-    }));
+    const result = parseResult(
+      await handleSendBatch({
+        room: 'dev',
+        manifest,
+        name: 'lead',
+      }),
+    );
 
     expect(result.error).toBeTruthy();
   });
@@ -649,19 +755,24 @@ describe('send-batch', () => {
       ],
     });
 
-    const result = parseResult(await handleSendBatch({
-      room: 'dev',
-      manifest,
-      name: 'lead',
-    }));
+    const result = parseResult(
+      await handleSendBatch({
+        room: 'dev',
+        manifest,
+        name: 'lead',
+      }),
+    );
 
     expect(result.batch_id).toBeTruthy();
-    const workers = result.workers as Array<{ name: string; dispatch_status: string }>;
+    const workers = result.workers as Array<{
+      name: string;
+      dispatch_status: string;
+    }>;
     expect(workers.length).toBe(3);
     expect(workers[0]?.name).toBe('w1');
     expect(workers[1]?.name).toBe('w2');
     expect(workers[2]?.name).toBe('w3');
-    expect(workers.every(w => w.dispatch_status === 'sent')).toBe(true);
+    expect(workers.every((w) => w.dispatch_status === 'sent')).toBe(true);
   });
 
   test('batch rejects missing prompt file', async () => {
@@ -673,11 +784,13 @@ describe('send-batch', () => {
       workers: [{ name: 'w1', file: '/nonexistent/path.md' }],
     });
 
-    const result = parseResult(await handleSendBatch({
-      room: 'dev',
-      manifest,
-      name: 'lead',
-    }));
+    const result = parseResult(
+      await handleSendBatch({
+        room: 'dev',
+        manifest,
+        name: 'lead',
+      }),
+    );
 
     expect(result.error).toBeTruthy();
   });
@@ -686,8 +799,14 @@ describe('send-batch', () => {
 // ─── Cross-feature: Goal + Hint + Hook interaction ──────────────
 
 describe('goal + hint cross-feature', () => {
-  beforeEach(() => { initDb(':memory:'); });
-  afterEach(() => { try { closeDb(); } catch {} });
+  beforeEach(() => {
+    initDb(':memory:');
+  });
+  afterEach(() => {
+    try {
+      closeDb();
+    } catch {}
+  });
 
   test('goal and hint coexist for same agent', () => {
     const room = getOrCreateRoom('/tmp/x', 'dev');

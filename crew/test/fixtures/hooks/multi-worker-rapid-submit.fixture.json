@@ -37,19 +37,25 @@
       "event": "UserPromptSubmit",
       "pane": "%11",
       "delay": 5,
-      "expect": { "stdout_path": [{ "path": "hint.message", "value": "Hint for w1" }] }
+      "expect": {
+        "stdout_path": [{ "path": "hint.message", "value": "Hint for w1" }]
+      }
     },
     {
       "event": "UserPromptSubmit",
       "pane": "%12",
       "delay": 5,
-      "expect": { "stdout_path": [{ "path": "hint.message", "value": "Hint for w2" }] }
+      "expect": {
+        "stdout_path": [{ "path": "hint.message", "value": "Hint for w2" }]
+      }
     },
     {
       "event": "UserPromptSubmit",
       "pane": "%13",
       "delay": 5,
-      "expect": { "stdout_path": [{ "path": "hint.message", "value": "Hint for w3" }] }
+      "expect": {
+        "stdout_path": [{ "path": "hint.message", "value": "Hint for w3" }]
+      }
     }
   ]
 }

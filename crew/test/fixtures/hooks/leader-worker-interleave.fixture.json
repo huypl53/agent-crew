@@ -55,9 +55,7 @@
       "event": "Stop",
       "pane": "%10",
       "expect": {
-        "tmux_absent": [
-          { "op": "sendKeys", "target": "%10" }
-        ]
+        "tmux_absent": [{ "op": "sendKeys", "target": "%10" }]
       }
     }
   ]

@@ -48,7 +48,11 @@
           }
         ],
         "tmux_absent": [
-          { "op": "sendKeys", "target": "%41", "contains": "Codex worker final answer" }
+          {
+            "op": "sendKeys",
+            "target": "%41",
+            "contains": "Codex worker final answer"
+          }
         ]
       }
     }

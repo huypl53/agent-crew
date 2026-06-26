@@ -1,6 +1,6 @@
 import { getAgentByPane, getLatestHookEvent } from '../state/index.ts';
-import type { HookEvent } from './types.ts';
 import { capturePane } from '../tmux/index.ts';
+import type { HookEvent } from './types.ts';
 
 export type PaneStatus = 'idle' | 'busy' | 'unknown';
 
@@ -241,8 +241,9 @@ export async function getPaneStatus(target: string): Promise<PaneStatusResult> {
     };
   }
 
-  const status: PaneStatus =
-    isCompletionHookEvent(latestEvent.event_type) ? 'idle' : 'busy';
+  const status: PaneStatus = isCompletionHookEvent(latestEvent.event_type)
+    ? 'idle'
+    : 'busy';
   const prevEventId = lastSeenEventId.get(target) ?? 0;
   const contentChanged = latestEvent.id !== prevEventId;
   noHookState.delete(target);

@@ -5,9 +5,9 @@
  * Add a new JSON file to add a new edge case — no test code changes needed.
  */
 
-import { describe, test, expect } from 'bun:test';
-import { runFixtureDir, printResults } from './lib/fixture-runner.ts';
+import { describe, expect, test } from 'bun:test';
 import { resolve } from 'node:path';
+import { printResults, runFixtureDir } from './lib/fixture-runner.ts';
 
 const FIXTURES_DIR = resolve(import.meta.dir, 'fixtures/hooks');
 
@@ -23,7 +23,9 @@ describe('hook fixtures', () => {
 describe('mock-hook unit', () => {
   test('malformed JSON input does not crash', async () => {
     const { MockHook } = await import('./lib/mock-hook.ts');
-    const { initDb, closeDb, addAgent, getOrCreateRoom } = await import('../src/state/index.ts');
+    const { initDb, closeDb, addAgent, getOrCreateRoom } = await import(
+      '../src/state/index.ts'
+    );
     initDb(':memory:');
     try {
       const room = getOrCreateRoom('/tmp/test', 'dev');
@@ -38,7 +40,9 @@ describe('mock-hook unit', () => {
 
   test('concurrent hook fires do not throw', async () => {
     const { MockHook } = await import('./lib/mock-hook.ts');
-    const { initDb, closeDb, addAgent, getOrCreateRoom } = await import('../src/state/index.ts');
+    const { initDb, closeDb, addAgent, getOrCreateRoom } = await import(
+      '../src/state/index.ts'
+    );
     initDb(':memory:');
     try {
       const room = getOrCreateRoom('/tmp/test', 'dev');
@@ -61,7 +65,13 @@ describe('tmux-tap unit', () => {
   test('TmuxTap records entries and assertions work', () => {
     const { TmuxTap } = require('./lib/tmux-tap.ts');
     const tap = new TmuxTap();
-    tap.log.push({ ts: Date.now(), op: 'sendKeys', target: '%42', args: ['hello world'], result: { delivered: true } });
+    tap.log.push({
+      ts: Date.now(),
+      op: 'sendKeys',
+      target: '%42',
+      args: ['hello world'],
+      result: { delivered: true },
+    });
     tap.assertSent('%42', /hello world/);
     tap.assertNotSent('%42', /goodbye/);
     tap.assertNotSent('%99', /hello/);
@@ -73,7 +83,9 @@ describe('tmux-tap unit', () => {
   test('assertSent throws when no match', () => {
     const { TmuxTap } = require('./lib/tmux-tap.ts');
     const tap = new TmuxTap();
-    expect(() => tap.assertSent('%42', /anything/)).toThrow(/No sendKeys to %42/);
+    expect(() => tap.assertSent('%42', /anything/)).toThrow(
+      /No sendKeys to %42/,
+    );
   });
 
   test('assertEmpty passes on empty log', () => {

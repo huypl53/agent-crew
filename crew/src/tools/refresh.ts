@@ -1,14 +1,14 @@
-import { normalizePath } from "../shared/path-utils.ts";
-import type { ToolResult } from "../shared/types.ts";
-import { err, ok, randomSuffix } from "../shared/types.ts";
+import { normalizePath } from '../shared/path-utils.ts';
+import type { ToolResult } from '../shared/types.ts';
+import { err, ok, randomSuffix } from '../shared/types.ts';
 import {
   getAgent,
-  getRoom,
   getAgentByRoomAndName,
+  getRoom,
   getRoomByPath,
   refreshAgent,
-} from "../state/index.ts";
-import { getPaneCwd, paneExists } from "../tmux/index.ts";
+} from '../state/index.ts';
+import { getPaneCwd, paneExists } from '../tmux/index.ts';
 
 interface RefreshParams {
   name: string;
@@ -21,7 +21,7 @@ export async function handleRefresh(
   const { name, tmux_target } = params;
 
   if (!name) {
-    return err("Missing required param: name");
+    return err('Missing required param: name');
   }
 
   // Resolve tmux target
@@ -30,7 +30,7 @@ export async function handleRefresh(
     const pane = process.env.TMUX_PANE;
     if (!pane) {
       return err(
-        "Not running inside a tmux pane. Set TMUX_PANE env var, or provide tmux_target param.",
+        'Not running inside a tmux pane. Set TMUX_PANE env var, or provide tmux_target param.',
       );
     }
     target = pane;
@@ -51,7 +51,7 @@ export async function handleRefresh(
 
   // Try lookup by existing agent globally first (so we know their old room)
   const existingAgent = getAgent(name);
-  let room = existingAgent
+  const room = existingAgent
     ? getRoom(existingAgent.room_id)
     : getRoomByPath(normalizedPath);
 
@@ -73,19 +73,19 @@ export async function handleRefresh(
 
   // Rename agent session(s)
   try {
-    const { getQueue } = await import("../delivery/pane-queue.ts");
+    const { getQueue } = await import('../delivery/pane-queue.ts');
 
     if (oldPane && oldPane !== target) {
       const staleName = `${name}-stale-${randomSuffix()}`;
       void getQueue(oldPane, { role: agent.role })
         .enqueue({
-          type: "paste",
+          type: 'paste',
           text: `[system@${agent.room_name}]: pane ownership moved to ${target}; this pane is now stale as ${staleName}`,
         })
         .catch(() => undefined);
       void getQueue(oldPane, { role: agent.role })
         .enqueue({
-          type: "command",
+          type: 'command',
           text: `/rename ${staleName}@${agent.room_name}`,
         })
         .catch(() => undefined);
@@ -93,7 +93,7 @@ export async function handleRefresh(
 
     void getQueue(target, { role: agent.role })
       .enqueue({
-        type: "command",
+        type: 'command',
         text: `/rename ${name}@${agent.room_name}`,
       })
       .catch(() => undefined);

@@ -247,7 +247,10 @@ async function testE8_NoHookStatusStaysUnknown() {
   await Bun.sleep(1000);
 
   const first = await getPaneStatus(pane);
-  ok(first.status === 'unknown', `First call returned unknown (got: ${first.status})`);
+  ok(
+    first.status === 'unknown',
+    `First call returned unknown (got: ${first.status})`,
+  );
 
   await Bun.sleep(3500);
 
@@ -256,7 +259,10 @@ async function testE8_NoHookStatusStaysUnknown() {
     second.status === 'unknown',
     `Stable no-hook pane remained unknown (got: ${second.status})`,
   );
-  ok(second.contentChanged === false, 'Stable no-hook pane reported unchanged content');
+  ok(
+    second.contentChanged === false,
+    'Stable no-hook pane reported unchanged content',
+  );
 
   await killPane(pane);
 }
@@ -578,13 +584,7 @@ async function testE15_BroadcastPartialDelivery() {
     addAgent('broadcaster', 'leader', room.id, '%800', 'unknown');
 
     for (let i = 0; i < 3; i++) {
-      addAgent(
-        `live-e15-${i}`,
-        'worker',
-        room.id,
-        livePanes[i]!,
-        'unknown',
-      );
+      addAgent(`live-e15-${i}`, 'worker', room.id, livePanes[i]!, 'unknown');
     }
     for (let i = 0; i < 2; i++) {
       // Use 'claude-code' so the stale-pane check fires immediately (skips 10s waitForReady timeout)
@@ -635,7 +635,9 @@ async function testE16_WorkerStopHookNotifiesLeader() {
   setupTestDb();
   try {
     const { addAgent, getOrCreateRoom } = await import('../src/state/index.ts');
-    const { processHookEventInput } = await import('../src/tools/hook-event.ts');
+    const { processHookEventInput } = await import(
+      '../src/tools/hook-event.ts'
+    );
 
     const room = getOrCreateRoom('/uat/notify-room', 'notify-room');
     addAgent('e16-leader', 'leader', room.id, leaderPane, 'unknown');

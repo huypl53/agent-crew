@@ -1,7 +1,4 @@
-import {
-  getPaneStatus,
-  type PaneStatusResult,
-} from '../shared/pane-status.ts';
+import { getPaneStatus, type PaneStatusResult } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
 import type { Agent, AgentStatus, ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';

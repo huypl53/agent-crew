@@ -28,11 +28,7 @@
   "expect": {
     "timedOut": true,
     "settleMs": 150,
-    "finalCaptureContains": [
-      "ONLY-THIS-LINE-APPEARS"
-    ],
-    "finalCaptureAbsent": [
-      "NEVER-SHOWS-UP"
-    ]
+    "finalCaptureContains": ["ONLY-THIS-LINE-APPEARS"],
+    "finalCaptureAbsent": ["NEVER-SHOWS-UP"]
   }
 }

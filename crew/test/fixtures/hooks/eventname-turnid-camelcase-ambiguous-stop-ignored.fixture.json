@@ -3,7 +3,10 @@
   "description": "A raw no-pane Stop using eventName plus camelCase turnId stays unresolved when cwd fallback matches multiple workers",
   "tags": ["ambiguity", "eventname", "turnid", "fallback"],
   "seed": {
-    "room": { "name": "shared-room", "path": "/tmp/eventname-turnid-ambiguous" },
+    "room": {
+      "name": "shared-room",
+      "path": "/tmp/eventname-turnid-ambiguous"
+    },
     "agents": [
       { "name": "worker-a", "pane": "%161", "role": "worker" },
       { "name": "worker-b", "pane": "%162", "role": "worker" }

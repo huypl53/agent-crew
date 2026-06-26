@@ -126,7 +126,9 @@ try {
   // PermissionRequest hooks require the special hookSpecificOutput envelope.
   // Output it as raw JSON and skip normal formatting.
   if (data.hookSpecificOutput) {
-    console.log(JSON.stringify({ hookSpecificOutput: data.hookSpecificOutput }));
+    console.log(
+      JSON.stringify({ hookSpecificOutput: data.hookSpecificOutput }),
+    );
   } else if (parsed.flags.json) {
     console.log(JSON.stringify(data, null, 2));
   } else {

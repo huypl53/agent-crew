@@ -12,7 +12,9 @@ const paneArg = process.argv[2];
 const interval = parseInt(process.argv[3] || '1000', 10);
 
 if (!paneArg) {
-  console.error('Usage: bun crew/scripts/validate-ansi-poll.ts <pane-id> [interval-ms]');
+  console.error(
+    'Usage: bun crew/scripts/validate-ansi-poll.ts <pane-id> [interval-ms]',
+  );
   process.exit(1);
 }
 const paneTarget: string = paneArg;
@@ -27,7 +29,10 @@ function simpleHash(str: string): number {
   return hash >>> 0;
 }
 
-async function capturePane(withAnsi: boolean, lines?: number): Promise<string | null> {
+async function capturePane(
+  withAnsi: boolean,
+  lines?: number,
+): Promise<string | null> {
   try {
     const args: string[] = ['tmux', 'capture-pane', '-t', paneTarget, '-p'];
     if (withAnsi) args.push('-e');
@@ -101,12 +106,17 @@ async function poll() {
   if (changes.length === 0) {
     process.stdout.write('.');
   } else {
-    const textOnlyChanged = changes.some((c) => c.includes('Text') && !c.includes('Ansi'));
-    const ansiOnlyChanged = changes.some((c) => c.includes('Ansi')) && !textOnlyChanged;
+    const textOnlyChanged = changes.some(
+      (c) => c.includes('Text') && !c.includes('Ansi'),
+    );
+    const ansiOnlyChanged =
+      changes.some((c) => c.includes('Ansi')) && !textOnlyChanged;
 
     console.log(`\n[${tick}] CHANGES: ${changes.join(', ')}`);
     if (ansiOnlyChanged) {
-      console.log('  ^^^ ANSI-only change detected (color/style changed, text same)');
+      console.log(
+        '  ^^^ ANSI-only change detected (color/style changed, text same)',
+      );
     }
     console.log(`  Full:  text=${state.fullText} ansi=${state.fullAnsi}`);
     console.log(`  Last5: text=${state.last5Text} ansi=${state.last5Ansi}`);
@@ -116,7 +126,9 @@ async function poll() {
   prevState = state;
 }
 
-console.log(`Polling pane ${paneTarget} every ${interval}ms. Press Ctrl+C to stop.\n`);
+console.log(
+  `Polling pane ${paneTarget} every ${interval}ms. Press Ctrl+C to stop.\n`,
+);
 console.log('Legend: . = no change, CHANGES = what changed\n');
 
 setInterval(poll, interval);

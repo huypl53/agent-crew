@@ -41,7 +41,10 @@ Reply with your perspective.`;
   const deliveries = workers
     .map((w) => {
       if (w.input_block_mode !== 'off') {
-        logServer('INFO', `party-delivery: skipping topic delivery to worker ${w.name} (pane ${w.tmux_target}) because input block is active`);
+        logServer(
+          'INFO',
+          `party-delivery: skipping topic delivery to worker ${w.name} (pane ${w.tmux_target}) because input block is active`,
+        );
         return null;
       }
       return w.tmux_target ? { target: w.tmux_target, agent: w } : null;
@@ -82,7 +85,10 @@ Reply: "crew party next --topic '...'" to continue, or "crew party end" to finis
   const deliveries = leaders
     .map((l) => {
       if (l.input_block_mode !== 'off') {
-        logServer('INFO', `party-delivery: skipping digest delivery to leader ${l.name} (pane ${l.tmux_target}) because input block is active`);
+        logServer(
+          'INFO',
+          `party-delivery: skipping digest delivery to leader ${l.name} (pane ${l.tmux_target}) because input block is active`,
+        );
         return null;
       }
       return l.tmux_target ? { target: l.tmux_target, agent: l } : null;
@@ -102,7 +108,10 @@ async function deliverToPane(
   // blocks when typingActive is detected (Claude Code suggestions trigger this)
   const result = await sendKeys(target, text);
   if (!result.delivered) {
-    logServer('WARN', `party-delivery: failed to deliver to ${target}: ${result.error}`);
+    logServer(
+      'WARN',
+      `party-delivery: failed to deliver to ${target}: ${result.error}`,
+    );
   }
 }
 

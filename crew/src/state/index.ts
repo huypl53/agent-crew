@@ -1,14 +1,19 @@
-import { config } from '../config.ts';
 import { appendFileSync } from 'node:fs';
+import { config } from '../config.ts';
 
 function logDebug(message: string): void {
   try {
     const logLine = `[${new Date().toISOString()}] ${message}\n`;
-    appendFileSync("/tmp/crew-hook-debug.log", logLine, "utf8");
+    appendFileSync('/tmp/crew-hook-debug.log', logLine, 'utf8');
   } catch {
     // ignore
   }
 }
+
+import {
+  extractHookCompletionMessage,
+  resolveAgentRuntime,
+} from '../shared/hook-runtime.ts';
 import type {
   Agent,
   AgentRole,
@@ -31,20 +36,16 @@ import type {
 import { isPaneDead, paneCommandLooksAlive } from '../tmux/index.ts';
 import { renderBatchFinalMessage } from './batch-render.ts';
 import {
-  extractHookCompletionMessage,
-  resolveAgentRuntime,
-} from '../shared/hook-runtime.ts';
-import {
   areAllBatchWorkersTerminal,
   completeBatchWorker,
   createMessageBatch,
+  evaluateBatchFinalization,
   getBatchWorkers,
   getLatestBatchAssociationForWorker,
   getLatestBatchForWorker,
   getMessageBatch,
   getOpenBatchForWorker,
   getRenderableBatchWorkers,
-  evaluateBatchFinalization,
   listHintableBatches,
   listIncompleteBatches,
   markBatchCompleted,
@@ -56,33 +57,6 @@ import {
 } from './batch-state.ts';
 import { closeDb, getDb, initDb } from './db.ts';
 import {
-  getLatestHookAgentNameBySessionId,
-  getSessionBindingRecord,
-  upsertAgentSessionBinding,
-} from './session-binding.ts';
-import {
-  armLeaderGoalReminder,
-  canonicalizeGoalIdentity,
-  completeGoal,
-  consumeLeaderGoalReminder,
-  getGoal,
-  getGoalByAgent,
-  getGoalById,
-  getGoalHistory,
-  consumeGoalPendingCompletion,
-  setGoalPendingCompletion,
-  getRoomGoalOverview,
-  setGoal,
-  tickGoalTurnCount,
-  unsetGoal,
-  updateGoalDescription,
-  recordAndEvaluateGoalStuck,
-  clearGoalOutputs,
-  isGoalReminderPaused,
-  pauseGoalReminder,
-  unpauseGoalReminder,
-} from './goal-state.ts';
-import {
   createLeaderDialog,
   getActiveDialogForWorker,
   getDialogById,
@@ -90,6 +64,33 @@ import {
   markDialogAnswered,
   markDialogStepAnswered,
 } from './dialog-state.ts';
+import {
+  armLeaderGoalReminder,
+  canonicalizeGoalIdentity,
+  clearGoalOutputs,
+  completeGoal,
+  consumeGoalPendingCompletion,
+  consumeLeaderGoalReminder,
+  getGoal,
+  getGoalByAgent,
+  getGoalById,
+  getGoalHistory,
+  getRoomGoalOverview,
+  isGoalReminderPaused,
+  pauseGoalReminder,
+  recordAndEvaluateGoalStuck,
+  setGoal,
+  setGoalPendingCompletion,
+  tickGoalTurnCount,
+  unpauseGoalReminder,
+  unsetGoal,
+  updateGoalDescription,
+} from './goal-state.ts';
+import {
+  getLatestHookAgentNameBySessionId,
+  getSessionBindingRecord,
+  upsertAgentSessionBinding,
+} from './session-binding.ts';
 
 export type { GoalRecord } from './goal-state.ts';
 // Re-export for callers
@@ -97,32 +98,31 @@ export {
   areAllBatchWorkersTerminal,
   armLeaderGoalReminder,
   canonicalizeGoalIdentity,
+  capturePartyResponseIfActive,
+  clearGoalOutputs,
   closeDb,
   completeBatchWorker,
   completeGoal,
+  consumeGoalPendingCompletion,
   consumeLeaderGoalReminder,
   createLeaderDialog,
   createMessageBatch,
+  evaluateBatchFinalization,
   getActiveDialogForWorker,
   getBatchWorkers,
   getDialogById,
-  evaluateBatchFinalization,
   getGoal,
   getGoalByAgent,
   getGoalById,
   getGoalHistory,
   getLatestBatchAssociationForWorker,
-  consumeGoalPendingCompletion,
-  setGoalPendingCompletion,
-  getRoomGoalOverview,
   getLatestBatchForWorker,
   getMessageBatch,
   getOpenBatchForWorker,
   getRenderableBatchWorkers,
+  getRoomGoalOverview,
   initDb,
-  capturePartyResponseIfActive,
-  upsertAgentSessionBinding,
-  notifyLeadersOnWorkerStop,
+  isGoalReminderPaused,
   listHintableBatches,
   listIncompleteBatches,
   listPendingDialogs,
@@ -132,17 +132,18 @@ export {
   markBatchWorkerSent,
   markDialogAnswered,
   markDialogStepAnswered,
+  notifyLeadersOnWorkerStop,
+  pauseGoalReminder,
+  recordAndEvaluateGoalStuck,
   recordBatchWorkerTerminalMessage,
   renderBatchPendingHint,
   setGoal,
+  setGoalPendingCompletion,
   tickGoalTurnCount,
+  unpauseGoalReminder,
   unsetGoal,
   updateGoalDescription,
-  recordAndEvaluateGoalStuck,
-  clearGoalOutputs,
-  isGoalReminderPaused,
-  pauseGoalReminder,
-  unpauseGoalReminder,
+  upsertAgentSessionBinding,
 };
 
 // --- Helpers ---
@@ -510,10 +511,10 @@ export function removeAgent(name: string, room: string): boolean {
     'DELETE FROM agent_hints WHERE agent_name = ? AND room_id = ?',
     [name, roomObj.id],
   ).changes;
-  db.run('DELETE FROM agent_session_bindings WHERE agent_name = ? AND room_id = ?', [
-    name,
-    roomObj.id,
-  ]);
+  db.run(
+    'DELETE FROM agent_session_bindings WHERE agent_name = ? AND room_id = ?',
+    [name, roomObj.id],
+  );
   const changes = db.run('DELETE FROM agents WHERE room_id = ? AND name = ?', [
     roomObj.id,
     name,
@@ -707,7 +708,6 @@ export function getAgentByRoomAndName(
   return dbRowToAgent(row);
 }
 
-
 export function getAgentByPane(pane: string): Agent | undefined {
   const db = getDb();
   const row = db
@@ -736,7 +736,12 @@ export function getAgentBySessionId(sessionId: string): Agent | undefined {
 
   const agent = getAgent(agentName);
   if (agent) {
-    upsertAgentSessionBinding(sessionId, agent.room_id, agent.name, agent.tmux_target);
+    upsertAgentSessionBinding(
+      sessionId,
+      agent.room_id,
+      agent.name,
+      agent.tmux_target,
+    );
   }
   return agent;
 }
@@ -841,7 +846,9 @@ export function getRoomMessages(
     params.push(limit);
   }
   return (
-    db.query(sql).all(...(params as [number, ...Array<string | number>])) as Record<
+    db
+      .query(sql)
+      .all(...(params as [number, ...Array<string | number>])) as Record<
       string,
       unknown
     >[]
@@ -971,7 +978,9 @@ export function readRoomMessages(
     readerRole,
   ];
   const allMsgs = (
-    db.query(sql).all(...(params as [number, ...Array<string | number>])) as Record<
+    db
+      .query(sql)
+      .all(...(params as [number, ...Array<string | number>])) as Record<
       string,
       unknown
     >[]
@@ -1009,12 +1018,14 @@ export function readMessages(
   }
   sql += ' ORDER BY id';
   const msgs = (
-    db.query(sql).all(...(params as [number, ...Array<string | number>])) as Record<
+    db
+      .query(sql)
+      .all(...(params as [number, ...Array<string | number>])) as Record<
       string,
       unknown
     >[]
   ).map(rowToMessage);
-  const maxSeq = msgs.at(-1)?.sequence ?? (sinceSequence ?? 0);
+  const maxSeq = msgs.at(-1)?.sequence ?? sinceSequence ?? 0;
   return { messages: msgs, next_sequence: maxSeq };
 }
 
@@ -1279,9 +1290,15 @@ export function addHookEvent(
 
   // Party mode integration: capture response on completion events
   if (isCompletionEvent) {
-    capturePartyResponseIfActive(agentName, payload, eventId, roomId, sessionId);
-  // Room mode: auto-notify leaders (skips if party mode active)
-  notifyLeadersOnWorkerStop(agentName, payload, roomId, sessionId);
+    capturePartyResponseIfActive(
+      agentName,
+      payload,
+      eventId,
+      roomId,
+      sessionId,
+    );
+    // Room mode: auto-notify leaders (skips if party mode active)
+    notifyLeadersOnWorkerStop(agentName, payload, roomId, sessionId);
   }
 
   return eventId;
@@ -1305,7 +1322,7 @@ function capturePartyResponseIfActive(
 
   const response =
     extractHookCompletionMessage(payload) ||
-    (sessionId ? `Task completed for session ${sessionId}` : "");
+    (sessionId ? `Task completed for session ${sessionId}` : '');
 
   if (!response.trim()) return;
 
@@ -1420,7 +1437,9 @@ function notifyLeadersOnWorkerStop(
   roomId?: number,
   sessionId?: string | null,
 ): void {
-  logDebug(`[notify] notifyLeadersOnWorkerStop called. Worker: ${agentName}, roomId: ${roomId}, sessionId: ${sessionId}`);
+  logDebug(
+    `[notify] notifyLeadersOnWorkerStop called. Worker: ${agentName}, roomId: ${roomId}, sessionId: ${sessionId}`,
+  );
   const agent =
     roomId !== undefined
       ? (getAgentByRoomAndName(roomId, agentName) ?? getAgent(agentName))
@@ -1430,29 +1449,42 @@ function notifyLeadersOnWorkerStop(
     return;
   }
   if (agent.role !== 'worker') {
-    logDebug(`[notify] Agent ${agentName} is not a worker (role: ${agent.role})`);
+    logDebug(
+      `[notify] Agent ${agentName} is not a worker (role: ${agent.role})`,
+    );
     return;
   }
 
   // Skip if party mode is active — party has its own notification flow
   const partyState = getPartyState(agent.room_id);
   if (partyState?.active) {
-    logDebug(`[notify] Party mode active for room ${agent.room_id}, skipping worker notification`);
+    logDebug(
+      `[notify] Party mode active for room ${agent.room_id}, skipping worker notification`,
+    );
     return;
   }
 
   // Extract response
   const response =
     extractHookCompletionMessage(payload) ||
-    (sessionId ? `Task completed for session ${sessionId}` : "");
+    (sessionId ? `Task completed for session ${sessionId}` : '');
 
-  logDebug(`[notify] Extracted response length: ${response.length}, starts with: "${response.slice(0, 50)}..."`);
+  logDebug(
+    `[notify] Extracted response length: ${response.length}, starts with: "${response.slice(0, 50)}..."`,
+  );
 
   const goal = getGoalByAgent(agentName, agent.room_id);
   if (goal?.status === 'active') {
     const activeBatch = getOpenBatchForWorker(agentName, agent.room_id);
-    logDebug(`[notify] Active goal found: ${goal.id}. Setting pending completion.`);
-    setGoalPendingCompletion(agentName, agent.room_id, response, activeBatch?.batchId);
+    logDebug(
+      `[notify] Active goal found: ${goal.id}. Setting pending completion.`,
+    );
+    setGoalPendingCompletion(
+      agentName,
+      agent.room_id,
+      response,
+      activeBatch?.batchId,
+    );
     return;
   }
 
@@ -1464,7 +1496,9 @@ function notifyLeadersOnWorkerStop(
   });
 
   if (batchTerminal) {
-    logDebug(`[notify] Batch terminal message recorded for batch ${batchTerminal.batchId}. shouldFinalize: ${batchTerminal.shouldFinalize}`);
+    logDebug(
+      `[notify] Batch terminal message recorded for batch ${batchTerminal.batchId}. shouldFinalize: ${batchTerminal.shouldFinalize}`,
+    );
     if (batchTerminal.shouldFinalize) {
       const rendered = renderBatchFinalMessage(
         getRenderableBatchWorkers(batchTerminal.batchId),
@@ -1475,7 +1509,9 @@ function notifyLeadersOnWorkerStop(
         batchTerminal.roomId,
         rendered,
       ).catch((e) => {
-        logDebug(`[notify] Batch final delivery queue failed: ${e instanceof Error ? e.message : String(e)}`);
+        logDebug(
+          `[notify] Batch final delivery queue failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
         console.error(
           `[crew batch] final delivery failed for ${batchTerminal.batchId}: ${e instanceof Error ? e.message : String(e)}`,
         );
@@ -1496,7 +1532,9 @@ function notifyLeadersOnWorkerStop(
     latestBatch.final_message === response &&
     !hasNewerTurnThanLatestBatch
   ) {
-    logDebug(`[notify] Skipping notification because response matches latest batch final message`);
+    logDebug(
+      `[notify] Skipping notification because response matches latest batch final message`,
+    );
     return;
   }
 
@@ -1508,7 +1546,9 @@ function notifyLeadersOnWorkerStop(
   // Turn-scoped dedup: if worker already sent a notifiable message since
   // their last UserPromptSubmit, crew send handled it — Stop hook should skip.
   if (alreadyNotifiedThisTurn(agent.room_id, agentName)) {
-    logDebug(`[notify] Worker already notified this turn, skipping notification`);
+    logDebug(
+      `[notify] Worker already notified this turn, skipping notification`,
+    );
     return;
   }
 
@@ -1520,7 +1560,9 @@ function sendWorkerCompletionToLeaders(
   roomId: number,
   response: string,
 ): void {
-  logDebug(`[notify] sendWorkerCompletionToLeaders called. Worker: ${agentName}, roomId: ${roomId}`);
+  logDebug(
+    `[notify] sendWorkerCompletionToLeaders called. Worker: ${agentName}, roomId: ${roomId}`,
+  );
   if (!response.trim()) {
     logDebug(`[notify] Empty response in sendWorkerCompletionToLeaders`);
     return;
@@ -1529,7 +1571,9 @@ function sendWorkerCompletionToLeaders(
   // Turn-scoped dedup: if worker already sent a notifiable message since
   // their last UserPromptSubmit, crew send handled it — Stop hook should skip.
   if (alreadyNotifiedThisTurn(roomId, agentName)) {
-    logDebug(`[notify] Worker ${agentName} already notified this turn, skipping`);
+    logDebug(
+      `[notify] Worker ${agentName} already notified this turn, skipping`,
+    );
     return;
   }
 
@@ -1546,13 +1590,17 @@ function sendWorkerCompletionToLeaders(
   const leaders = getRoomMembers(roomId).filter(
     (m) => m.role === 'leader' && m.tmux_target,
   );
-  logDebug(`[notify] Found ${leaders.length} leaders in room. Names: ${leaders.map(l => l.name).join(', ')}`);
+  logDebug(
+    `[notify] Found ${leaders.length} leaders in room. Names: ${leaders.map((l) => l.name).join(', ')}`,
+  );
   const message = `[${agentName}@${roomName}] completed:\n${truncated}`;
 
   for (const leader of leaders) {
     logDebug(`[notify] Attempting delivery to leader: ${leader.name}`);
     deliverWithRetry(leader, message, msg.sequence).catch((err) => {
-      logDebug(`[notify] Delivery failed to ${leader.name}: ${err instanceof Error ? err.message : String(err)}`);
+      logDebug(
+        `[notify] Delivery failed to ${leader.name}: ${err instanceof Error ? err.message : String(err)}`,
+      );
     });
   }
 }
@@ -1569,9 +1617,13 @@ async function deliverWithRetry(
   const RETRY_DELAY_MS = 1500;
   const MAX_RETRIES = 2;
 
-  logDebug(`[notify] deliverWithRetry to ${leader.name}. input_block_mode: ${getAgentInputBlockMode(leader.name)}`);
+  logDebug(
+    `[notify] deliverWithRetry to ${leader.name}. input_block_mode: ${getAgentInputBlockMode(leader.name)}`,
+  );
   if (getAgentInputBlockMode(leader.name) !== 'off') {
-    logDebug(`[notify] leader ${leader.name} input block mode is not off, skipping tmux delivery`);
+    logDebug(
+      `[notify] leader ${leader.name} input block mode is not off, skipping tmux delivery`,
+    );
     return;
   }
 
@@ -1580,10 +1632,14 @@ async function deliverWithRetry(
   if (latestEvent?.event_type === 'UserPromptSubmit') {
     const eventAge =
       Date.now() - new Date(`${latestEvent.created_at}Z`).getTime();
-    logDebug(`[notify] leader ${leader.name} recently submitted a prompt ${eventAge}ms ago`);
+    logDebug(
+      `[notify] leader ${leader.name} recently submitted a prompt ${eventAge}ms ago`,
+    );
     // If leader submitted within last 2s, wait for them to settle
     if (eventAge < 2000) {
-      logDebug(`[notify] leader ${leader.name} is busy. Sleeping ${RETRY_DELAY_MS}ms before attempt`);
+      logDebug(
+        `[notify] leader ${leader.name} is busy. Sleeping ${RETRY_DELAY_MS}ms before attempt`,
+      );
       await Bun.sleep(RETRY_DELAY_MS);
     }
   }
@@ -1594,23 +1650,31 @@ async function deliverWithRetry(
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     logDebug(`[notify] leader ${leader.name} delivery attempt ${attempt}`);
     if (getAgentInputBlockMode(leader.name) !== 'off') {
-      logDebug(`[notify] input block mode active on attempt ${attempt}, aborting`);
+      logDebug(
+        `[notify] input block mode active on attempt ${attempt}, aborting`,
+      );
       return;
     }
 
     try {
-      logDebug(`[notify] Enqueuing notice to tmux target ${leader.tmux_target}`);
+      logDebug(
+        `[notify] Enqueuing notice to tmux target ${leader.tmux_target}`,
+      );
       await getQueue(leader.tmux_target!, { role: leader.role }).enqueue({
         type: 'paste',
         text: message,
         skipLeaderPacing: true,
       });
-      logDebug(`[notify] Enqueued successfully. Arming goal reminder & advancing push cursor`);
+      logDebug(
+        `[notify] Enqueued successfully. Arming goal reminder & advancing push cursor`,
+      );
       armLeaderGoalReminder(leader.name, leader.room_id);
       advancePushCursor(leader.name, sequence);
       return;
     } catch (err) {
-      logDebug(`[notify] Attempt ${attempt} failed with error: ${err instanceof Error ? err.message : String(err)}`);
+      logDebug(
+        `[notify] Attempt ${attempt} failed with error: ${err instanceof Error ? err.message : String(err)}`,
+      );
       if (attempt < MAX_RETRIES) {
         await Bun.sleep(RETRY_DELAY_MS);
       }
@@ -1685,9 +1749,12 @@ export function getLatestHookEvent(
     params.push(sessionId);
   }
   sql += ' ORDER BY id DESC LIMIT 1';
-  const row = db.query(sql).get(
-    ...(params as [string, ...Array<string>])
-  ) as Record<string, unknown> | null;
+  const row = db
+    .query(sql)
+    .get(...(params as [string, ...Array<string>])) as Record<
+    string,
+    unknown
+  > | null;
   if (!row) return null;
   return {
     id: row.id as number,

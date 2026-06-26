@@ -1,9 +1,9 @@
-import type { ToolResult } from '../shared/types.ts';
 import {
   deliverPartyDigest,
   deliverPartyTopic,
 } from '../delivery/party-delivery.ts';
 import { resetPartyTimeoutTracking } from '../server/sweep.ts';
+import type { ToolResult } from '../shared/types.ts';
 import {
   endParty,
   getAgentByName,

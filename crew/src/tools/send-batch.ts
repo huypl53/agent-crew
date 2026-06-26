@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { deliverMessage } from '../delivery/index.ts';
+import { resolveAgentRuntime } from '../shared/hook-runtime.ts';
 import type {
   MessageBatchWorkerDispatchStatus,
   MessageDeliveryMetadata,
@@ -7,14 +8,15 @@ import type {
   ToolResult,
 } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
-import { resolveAgentRuntime } from '../shared/hook-runtime.ts';
 import {
   createMessageBatch,
+  getAgent,
   getRoomMembers,
   markBatchWorkerDispatchFailed,
   markBatchWorkerSent,
 } from '../state/index.ts';
 import { paneCommandLooksAlive, paneExists } from '../tmux/index.ts';
+import { getContextWindowForPane } from '../tokens/claude-code.ts';
 import { readUtf8TextFile, validateSenderAndRoom } from './send-message.ts';
 
 interface SendBatchParams {
@@ -36,6 +38,7 @@ interface SendBatchWorkerResult {
   name: string;
   dispatch_status: MessageBatchWorkerDispatchStatus;
   error?: string;
+  ctx_pct?: number | null;
 }
 
 function generateBatchId(): string {
@@ -300,6 +303,17 @@ export async function handleSendBatch(
       manifest_order: i,
     };
 
+    let ctx_pct: number | null = null;
+    const agent = getAgent(worker.name);
+    if (agent && agent.tmux_target) {
+      try {
+        const cw = await getContextWindowForPane(agent.tmux_target);
+        if (cw) ctx_pct = cw.context_pct;
+      } catch {
+        // fail-open
+      }
+    }
+
     try {
       const results = await deliverMessage(
         name,
@@ -313,19 +327,16 @@ export async function handleSendBatch(
       if (result && !result.error) {
         try {
           markBatchWorkerSent(batchId, worker.name);
-          workers.push({ name: worker.name, dispatch_status: 'sent' });
+          workers.push({ name: worker.name, dispatch_status: 'sent', ctx_pct });
         } catch (error) {
           const errorText =
             error instanceof Error ? error.message : String(error);
-          markBatchWorkerDispatchFailed(
-            batchId,
-            worker.name,
-            errorText,
-          );
+          markBatchWorkerDispatchFailed(batchId, worker.name, errorText);
           workers.push({
             name: worker.name,
             dispatch_status: 'failed',
             error: errorText,
+            ctx_pct,
           });
         }
       } else {
@@ -335,19 +346,17 @@ export async function handleSendBatch(
           name: worker.name,
           dispatch_status: 'failed',
           error: errorText,
+          ctx_pct,
         });
       }
     } catch (error) {
       const errorText = error instanceof Error ? error.message : String(error);
-      markBatchWorkerDispatchFailed(
-        batchId,
-        worker.name,
-        errorText,
-      );
+      markBatchWorkerDispatchFailed(batchId, worker.name, errorText);
       workers.push({
         name: worker.name,
         dispatch_status: 'failed',
         error: errorText,
+        ctx_pct,
       });
     }
   }

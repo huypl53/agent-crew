@@ -5,10 +5,7 @@ import {
   shouldNotifyIdleTransition,
 } from '../src/server/sweep.ts';
 import { closeDb, initDb } from '../src/state/db.ts';
-import {
-  addAgent,
-  getOrCreateRoom,
-} from '../src/state/index.ts';
+import { addAgent, getOrCreateRoom } from '../src/state/index.ts';
 
 function mkRoom(name: string) {
   return getOrCreateRoom(`/test/${name}`, name);

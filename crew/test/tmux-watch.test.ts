@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { resolve } from 'node:path';
-import { printTmuxWatchResults, runTmuxWatchFixtureDir } from './lib/tmux-watch-runner.ts';
+import {
+  printTmuxWatchResults,
+  runTmuxWatchFixtureDir,
+} from './lib/tmux-watch-runner.ts';
 
 const FIXTURES_DIR = resolve(import.meta.dir, 'fixtures/tmux-watch');
 

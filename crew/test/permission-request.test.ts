@@ -16,8 +16,8 @@ import { closeDb, initDb } from '../src/state/db.ts';
 import {
   addAgent,
   clearState,
-  getOrCreateRoom,
   getLatestHookEvent,
+  getOrCreateRoom,
 } from '../src/state/index.ts';
 import { processHookEventInput } from '../src/tools/hook-event.ts';
 
@@ -45,7 +45,9 @@ function makePermissionInput(overrides: Record<string, unknown> = {}) {
   });
 }
 
-function parseResult(result: Awaited<ReturnType<typeof processHookEventInput>>) {
+function parseResult(
+  result: Awaited<ReturnType<typeof processHookEventInput>>,
+) {
   return JSON.parse(result.content[0]!.text);
 }
 
@@ -109,9 +111,7 @@ describe('PermissionRequest hook', () => {
 
     const perms = data.hookSpecificOutput.decision.updatedPermissions;
     // Should have: setMode + the echoed suggestion
-    const echoed = perms.find(
-      (p: { type: string }) => p.type === 'addRules',
-    );
+    const echoed = perms.find((p: { type: string }) => p.type === 'addRules');
     expect(echoed).toBeDefined();
     expect(echoed.rules).toEqual([{ toolName: 'Bash', ruleContent: 'ls' }]);
     expect(echoed.behavior).toBe('allow');
@@ -148,7 +148,10 @@ describe('PermissionRequest hook', () => {
   });
 
   test('resolves agent from session+cwd fallback when hook has no pane', async () => {
-    const room = getOrCreateRoom('/test/permission-room-codex', 'permission-room-codex');
+    const room = getOrCreateRoom(
+      '/test/permission-room-codex',
+      'permission-room-codex',
+    );
     addAgent('codex-1', 'worker', room.id, '%990', 'codex');
 
     const input = makePermissionInput({
@@ -163,7 +166,11 @@ describe('PermissionRequest hook', () => {
     expect(data.hookSpecificOutput.hookEventName).toBe('PermissionRequest');
     expect(data.hookSpecificOutput.decision.behavior).toBe('allow');
 
-    const latest = getLatestHookEvent('codex-1', 'PermissionRequest', 'codex-session-1');
+    const latest = getLatestHookEvent(
+      'codex-1',
+      'PermissionRequest',
+      'codex-session-1',
+    );
     expect(latest).not.toBeNull();
     expect(latest?.event_type).toBe('PermissionRequest');
     expect(latest?.session_id).toBe('codex-session-1');

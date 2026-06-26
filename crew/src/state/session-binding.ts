@@ -42,7 +42,9 @@ export function resolveAgentByCwdFallback(
     eventType === 'StopFailure' ||
     eventType === 'UserPromptSubmit'
   ) {
-    const workerCandidates = candidates.filter((agent) => agent.role === 'worker');
+    const workerCandidates = candidates.filter(
+      (agent) => agent.role === 'worker',
+    );
     if (workerCandidates.length === 1) return workerCandidates[0];
   }
 
@@ -91,7 +93,9 @@ export function getSessionBindingRecord(
     .get(sessionId) as SessionBindingRecord | null;
 }
 
-export function getLatestHookAgentNameBySessionId(sessionId: string): string | null {
+export function getLatestHookAgentNameBySessionId(
+  sessionId: string,
+): string | null {
   const row = getDb()
     .query(
       'SELECT agent_name FROM hook_events WHERE session_id = ? ORDER BY id DESC LIMIT 1',

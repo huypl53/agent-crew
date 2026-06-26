@@ -75,9 +75,7 @@ export class TmuxTap {
     } catch {
       return;
     }
-    throw new Error(
-      `Unexpected sendKeys to ${target} matching ${pattern}`,
-    );
+    throw new Error(`Unexpected sendKeys to ${target} matching ${pattern}`);
   }
 
   assertEmpty(): void {

@@ -3,9 +3,7 @@
   "description": "No-pane PermissionRequest followed by no-pane Stop on the same session persists both events without worker tmux delivery",
   "seed": {
     "room": { "name": "codex-flow", "path": "/tmp/permission-stop-room" },
-    "agents": [
-      { "name": "worker-1", "pane": "%72", "role": "worker" }
-    ]
+    "agents": [{ "name": "worker-1", "pane": "%72", "role": "worker" }]
   },
   "steps": [
     {
@@ -18,7 +16,10 @@
       },
       "expect": {
         "stdout_path": [
-          { "path": "hookSpecificOutput.hookEventName", "value": "PermissionRequest" },
+          {
+            "path": "hookSpecificOutput.hookEventName",
+            "value": "PermissionRequest"
+          },
           { "path": "hookSpecificOutput.decision.behavior", "value": "allow" }
         ],
         "hook_event": {
@@ -44,9 +45,7 @@
           "session_id": "chain-session-1"
         },
         "hook_events_count": 2,
-        "tmux_absent": [
-          { "op": "sendKeys", "target": "%72" }
-        ]
+        "tmux_absent": [{ "op": "sendKeys", "target": "%72" }]
       }
     }
   ]

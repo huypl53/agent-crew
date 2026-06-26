@@ -50,7 +50,10 @@ export function dbSetRoomReminderPolicy(
 ): { error?: string } {
   const payload = serializeReminderPolicy(policy);
   const { error } = withDb((db) => {
-    db.run('UPDATE rooms SET reminder_policy = ? WHERE name = ?', [payload, room]);
+    db.run('UPDATE rooms SET reminder_policy = ? WHERE name = ?', [
+      payload,
+      room,
+    ]);
   });
   return error ? { error } : {};
 }
@@ -61,14 +64,17 @@ export function dbSetAgentReminderPolicy(
 ): { error?: string } {
   const payload = serializeReminderPolicy(policy);
   const { error } = withDb((db) => {
-    db.run('UPDATE agents SET reminder_policy = ? WHERE name = ?', [payload, name]);
+    db.run('UPDATE agents SET reminder_policy = ? WHERE name = ?', [
+      payload,
+      name,
+    ]);
   });
   return error ? { error } : {};
 }
 
-export function dbIncrementRoomReminderDispatchCounter(
-  room: string,
-): { error?: string } {
+export function dbIncrementRoomReminderDispatchCounter(room: string): {
+  error?: string;
+} {
   const { error } = withDb((db) => {
     db.run(
       'UPDATE rooms SET reminder_dispatch_count = reminder_dispatch_count + 1 WHERE name = ?',
@@ -78,9 +84,13 @@ export function dbIncrementRoomReminderDispatchCounter(
   return error ? { error } : {};
 }
 
-export function dbResetRoomReminderDispatchCounter(room: string): { error?: string } {
+export function dbResetRoomReminderDispatchCounter(room: string): {
+  error?: string;
+} {
   const { error } = withDb((db) => {
-    db.run('UPDATE rooms SET reminder_dispatch_count = 0 WHERE name = ?', [room]);
+    db.run('UPDATE rooms SET reminder_dispatch_count = 0 WHERE name = ?', [
+      room,
+    ]);
   });
   return error ? { error } : {};
 }

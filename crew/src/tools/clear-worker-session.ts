@@ -1,8 +1,8 @@
-import { getQueue } from "../delivery/pane-queue.ts";
-import { assertRole } from "../shared/role-guard.ts";
-import type { ToolResult } from "../shared/types.ts";
-import { err, ok } from "../shared/types.ts";
-import { getAgent } from "../state/index.ts";
+import { getQueue } from '../delivery/pane-queue.ts';
+import { assertRole } from '../shared/role-guard.ts';
+import type { ToolResult } from '../shared/types.ts';
+import { err, ok } from '../shared/types.ts';
+import { getAgent } from '../state/index.ts';
 
 interface ClearWorkerSessionParams {
   worker_name: string;
@@ -16,12 +16,12 @@ export async function handleClearWorkerSession(
   const { worker_name, room, name } = params;
 
   if (!worker_name || !room || !name) {
-    return err("Missing required params: worker_name, room, name");
+    return err('Missing required params: worker_name, room, name');
   }
 
   // Role check: leader only
   try {
-    assertRole(name, ["leader"], "clear_worker_session");
+    assertRole(name, ['leader'], 'clear_worker_session');
   } catch (e) {
     return err(e instanceof Error ? e.message : String(e));
   }
@@ -31,7 +31,7 @@ export async function handleClearWorkerSession(
   if (!worker) {
     return err(`Worker "${worker_name}" is not registered`);
   }
-  if (worker.role !== "worker") {
+  if (worker.role !== 'worker') {
     return err(
       `Target "${worker_name}" is not a worker (got role: ${worker.role})`,
     );
@@ -46,7 +46,7 @@ export async function handleClearWorkerSession(
   // Step 1: Send clear to the worker's pane
   try {
     await getQueue(worker.tmux_target).enqueue({
-      type: "command",
+      type: 'command',
       text: `/clear`,
     });
   } catch (e) {
@@ -61,7 +61,7 @@ export async function handleClearWorkerSession(
   // to exit bang mode). `!` is the CLI-command prefix for both Claude Code and Codex.
   try {
     await getQueue(worker.tmux_target).enqueue({
-      type: "crew-command",
+      type: 'crew-command',
       text: `refresh --name ${worker_name}`,
     });
   } catch (e) {

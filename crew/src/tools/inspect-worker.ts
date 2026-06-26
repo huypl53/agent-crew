@@ -31,7 +31,9 @@ function resolveRoomForWorker(
       ),
   );
 
-  const uniqueRoomIds = [...new Set(visibleMatches.map((agent) => agent.room_id))];
+  const uniqueRoomIds = [
+    ...new Set(visibleMatches.map((agent) => agent.room_id)),
+  ];
   if (uniqueRoomIds.length === 1) {
     return visibleMatches[0]?.room_path ?? null;
   }

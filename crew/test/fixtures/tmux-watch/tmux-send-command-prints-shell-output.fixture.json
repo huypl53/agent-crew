@@ -26,8 +26,6 @@
   },
   "expect": {
     "timedOut": false,
-    "finalCaptureContains": [
-      "TMUX-COMMAND-OK"
-    ]
+    "finalCaptureContains": ["TMUX-COMMAND-OK"]
   }
 }

@@ -38,7 +38,9 @@ describe('goal tracking', () => {
       const room = mkRoom('room-1');
       addAgent('worker-1', 'worker', room.id, '%100');
 
-      const goal = setGoal('worker-1', room.id, 'Implement auth module', { pane: '%100' });
+      const goal = setGoal('worker-1', room.id, 'Implement auth module', {
+        pane: '%100',
+      });
 
       expect(goal.agent_name).toBe('worker-1');
       expect(goal.description).toBe('Implement auth module');
@@ -74,7 +76,10 @@ describe('goal tracking', () => {
       const room = mkRoom('room-1');
       addAgent('worker-1', 'worker', room.id, '%103');
 
-      const goal = setGoal('worker-1', room.id, 'Task', { pane: '%103', setBy: 'leader-1' });
+      const goal = setGoal('worker-1', room.id, 'Task', {
+        pane: '%103',
+        setBy: 'leader-1',
+      });
 
       expect(goal.set_by).toBe('leader-1');
     });
@@ -84,8 +89,12 @@ describe('goal tracking', () => {
       const room = mkRoom('room-1');
       addAgent('worker-1', 'worker', room.id, '%104');
 
-      const first = setGoal('worker-1', room.id, 'First goal', { pane: '%104' });
-      const goal = setGoal('worker-1', room.id, 'Second goal', { pane: '%104' });
+      const first = setGoal('worker-1', room.id, 'First goal', {
+        pane: '%104',
+      });
+      const goal = setGoal('worker-1', room.id, 'Second goal', {
+        pane: '%104',
+      });
 
       expect(goal.description).toBe('Second goal');
 
@@ -335,10 +344,16 @@ describe('goal tracking', () => {
       addAgent('worker-1', 'worker', room.id, '%230');
       setGoal('worker-1', room.id, 'Old description', { pane: '%230' });
 
-      const updated = updateGoalDescription('worker-1', room.id, 'New description');
+      const updated = updateGoalDescription(
+        'worker-1',
+        room.id,
+        'New description',
+      );
       expect(updated).toBe(true);
 
-      expect(getGoalByAgent('worker-1', room.id)!.description).toBe('New description');
+      expect(getGoalByAgent('worker-1', room.id)!.description).toBe(
+        'New description',
+      );
     });
 
     test('returns false when no active goal', () => {

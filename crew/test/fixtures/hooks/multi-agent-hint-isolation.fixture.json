@@ -27,7 +27,11 @@
     {
       "event": "UserPromptSubmit",
       "pane": "%11",
-      "expect": { "stdout_path": [{ "path": "hint.message", "value": "Run lint before commit" }] }
+      "expect": {
+        "stdout_path": [
+          { "path": "hint.message", "value": "Run lint before commit" }
+        ]
+      }
     },
     {
       "event": "UserPromptSubmit",
@@ -37,7 +41,11 @@
     {
       "event": "UserPromptSubmit",
       "pane": "%12",
-      "expect": { "stdout_path": [{ "path": "hint.message", "value": "Check test coverage" }] }
+      "expect": {
+        "stdout_path": [
+          { "path": "hint.message", "value": "Check test coverage" }
+        ]
+      }
     }
   ]
 }

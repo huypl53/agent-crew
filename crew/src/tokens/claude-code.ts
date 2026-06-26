@@ -1,12 +1,19 @@
-import { closeSync, existsSync, fstatSync, openSync, readSync, readFileSync } from 'fs';
+import {
+  closeSync,
+  existsSync,
+  fstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+} from 'fs';
 import {
   getAgent,
   getLatestTokenUsage,
   getPricingForModel,
   recordTokenUsage,
 } from '../state/index.ts';
-import { resolveAgentSession } from './pid-mapper.ts';
 import { getContextLimit } from './context-limits.ts';
+import { resolveAgentSession } from './pid-mapper.ts';
 
 interface UsageEntry {
   input_tokens: number;
@@ -174,9 +181,7 @@ export async function getContextWindowForPane(
           context_pct: Math.round((contextUsed / limit) * 1000) / 10, // 1 decimal
         };
       }
-    } catch {
-      continue;
-    }
+    } catch {}
   }
 
   return null;

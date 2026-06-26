@@ -1,3 +1,4 @@
+import { resolveAgentRuntime } from '../shared/hook-runtime.ts';
 import type {
   ActiveEndpoint,
   Agent,
@@ -5,12 +6,11 @@ import type {
 } from '../shared/types.ts';
 import { renderBatchFinalMessage } from '../state/batch-render.ts';
 import { getDb } from '../state/db.ts';
-import { resolveAgentRuntime } from '../shared/hook-runtime.ts';
 import {
   addMessage,
   advancePushCursor,
-  claimPushCursor,
   armLeaderGoalReminder,
+  claimPushCursor,
   getAgent,
   getAgentByRoomAndName,
   getAgentInputBlockMode,
@@ -73,7 +73,10 @@ async function checkEndpointLiveness(
     };
   }
 
-  const agentRuntime = await resolveAgentRuntime(agent.agent_type, endpoint.target);
+  const agentRuntime = await resolveAgentRuntime(
+    agent.agent_type,
+    endpoint.target,
+  );
   if (agentRuntime === 'claude-code' || agentRuntime === 'codex') {
     if (!(await paneCommandLooksAlive(endpoint.target))) {
       markAgentStale(agent.name);
@@ -177,7 +180,11 @@ async function deliverToTarget(ctx: DeliveryContext): Promise<DeliveryResult> {
   }
 
   try {
-    const shouldArm = shouldArmLeaderGoalReminder(agent, senderAgent, ctx.metadata);
+    const shouldArm = shouldArmLeaderGoalReminder(
+      agent,
+      senderAgent,
+      ctx.metadata,
+    );
     await getQueue(endpoint.target, { role: agent.role }).enqueue({
       type: 'paste',
       text: fullText,

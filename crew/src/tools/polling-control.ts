@@ -82,5 +82,7 @@ export function handlePolling(params: PollingParams): ToolResult {
   if (subcommand === 'busy' || subcommand === 'set-busy') {
     return handleSetPollingBusy({ mode: params.mode });
   }
-  return err(`Unknown polling subcommand: '${subcommand}'. Use: pause, resume, status, busy`);
+  return err(
+    `Unknown polling subcommand: '${subcommand}'. Use: pause, resume, status, busy`,
+  );
 }

@@ -48,7 +48,10 @@ function hexDump(str: string, maxLen = 200): string {
     .join('');
 }
 
-async function capturePane(withAnsi: boolean, lines?: number): Promise<string | null> {
+async function capturePane(
+  withAnsi: boolean,
+  lines?: number,
+): Promise<string | null> {
   try {
     const args: string[] = ['tmux', 'capture-pane', '-t', tmuxTarget, '-p'];
     if (withAnsi) args.push('-e');
@@ -73,7 +76,9 @@ async function run() {
   const fullAnsi = await capturePane(true);
 
   if (!fullText || !fullAnsi) {
-    console.error(`Failed to capture pane ${tmuxTarget}. Is it a valid tmux pane?`);
+    console.error(
+      `Failed to capture pane ${tmuxTarget}. Is it a valid tmux pane?`,
+    );
     process.exit(1);
   }
 
@@ -83,9 +88,13 @@ async function run() {
   console.log('--- FULL PANE ---');
   console.log(`Text-only hash: ${fullTextHash}`);
   console.log(`ANSI hash:      ${fullAnsiHash}`);
-  console.log(`Hashes differ:  ${fullTextHash !== fullAnsiHash ? 'YES ✓' : 'NO (same)'}`);
+  console.log(
+    `Hashes differ:  ${fullTextHash !== fullAnsiHash ? 'YES ✓' : 'NO (same)'}`,
+  );
   console.log(`Text length:    ${fullText.length}`);
-  console.log(`ANSI length:    ${fullAnsi.length} (+${fullAnsi.length - fullText.length} bytes from ANSI)`);
+  console.log(
+    `ANSI length:    ${fullAnsi.length} (+${fullAnsi.length - fullText.length} bytes from ANSI)`,
+  );
 
   // Last 5 lines (status region)
   const statusText = await capturePane(false, 5);
@@ -98,7 +107,9 @@ async function run() {
     console.log('\n--- LAST 5 LINES (Status Region) ---');
     console.log(`Text-only hash: ${statusTextHash}`);
     console.log(`ANSI hash:      ${statusAnsiHash}`);
-    console.log(`Hashes differ:  ${statusTextHash !== statusAnsiHash ? 'YES ✓' : 'NO (same)'}`);
+    console.log(
+      `Hashes differ:  ${statusTextHash !== statusAnsiHash ? 'YES ✓' : 'NO (same)'}`,
+    );
 
     console.log('\n--- Status Region Content (text-only) ---');
     console.log(statusText.trim());
@@ -118,7 +129,9 @@ async function run() {
     console.log('\n--- LAST 3 LINES ---');
     console.log(`Text-only hash: ${last3TextHash}`);
     console.log(`ANSI hash:      ${last3AnsiHash}`);
-    console.log(`Hashes differ:  ${last3TextHash !== last3AnsiHash ? 'YES ✓' : 'NO (same)'}`);
+    console.log(
+      `Hashes differ:  ${last3TextHash !== last3AnsiHash ? 'YES ✓' : 'NO (same)'}`,
+    );
 
     console.log('\n--- Last 3 Lines Raw (with ANSI escaped) ---');
     console.log(hexDump(last3Ansi, 300));

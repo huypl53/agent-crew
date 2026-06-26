@@ -1,9 +1,9 @@
 import { getQueue } from '../delivery/pane-queue.ts';
+import { resolveAgentRuntime } from '../shared/hook-runtime.ts';
 import { assertRole } from '../shared/role-guard.ts';
 import type { ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
 import { addMessage, getAgent } from '../state/index.ts';
-import { resolveAgentRuntime } from '../shared/hook-runtime.ts';
 
 interface InterruptWorkerParams {
   worker_name: string;

@@ -12,9 +12,7 @@
       { "agent": "w1", "description": "Goal for w1" },
       { "agent": "w2", "description": "Goal for w2" }
     ],
-    "hints": [
-      { "agent": "w1", "message": "w1 hint", "cadence": 2 }
-    ]
+    "hints": [{ "agent": "w1", "message": "w1 hint", "cadence": 2 }]
   },
   "steps": [
     {
@@ -48,7 +46,9 @@
     {
       "event": "UserPromptSubmit",
       "pane": "%11",
-      "expect": { "stdout_path": [{ "path": "hint.message", "value": "w1 hint" }] }
+      "expect": {
+        "stdout_path": [{ "path": "hint.message", "value": "w1 hint" }]
+      }
     },
     {
       "event": "Stop",

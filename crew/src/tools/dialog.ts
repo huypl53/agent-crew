@@ -1,4 +1,8 @@
+import { logServer } from '../shared/server-log.ts';
+import type { LeaderDialog, ToolResult } from '../shared/types.ts';
+import { err, ok } from '../shared/types.ts';
 import { initDb } from '../state/db.ts';
+import { markDialogStepAnswered } from '../state/dialog-state.ts';
 import {
   getActiveDialogForWorker,
   getAgentByPane,
@@ -7,10 +11,6 @@ import {
   listPendingDialogs,
   markDialogAnswered,
 } from '../state/index.ts';
-import { markDialogStepAnswered } from '../state/dialog-state.ts';
-import { logServer } from '../shared/server-log.ts';
-import type { LeaderDialog, ToolResult } from '../shared/types.ts';
-import { err, ok } from '../shared/types.ts';
 import { capturePaneTail, sendKey } from '../tmux/index.ts';
 import {
   buildKeystrokes,
@@ -132,7 +132,9 @@ export async function handleDialogAnswer(params: {
   const picks0 = [...new Set(picks1.map((p) => p - 1))].sort((a, b) => a - b);
   const bad = picks0.find((p) => p < 0 || p >= q.options.length);
   if (bad !== undefined) {
-    return err(`Pick ${bad + 1} is out of range (valid: 1..${q.options.length})`);
+    return err(
+      `Pick ${bad + 1} is out of range (valid: 1..${q.options.length})`,
+    );
   }
   if (!q.multiSelect && picks0.length > 1) {
     return err(
@@ -200,9 +202,11 @@ export async function handleDialogAnswer(params: {
     });
   }
 
-  const finalAnswer = progressed.answer as
-    | { type: 'ask_question'; picks: number[]; all_picks?: number[][] }
-    | null;
+  const finalAnswer = progressed.answer as {
+    type: 'ask_question';
+    picks: number[];
+    all_picks?: number[][];
+  } | null;
   return ok({
     ok: true,
     worker,

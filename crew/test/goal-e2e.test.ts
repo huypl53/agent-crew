@@ -1,4 +1,11 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+} from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -66,14 +73,34 @@ describe('goal feature e2e — CLI', () => {
 
     // Register leader
     const leaderJoin = await runCli(
-      ['join', '--room', 'goal-room', '--role', 'leader', '--name', 'lead-1', '--pane', leaderSession.pane],
+      [
+        'join',
+        '--room',
+        'goal-room',
+        '--role',
+        'leader',
+        '--name',
+        'lead-1',
+        '--pane',
+        leaderSession.pane,
+      ],
       env(),
     );
     expect(leaderJoin.exitCode).toBe(0);
 
     // Register worker
     const workerJoin = await runCli(
-      ['join', '--room', 'goal-room', '--role', 'worker', '--name', 'wk-1', '--pane', workerSession.pane],
+      [
+        'join',
+        '--room',
+        'goal-room',
+        '--role',
+        'worker',
+        '--name',
+        'wk-1',
+        '--pane',
+        workerSession.pane,
+      ],
       env(),
     );
     expect(workerJoin.exitCode).toBe(0);
@@ -90,7 +117,16 @@ describe('goal feature e2e — CLI', () => {
   // 1. Worker sets own goal
   test('goal set creates active goal', async () => {
     const { out, exitCode } = await runCli(
-      ['goal', 'set', 'Implement auth module', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
+      [
+        'goal',
+        'set',
+        'Implement auth module',
+        '--agent',
+        'wk-1',
+        '--room',
+        'goal-room',
+        '--json',
+      ],
       env(),
     );
     expect(exitCode).toBe(0);
@@ -116,7 +152,16 @@ describe('goal feature e2e — CLI', () => {
   test('goal set by leader detects setBy', async () => {
     // Leader pane sets goal for worker — TMUX_PANE=leader pane → resolves to lead-1
     const { out, exitCode } = await runCli(
-      ['goal', 'set', 'Fix bug #42', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
+      [
+        'goal',
+        'set',
+        'Fix bug #42',
+        '--agent',
+        'wk-1',
+        '--room',
+        'goal-room',
+        '--json',
+      ],
       { ...env(), TMUX_PANE: leaderSession.pane },
     );
     expect(exitCode).toBe(0);
@@ -135,7 +180,16 @@ describe('goal feature e2e — CLI', () => {
   // 4. Update goal description
   test('goal update changes description', async () => {
     const { out, exitCode } = await runCli(
-      ['goal', 'update', 'Fix bug #42 in auth.ts', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
+      [
+        'goal',
+        'update',
+        'Fix bug #42 in auth.ts',
+        '--agent',
+        'wk-1',
+        '--room',
+        'goal-room',
+        '--json',
+      ],
       env(),
     );
     expect(exitCode).toBe(0);
@@ -241,7 +295,15 @@ describe('goal feature e2e — CLI', () => {
   test('goal unset removes goal', async () => {
     // Set a fresh goal first
     await runCli(
-      ['goal', 'set', 'Temporary goal', '--agent', 'wk-1', '--room', 'goal-room'],
+      [
+        'goal',
+        'set',
+        'Temporary goal',
+        '--agent',
+        'wk-1',
+        '--room',
+        'goal-room',
+      ],
       env(),
     );
 
@@ -265,7 +327,15 @@ describe('goal feature e2e — CLI', () => {
   test('crew goal (no subcommand) shows room overview', async () => {
     // Seed a fresh goal so there is something to show
     await runCli(
-      ['goal', 'set', 'Overview seed goal', '--agent', 'wk-1', '--room', 'goal-room'],
+      [
+        'goal',
+        'set',
+        'Overview seed goal',
+        '--agent',
+        'wk-1',
+        '--room',
+        'goal-room',
+      ],
       env(),
     );
 
@@ -346,17 +416,29 @@ describe('goal feature e2e — CLI', () => {
   test('crew goal redo binds to target agent pane, not caller pane', async () => {
     // Seed + complete a goal for the worker so we have a redo candidate
     await runCli(
-      ['goal', 'set', 'Pane-binding redo', '--agent', 'wk-1', '--room', 'goal-room'],
+      [
+        'goal',
+        'set',
+        'Pane-binding redo',
+        '--agent',
+        'wk-1',
+        '--room',
+        'goal-room',
+      ],
       env(),
     );
-    await runCli(['goal', 'done', '--agent', 'wk-1', '--room', 'goal-room'], env());
+    await runCli(
+      ['goal', 'done', '--agent', 'wk-1', '--room', 'goal-room'],
+      env(),
+    );
 
     const hist = await runCli(
       ['goal', 'history', '--agent', 'wk-1', '--room', 'goal-room', '--json'],
       env(),
     );
     const candidate = JSON.parse(hist.out).goals.find(
-      (g: any) => g.description === 'Pane-binding redo' && g.status !== 'active',
+      (g: any) =>
+        g.description === 'Pane-binding redo' && g.status !== 'active',
     );
     expect(candidate).toBeDefined();
 

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import type { DialogQuestion } from '../src/shared/types.ts';
 import { closeDb, initDb } from '../src/state/db.ts';
 import {
   addAgent,
@@ -11,7 +12,6 @@ import {
   markDialogAnswered,
   markDialogStepAnswered,
 } from '../src/state/index.ts';
-import type { DialogQuestion } from '../src/shared/types.ts';
 
 function mkRoom(name: string) {
   return getOrCreateRoom(`/test/${name}`, name);
@@ -312,7 +312,10 @@ describe('leader dialog state', () => {
         approved: true,
       });
       expect(answered?.status).toBe('answered');
-      expect(answered?.answer).toEqual({ type: 'plan_approval', approved: true });
+      expect(answered?.answer).toEqual({
+        type: 'plan_approval',
+        approved: true,
+      });
     });
 
     test('is a no-op when dialog is not pending', () => {
@@ -334,7 +337,9 @@ describe('leader dialog state', () => {
       markDialogAnswered(d.id, { type: 'ask_question', picks: [1] });
 
       // Second answer attempt is a no-op
-      expect(markDialogAnswered(d.id, { type: 'ask_question', picks: [0] })).toBeNull();
+      expect(
+        markDialogAnswered(d.id, { type: 'ask_question', picks: [0] }),
+      ).toBeNull();
     });
 
     test('is a no-op for non-existent dialog', () => {

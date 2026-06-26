@@ -360,10 +360,14 @@ describe('batch completion rendering', () => {
       );
 
       await Bun.sleep(500);
-      const workersAfterStops = getBatchWorkers(batchId).map((worker) => worker);
+      const workersAfterStops = getBatchWorkers(batchId).map(
+        (worker) => worker,
+      );
       expect(workersAfterStops).toHaveLength(2);
       expect(
-        workersAfterStops.every((worker) => worker.terminal_status === 'running'),
+        workersAfterStops.every(
+          (worker) => worker.terminal_status === 'running',
+        ),
       ).toBe(true);
 
       expect(
@@ -376,12 +380,14 @@ describe('batch completion rendering', () => {
       flushGoalCompletionIfReady('worker-a', room!.id);
       await Bun.sleep(500);
       expect(
-        getBatchWorkers(batchId).find((worker) => worker.worker_name === 'worker-a')
-          ?.terminal_status,
+        getBatchWorkers(batchId).find(
+          (worker) => worker.worker_name === 'worker-a',
+        )?.terminal_status,
       ).toBe('success');
       expect(
-        getBatchWorkers(batchId).find((worker) => worker.worker_name === 'worker-b')
-          ?.terminal_status,
+        getBatchWorkers(batchId).find(
+          (worker) => worker.worker_name === 'worker-b',
+        )?.terminal_status,
       ).toBe('running');
       expect(
         getRoomMessages('crew').filter(
@@ -463,12 +469,14 @@ describe('batch completion rendering', () => {
 
       await Bun.sleep(250);
       expect(
-        getBatchWorkers(batchId).find((worker) => worker.worker_name === 'worker-b')
-          ?.terminal_status,
+        getBatchWorkers(batchId).find(
+          (worker) => worker.worker_name === 'worker-b',
+        )?.terminal_status,
       ).toBe('success');
       expect(
-        getBatchWorkers(batchId).find((worker) => worker.worker_name === 'worker-a')
-          ?.terminal_status,
+        getBatchWorkers(batchId).find(
+          (worker) => worker.worker_name === 'worker-a',
+        )?.terminal_status,
       ).toBe('running');
 
       await processHookEventInput(
@@ -482,8 +490,9 @@ describe('batch completion rendering', () => {
 
       await Bun.sleep(250);
       expect(
-        getBatchWorkers(batchId).find((worker) => worker.worker_name === 'worker-a')
-          ?.terminal_status,
+        getBatchWorkers(batchId).find(
+          (worker) => worker.worker_name === 'worker-a',
+        )?.terminal_status,
       ).toBe('running');
       expect(
         getRoomMessages('crew').filter(
@@ -554,9 +563,7 @@ describe('batch completion rendering', () => {
       );
 
       await Bun.sleep(300);
-      expect(
-        getBatchWorkers(batchId)[0]?.terminal_status,
-      ).toBe('running');
+      expect(getBatchWorkers(batchId)[0]?.terminal_status).toBe('running');
       expect(completeGoal('worker-a', room!.id)).toBe(true);
       flushGoalCompletionIfReady('worker-a', room!.id);
       await Bun.sleep(1200);

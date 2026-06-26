@@ -270,7 +270,9 @@ export async function detectAgentRuntimeFromPane(
         stderr: 'pipe',
       },
     );
-    const currentCommand = (await new Response(currentCommandProc.stdout).text()).trim();
+    const currentCommand = (
+      await new Response(currentCommandProc.stdout).text()
+    ).trim();
     await currentCommandProc.exited;
     const fromCurrent = resolveRuntimeFromCommand(currentCommand);
     if (fromCurrent !== 'unknown') return fromCurrent;

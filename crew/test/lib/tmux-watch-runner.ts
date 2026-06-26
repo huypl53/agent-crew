@@ -1,8 +1,8 @@
 import { closeDb, initDb } from '../../src/state/db.ts';
+import { sendCommand, sendKeys } from '../../src/tmux/index.ts';
 import { processHookEventInput } from '../../src/tools/hook-event.ts';
 import { handleInputBlock } from '../../src/tools/input-block.ts';
 import { handleJoinRoom } from '../../src/tools/join-room.ts';
-import { sendCommand, sendKeys } from '../../src/tmux/index.ts';
 import {
   captureFromPane,
   cleanupAllTestSessions,
@@ -139,7 +139,7 @@ export async function runTmuxWatchFixture(
     const watchRegex =
       fixture.watch.matches !== undefined
         ? new RegExp(fixture.watch.matches)
-        : watchPattern ?? '';
+        : (watchPattern ?? '');
 
     let actionResults: unknown[] = [];
     let actionsPromise: Promise<unknown[]> | null = null;
@@ -315,7 +315,9 @@ async function runActions(
     }
 
     const paneRef = 'pane' in action && action.pane ? action.pane : undefined;
-    const target = paneRef ? resolvePaneTarget(paneTargets, paneRef) : undefined;
+    const target = paneRef
+      ? resolvePaneTarget(paneTargets, paneRef)
+      : undefined;
     if (paneRef && !target) {
       throw new Error(`Unknown pane in trigger action: ${paneRef}`);
     }
@@ -336,7 +338,9 @@ async function runActions(
     if (action.type === 'tmux-send-command') {
       const result = await sendCommand(target!, action.text);
       if (!result.delivered) {
-        throw new Error(result.error ?? `sendCommand failed for ${action.pane}`);
+        throw new Error(
+          result.error ?? `sendCommand failed for ${action.pane}`,
+        );
       }
       results.push(result);
       continue;
@@ -364,7 +368,9 @@ async function runActions(
       continue;
     }
 
-    throw new Error(`Unsupported trigger action: ${(action as { type: string }).type}`);
+    throw new Error(
+      `Unsupported trigger action: ${(action as { type: string }).type}`,
+    );
   }
 
   return results;
@@ -377,13 +383,25 @@ function validateWatchFixture(fixture: WatchFixture): string | null {
   if (typeof fixture.name !== 'string' || fixture.name.trim() === '') {
     return 'fixture.name must be a non-empty string';
   }
-  if (!fixture.setup || !Array.isArray(fixture.setup.panes) || fixture.setup.panes.length === 0) {
+  if (
+    !fixture.setup ||
+    !Array.isArray(fixture.setup.panes) ||
+    fixture.setup.panes.length === 0
+  ) {
     return 'fixture.setup.panes must be a non-empty array';
   }
-  if (!fixture.trigger || !Array.isArray(fixture.trigger.actions) || fixture.trigger.actions.length === 0) {
+  if (
+    !fixture.trigger ||
+    !Array.isArray(fixture.trigger.actions) ||
+    fixture.trigger.actions.length === 0
+  ) {
     return 'fixture.trigger.actions must be a non-empty array';
   }
-  if (!fixture.watch || typeof fixture.watch.pane !== 'string' || fixture.watch.pane.trim() === '') {
+  if (
+    !fixture.watch ||
+    typeof fixture.watch.pane !== 'string' ||
+    fixture.watch.pane.trim() === ''
+  ) {
     return 'fixture.watch.pane must be a non-empty string';
   }
   if (
@@ -399,18 +417,25 @@ function resolvePaneTarget(
   paneTargets: Map<string, string>,
   paneRef: string,
 ): string | undefined {
-  return paneTargets.get(paneRef) ?? (paneRef.startsWith('%') ? paneRef : undefined);
+  return (
+    paneTargets.get(paneRef) ?? (paneRef.startsWith('%') ? paneRef : undefined)
+  );
 }
 
 async function parseToolResult(
-  resultPromise: Promise<{ content: Array<{ text: string }>; isError?: boolean }>,
+  resultPromise: Promise<{
+    content: Array<{ text: string }>;
+    isError?: boolean;
+  }>,
 ): Promise<unknown> {
   const result = await resultPromise;
   const text = result.content[0]?.text ?? '{}';
   const parsed = JSON.parse(text) as Record<string, unknown>;
   if (result.isError === true) {
     throw new Error(
-      typeof parsed.error === 'string' ? parsed.error : `crew action failed: ${text}`,
+      typeof parsed.error === 'string'
+        ? parsed.error
+        : `crew action failed: ${text}`,
     );
   }
   if (typeof parsed.error === 'string' && parsed.error.length > 0) {

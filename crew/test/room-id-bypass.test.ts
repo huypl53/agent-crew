@@ -1,9 +1,16 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from 'bun:test';
 import { closeDb, initDb } from '../src/state/db.ts';
 import { getAgent, getOrCreateRoom, getRoom } from '../src/state/index.ts';
+import { handleDeleteRoom } from '../src/tools/delete-room.ts';
 import { handleJoinRoom } from '../src/tools/join-room.ts';
 import { handleRefresh } from '../src/tools/refresh.ts';
-import { handleDeleteRoom } from '../src/tools/delete-room.ts';
 import {
   cleanupAllTestSessions,
   createTestSession,
@@ -39,7 +46,7 @@ describe('room-id bypass and old-room refresh', () => {
       tmux_target: testPane1,
     });
     expect(leadResult.isError).toBeUndefined();
-    
+
     const room = getRoom('project-xyz');
     expect(room).toBeDefined();
     const createdRoomId = room!.id;
@@ -105,7 +112,7 @@ describe('room-id bypass and old-room refresh', () => {
     expect(deleteResult.isError).toBeUndefined();
     const deleteData = JSON.parse(deleteResult.content[0]!.text);
     expect(deleteData.deleted).toBe(true);
-    
+
     expect(getRoom(createdRoomId)).toBeUndefined();
   });
 });

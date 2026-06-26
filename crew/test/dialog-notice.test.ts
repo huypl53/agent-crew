@@ -14,10 +14,7 @@ describe('extractDialogFromPermission', () => {
             question: 'Pick a color',
             header: 'Color',
             multiSelect: false,
-            options: [
-              { label: 'Red' },
-              { label: 'Green', description: 'eco' },
-            ],
+            options: [{ label: 'Red' }, { label: 'Green', description: 'eco' }],
           },
         ],
       },
@@ -80,11 +77,7 @@ describe('formatLeaderNotice', () => {
           question: 'Which lib?',
           header: 'Library',
           multiSelect: false,
-          options: [
-            { label: 'A' },
-            { label: 'B' },
-            { label: 'C' },
-          ],
+          options: [{ label: 'A' }, { label: 'B' }, { label: 'C' }],
         },
       ],
     });
@@ -120,8 +113,18 @@ describe('formatLeaderNotice', () => {
       dialogType: 'ask_question',
       questionIndex: 1,
       questions: [
-        { question: 'q1', header: '', multiSelect: true, options: [{ label: 'A' }] },
-        { question: 'q2', header: '', multiSelect: false, options: [{ label: 'B' }] },
+        {
+          question: 'q1',
+          header: '',
+          multiSelect: true,
+          options: [{ label: 'A' }],
+        },
+        {
+          question: 'q2',
+          header: '',
+          multiSelect: false,
+          options: [{ label: 'B' }],
+        },
       ],
     });
     expect(notice).toContain('[2/2]');

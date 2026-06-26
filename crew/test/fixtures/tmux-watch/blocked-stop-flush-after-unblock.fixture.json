@@ -91,13 +91,7 @@
         "min": 1
       }
     ],
-    "finalCaptureContains": [
-      "UNBLOCK-MARKER",
-      "BLOCKED-STOP-COMPLETION"
-    ],
-    "finalCaptureOrdered": [
-      "UNBLOCK-MARKER",
-      "BLOCKED-STOP-COMPLETION"
-    ]
+    "finalCaptureContains": ["UNBLOCK-MARKER", "BLOCKED-STOP-COMPLETION"],
+    "finalCaptureOrdered": ["UNBLOCK-MARKER", "BLOCKED-STOP-COMPLETION"]
   }
 }

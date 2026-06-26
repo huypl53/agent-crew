@@ -1,4 +1,3 @@
-import { getDb } from './db.ts';
 import type {
   MessageBatch,
   MessageBatchStatus,
@@ -7,6 +6,7 @@ import type {
   MessageBatchWorkerTerminalOutcome,
   MessageBatchWorkerTerminalStatus,
 } from '../shared/types.ts';
+import { getDb } from './db.ts';
 
 export interface CreateMessageBatchInput {
   batchId: string;
@@ -50,9 +50,7 @@ function parseDispatchStatus(value: unknown): MessageBatchWorkerDispatchStatus {
 }
 
 function parseTerminalStatus(value: unknown): MessageBatchWorkerTerminalStatus {
-  return value === 'success' || value === 'interrupted'
-    ? value
-    : 'running';
+  return value === 'success' || value === 'interrupted' ? value : 'running';
 }
 
 function rowToBatch(row: Record<string, unknown>): MessageBatch {
@@ -85,7 +83,9 @@ function rowToWorker(row: Record<string, unknown>): MessageBatchWorker {
   };
 }
 
-export function createMessageBatch(input: CreateMessageBatchInput): MessageBatch {
+export function createMessageBatch(
+  input: CreateMessageBatchInput,
+): MessageBatch {
   const batchId = requireTrimmed(input.batchId, 'batchId');
   const leaderName = requireTrimmed(input.leaderName, 'leaderName');
   const roomId = requirePositiveInteger(input.roomId, 'roomId');
@@ -99,8 +99,14 @@ export function createMessageBatch(input: CreateMessageBatchInput): MessageBatch
   }
 
   const workers = input.workers.map((worker, index) => ({
-    workerName: requireTrimmed(worker.workerName, `workers[${index}].workerName`),
-    promptFile: requireTrimmed(worker.promptFile, `workers[${index}].promptFile`),
+    workerName: requireTrimmed(
+      worker.workerName,
+      `workers[${index}].workerName`,
+    ),
+    promptFile: requireTrimmed(
+      worker.promptFile,
+      `workers[${index}].promptFile`,
+    ),
     manifestOrder: index,
   }));
 
@@ -165,10 +171,7 @@ export function markBatchWorkerDispatchFailed(
 function isTerminalOutcome(
   terminalStatus: MessageBatchWorkerTerminalStatus,
 ): terminalStatus is MessageBatchWorkerTerminalOutcome {
-  return (
-    terminalStatus === 'success' ||
-    terminalStatus === 'interrupted'
-  );
+  return terminalStatus === 'success' || terminalStatus === 'interrupted';
 }
 
 export function completeBatchWorker(
@@ -204,7 +207,9 @@ export function getMessageBatch(batchId: string): MessageBatch | null {
 export function getBatchWorkers(batchId: string): MessageBatchWorker[] {
   return (
     getDb()
-      .query('SELECT * FROM message_batch_workers WHERE batch_id = ? ORDER BY manifest_order, id')
+      .query(
+        'SELECT * FROM message_batch_workers WHERE batch_id = ? ORDER BY manifest_order, id',
+      )
       .all(batchId) as Record<string, unknown>[]
   ).map(rowToWorker);
 }
@@ -271,13 +276,16 @@ export function renderBatchPendingHint(workerNames: string[]): string {
 }
 
 export function markBatchHintSent(batchId: string, sentAtIso: string): void {
-  getDb().run('UPDATE message_batches SET hint_sent_at = ? WHERE batch_id = ?', [
-    sentAtIso,
-    batchId,
-  ]);
+  getDb().run(
+    'UPDATE message_batches SET hint_sent_at = ? WHERE batch_id = ?',
+    [sentAtIso, batchId],
+  );
 }
 
-export function markBatchCompleted(batchId: string, completedAtIso: string): void {
+export function markBatchCompleted(
+  batchId: string,
+  completedAtIso: string,
+): void {
   getDb().run(
     'UPDATE message_batches SET status = ?, completed_at = ? WHERE batch_id = ?',
     ['completed', completedAtIso, batchId],
@@ -331,8 +339,11 @@ export function evaluateBatchFinalization(batchId: string): {
        FROM message_batches b
        WHERE b.batch_id = ? AND b.status = 'running' AND b.completed_at IS NULL`,
     )
-    .get(batchId) as
-    { batch_id: string; leader_name: string; room_id: number } | null;
+    .get(batchId) as {
+    batch_id: string;
+    leader_name: string;
+    room_id: number;
+  } | null;
 
   if (!row) return null;
 
@@ -345,7 +356,11 @@ export function evaluateBatchFinalization(batchId: string): {
     )
     .get(batchId) as { total: number; done: number | null } | null;
 
-  if (!workerStatus || workerStatus.total <= 0 || workerStatus.done !== workerStatus.total) {
+  if (
+    !workerStatus ||
+    workerStatus.total <= 0 ||
+    workerStatus.done !== workerStatus.total
+  ) {
     return {
       batchId: row.batch_id,
       leaderName: row.leader_name,
@@ -393,7 +408,8 @@ function shouldFinalizeBatch(
     )
     .get(batchId) as { total: number; done: number | null } | null;
 
-  if (!counts || counts.total <= 0 || counts.done !== counts.total) return false;
+  if (!counts || counts.total <= 0 || counts.done !== counts.total)
+    return false;
   if (hasActiveBatchWorkerGoals(db, batchId)) return false;
 
   const ts = now();
@@ -451,19 +467,20 @@ function getLatestPersistedBatchAssociationForWorker(
        ORDER BY m.id DESC
        LIMIT 1`,
     )
-    .get(workerName, ...(roomId === undefined ? [] : [roomId])) as
-    | {
-        batch_id: string;
-        leader_name: string;
-        room_id: number;
-        created_at: string;
-        status: MessageBatchStatus;
-        completed_at: string | null;
-      }
-    | null;
+    .get(workerName, ...(roomId === undefined ? [] : [roomId])) as {
+    batch_id: string;
+    leader_name: string;
+    room_id: number;
+    created_at: string;
+    status: MessageBatchStatus;
+    completed_at: string | null;
+  } | null;
 
   if (!row) return null;
-  if (requireRunning && (row.status !== 'running' || row.completed_at !== null)) {
+  if (
+    requireRunning &&
+    (row.status !== 'running' || row.completed_at !== null)
+  ) {
     return null;
   }
 
@@ -486,9 +503,12 @@ function getLatestOpenBatchForWorker(
        ORDER BY b.created_at DESC, b.id DESC
        LIMIT 1`,
     )
-    .get(workerName, ...(roomId === undefined ? [] : [roomId])) as
-    | { batch_id: string; leader_name: string; room_id: number; created_at: string }
-    | null;
+    .get(workerName, ...(roomId === undefined ? [] : [roomId])) as {
+    batch_id: string;
+    leader_name: string;
+    room_id: number;
+    created_at: string;
+  } | null;
 
   return row ? rowToOpenBatch(row) : null;
 }
@@ -508,18 +528,16 @@ export function getLatestBatchForWorker(
        ORDER BY b.created_at DESC, b.id DESC
        LIMIT 1`,
     )
-    .get(workerName, ...(roomId === undefined ? [] : [roomId])) as
-    | {
-        batch_id: string;
-        leader_name: string;
-        room_id: number;
-        created_at: string;
-        status: MessageBatchStatus;
-        terminal_status: MessageBatchWorkerTerminalStatus;
-        final_message: string | null;
-        finished_at: string | null;
-      }
-    | null;
+    .get(workerName, ...(roomId === undefined ? [] : [roomId])) as {
+    batch_id: string;
+    leader_name: string;
+    room_id: number;
+    created_at: string;
+    status: MessageBatchStatus;
+    terminal_status: MessageBatchWorkerTerminalStatus;
+    final_message: string | null;
+    finished_at: string | null;
+  } | null;
 
   return row
     ? {
@@ -557,20 +575,21 @@ export function getRenderableBatchWorkers(
       .query(
         'SELECT worker_name, final_message FROM message_batch_workers WHERE batch_id = ? ORDER BY manifest_order, id',
       )
-      .all(batchId) as Array<{ worker_name: string; final_message: string | null }>
+      .all(batchId) as Array<{
+      worker_name: string;
+      final_message: string | null;
+    }>
   ).map((row) => ({
     worker_name: row.worker_name,
     final_message: row.final_message ?? null,
   }));
 }
 
-function getBatchForTerminalUpdate(
-  input: {
-    batchId?: string;
-    workerName: string;
-    roomId?: number;
-  },
-): OpenBatchForWorker | null {
+function getBatchForTerminalUpdate(input: {
+  batchId?: string;
+  workerName: string;
+  roomId?: number;
+}): OpenBatchForWorker | null {
   if (input.batchId) {
     const row = getDb()
       .query(
@@ -583,22 +602,22 @@ function getBatchForTerminalUpdate(
            AND b.status = 'running'
            AND b.completed_at IS NULL`,
       )
-      .get(input.batchId) as
-      | {
-          batch_id: string;
-          leader_name: string;
-          room_id: number;
-          created_at: string;
-        }
-      | null;
+      .get(input.batchId) as {
+      batch_id: string;
+      leader_name: string;
+      room_id: number;
+      created_at: string;
+    } | null;
     if (!row) return null;
     if (input.roomId !== undefined && row.room_id !== input.roomId) return null;
     return rowToOpenBatch(row);
   }
 
   return (
-    getLatestPersistedBatchAssociationForWorker(input.workerName, input.roomId) ??
-    getLatestOpenBatchForWorker(input.workerName, input.roomId)
+    getLatestPersistedBatchAssociationForWorker(
+      input.workerName,
+      input.roomId,
+    ) ?? getLatestOpenBatchForWorker(input.workerName, input.roomId)
   );
 }
 
@@ -627,9 +646,9 @@ export function recordBatchWorkerTerminalMessage(input: {
          FROM message_batch_workers
          WHERE batch_id = ? AND worker_name = ?`,
       )
-      .get(resolvedBatch.batchId, input.workerName) as
-      | { terminal_status: MessageBatchWorkerTerminalStatus }
-      | null;
+      .get(resolvedBatch.batchId, input.workerName) as {
+      terminal_status: MessageBatchWorkerTerminalStatus;
+    } | null;
     if (!workerRow || workerRow.terminal_status !== 'running') return null;
 
     db.run(

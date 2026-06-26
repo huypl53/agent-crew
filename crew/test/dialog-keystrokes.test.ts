@@ -2,9 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import {
   buildKeystrokes,
   DEFAULT_DIALOG_KEYMAP,
+  type DialogKeyMap,
   describeKeyActions,
   expandKeyActions,
-  type DialogKeyMap,
 } from '../src/tools/dialog-keystrokes.ts';
 
 const keys = (

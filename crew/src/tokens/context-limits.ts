@@ -12,7 +12,7 @@ const MODEL_CONTEXT_LIMITS: Record<string, number> = {
   'claude-haiku-4-5-20251001': 200_000,
   'glm-5.1': 200_000,
   'gpt-4.1': 1_047_576,
-  'o3': 200_000,
+  o3: 200_000,
   'o4-mini': 200_000,
 };
 

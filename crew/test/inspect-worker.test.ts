@@ -5,8 +5,8 @@ import {
   addAgent,
   addHookEvent,
   clearState,
-  getOrCreateRoom,
   getLatestHookEvent,
+  getOrCreateRoom,
 } from '../src/state/index.ts';
 import { processHookEventInput } from '../src/tools/hook-event.ts';
 
@@ -84,8 +84,20 @@ describe('worker inspection gateway', () => {
   });
 
   test('allows transcript-backed inspection for workers classified as unknown', async () => {
-    addAgent('lead-unknown', 'leader', mkRoom('unknown-room').id, '%9', 'claude-code');
-    addAgent('worker-unknown', 'worker', mkRoom('unknown-room').id, '%10', 'unknown');
+    addAgent(
+      'lead-unknown',
+      'leader',
+      mkRoom('unknown-room').id,
+      '%9',
+      'claude-code',
+    );
+    addAgent(
+      'worker-unknown',
+      'worker',
+      mkRoom('unknown-room').id,
+      '%10',
+      'unknown',
+    );
     addHookEvent(
       'worker-unknown',
       'UserPromptSubmit',
@@ -116,7 +128,9 @@ describe('worker inspection gateway', () => {
               timestamp: '2026-06-03T10:10:03.000Z',
               message: {
                 role: 'assistant',
-                content: [{ type: 'text', text: 'Benchmark is still running.' }],
+                content: [
+                  { type: 'text', text: 'Benchmark is still running.' },
+                ],
               },
             }),
           ].join('\n'),
@@ -283,14 +297,14 @@ describe('worker inspection gateway', () => {
         last_assistant_message: 'Codex worker stopped.',
       }),
     );
-    addAgent('codex-lead', 'leader', mkRoom('codex-room').id, '%5', 'claude-code');
     addAgent(
-      'codex-worker',
-      'worker',
+      'codex-lead',
+      'leader',
       mkRoom('codex-room').id,
-      '%6',
-      'codex',
+      '%5',
+      'claude-code',
     );
+    addAgent('codex-worker', 'worker', mkRoom('codex-room').id, '%6', 'codex');
 
     const snapshot = await inspectWorkerTurns({
       workerName: 'codex-worker',
@@ -322,14 +336,14 @@ describe('worker inspection gateway', () => {
         last_assistant_message: 'Codex worker failed but returned final state.',
       }),
     );
-    addAgent('codex-lead', 'leader', mkRoom('codex-room').id, '%7', 'claude-code');
     addAgent(
-      'codex-worker',
-      'worker',
+      'codex-lead',
+      'leader',
       mkRoom('codex-room').id,
-      '%8',
-      'codex',
+      '%7',
+      'claude-code',
     );
+    addAgent('codex-worker', 'worker', mkRoom('codex-room').id, '%8', 'codex');
 
     const snapshot = await inspectWorkerTurns({
       workerName: 'codex-worker',

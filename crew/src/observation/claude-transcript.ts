@@ -116,9 +116,11 @@ export function extractRecentAgyTurns(
 
     const source = entry.source ?? '';
     const role: 'user' | 'assistant' | null =
-      source === 'MODEL' ? 'assistant'
-      : source === 'USER_EXPLICIT' || source === 'USER' ? 'user'
-      : null;
+      source === 'MODEL'
+        ? 'assistant'
+        : source === 'USER_EXPLICIT' || source === 'USER'
+          ? 'user'
+          : null;
 
     if (!role) continue;
 

@@ -9,9 +9,20 @@
 
 import { mock } from 'bun:test';
 import { resolve } from 'node:path';
-import { initDb, closeDb, addAgent, getLatestHookEvent, getOrCreateRoom, getRecentHookEvents } from '../../src/state/index.ts';
-import { setHint } from '../../src/state/index.ts';
-import { setGoal, completeGoal, armLeaderGoalReminder } from '../../src/state/goal-state.ts';
+import {
+  armLeaderGoalReminder,
+  completeGoal,
+  setGoal,
+} from '../../src/state/goal-state.ts';
+import {
+  addAgent,
+  closeDb,
+  getLatestHookEvent,
+  getOrCreateRoom,
+  getRecentHookEvents,
+  initDb,
+  setHint,
+} from '../../src/state/index.ts';
 import { MockHook } from './mock-hook.ts';
 import type { TapEntry } from './tmux-tap.ts';
 
@@ -23,11 +34,23 @@ const tmuxModulePath = resolve(import.meta.dir, '../../src/tmux/index.ts');
 
 mock.module(tmuxModulePath, () => ({
   sendKeys: async (target: string, text: string) => {
-    _tapLog.push({ ts: Date.now(), op: 'sendKeys', target, args: [text], result: { delivered: true } });
+    _tapLog.push({
+      ts: Date.now(),
+      op: 'sendKeys',
+      target,
+      args: [text],
+      result: { delivered: true },
+    });
     return { delivered: true };
   },
   sendCommand: async (target: string, text: string) => {
-    _tapLog.push({ ts: Date.now(), op: 'sendCommand', target, args: [text], result: { delivered: true } });
+    _tapLog.push({
+      ts: Date.now(),
+      op: 'sendCommand',
+      target,
+      args: [text],
+      result: { delivered: true },
+    });
     return { delivered: true };
   },
   paneExists: async () => true,
@@ -56,15 +79,30 @@ mock.module(tmuxModulePath, () => ({
 
 export interface FixtureSeed {
   room: { name: string; path: string };
-  agents: Array<{ name: string; pane: string; role: 'leader' | 'worker'; cwd?: string }>;
+  agents: Array<{
+    name: string;
+    pane: string;
+    role: 'leader' | 'worker';
+    cwd?: string;
+  }>;
   hints?: Array<{ agent: string; message: string; cadence?: number }>;
-  goals?: Array<{ agent: string; description: string; status?: 'active' | 'done'; armed?: boolean }>;
+  goals?: Array<{
+    agent: string;
+    description: string;
+    status?: 'active' | 'done';
+    armed?: boolean;
+  }>;
 }
 
 export interface FixtureExpect {
   stdout?: Record<string, unknown>;
   stdout_path?: Array<{ path: string; value: unknown }>;
-  tmux?: Array<{ op: string; target?: string; contains?: string; matches?: string }>;
+  tmux?: Array<{
+    op: string;
+    target?: string;
+    contains?: string;
+    matches?: string;
+  }>;
   tmux_absent?: Array<{ op: string; target?: string; contains?: string }>;
   hook_event?: {
     agent: string;
@@ -128,7 +166,10 @@ export async function runFixture(fixture: Fixture): Promise<FixtureResult> {
 
   try {
     initDb(':memory:');
-    const room = getOrCreateRoom(fixture.seed.room.path, fixture.seed.room.name);
+    const room = getOrCreateRoom(
+      fixture.seed.room.path,
+      fixture.seed.room.name,
+    );
 
     for (const ag of fixture.seed.agents) {
       addAgent(ag.name, ag.role as AgentRole, room.id, ag.pane);
@@ -156,12 +197,13 @@ export async function runFixture(fixture: Fixture): Promise<FixtureResult> {
       const step = fixture.steps[i];
       if (!step) continue;
       const defaultPane = fixture.seed.agents[0]?.pane ?? '%0';
-      const pane = Object.prototype.hasOwnProperty.call(step, 'pane')
+      const pane = Object.hasOwn(step, 'pane')
         ? (step.pane ?? undefined)
         : defaultPane;
       const sessionKey = pane ?? '__no_pane__';
       const defaultSessionId =
-        defaultSessionIds.get(sessionKey) ?? `fixture-session-${fixture.name}-${sessionKey}`;
+        defaultSessionIds.get(sessionKey) ??
+        `fixture-session-${fixture.name}-${sessionKey}`;
       defaultSessionIds.set(sessionKey, defaultSessionId);
       const hook = new MockHook({ pane, sessionId: defaultSessionId });
 
@@ -172,14 +214,16 @@ export async function runFixture(fixture: Fixture): Promise<FixtureResult> {
       const preStepLogLen = _tapLog.length;
 
       const rawInput = step.payload?.__raw_input__;
-      const result = typeof rawInput === 'string'
-        ? await hook.fireMalformed(rawInput)
-        : await hook.fire(step.event, step.payload);
+      const result =
+        typeof rawInput === 'string'
+          ? await hook.fireMalformed(rawInput)
+          : await hook.fire(step.event, step.payload);
 
       // Goal reminders use setTimeout(1500ms) — wait long when actual event is Stop
-      const effectiveEvent = step.event === '__skip__'
-        ? String(step.payload?.event ?? step.payload?.eventName ?? '')
-        : step.event;
+      const effectiveEvent =
+        step.event === '__skip__'
+          ? String(step.payload?.event ?? step.payload?.eventName ?? '')
+          : step.event;
       const waitMs = effectiveEvent === 'Stop' ? 2000 : 50;
       await new Promise((r) => setTimeout(r, waitMs));
 
@@ -191,7 +235,12 @@ export async function runFixture(fixture: Fixture): Promise<FixtureResult> {
         for (const [key, expected] of Object.entries(step.expect.stdout)) {
           const actual = result.json[key];
           if (!deepEqual(actual, expected)) {
-            failures.push({ step: i, check: `stdout.${key}`, expected, actual });
+            failures.push({
+              step: i,
+              check: `stdout.${key}`,
+              expected,
+              actual,
+            });
           }
         }
       }
@@ -200,7 +249,12 @@ export async function runFixture(fixture: Fixture): Promise<FixtureResult> {
         for (const { path, value } of step.expect.stdout_path) {
           const actual = getByPath(result.json, path);
           if (!deepEqual(actual, value)) {
-            failures.push({ step: i, check: `stdout_path:${path}`, expected: value, actual });
+            failures.push({
+              step: i,
+              check: `stdout_path:${path}`,
+              expected: value,
+              actual,
+            });
           }
         }
       }
@@ -213,7 +267,9 @@ export async function runFixture(fixture: Fixture): Promise<FixtureResult> {
               step: i,
               check: `tmux:${check.op}${check.target ? `→${check.target}` : ''}`,
               expected: check.contains ?? check.matches ?? '(any)',
-              actual: stepLog.filter((e) => e.op === check.op).map(summarizeEntry),
+              actual: stepLog
+                .filter((e) => e.op === check.op)
+                .map(summarizeEntry),
             });
           }
         }
@@ -250,7 +306,9 @@ export async function runFixture(fixture: Fixture): Promise<FixtureResult> {
         const latest = getLatestHookEvent(
           check.agent,
           check.event,
-          check.session_id === undefined ? undefined : check.session_id ?? undefined,
+          check.session_id === undefined
+            ? undefined
+            : (check.session_id ?? undefined),
         );
         if (check.absent) {
           if (latest) {
@@ -290,7 +348,11 @@ export async function runFixture(fixture: Fixture): Promise<FixtureResult> {
     }
   } finally {
     _tapLog.length = 0;
-    try { closeDb(); } catch { /* already closed */ }
+    try {
+      closeDb();
+    } catch {
+      /* already closed */
+    }
   }
 
   return { name: fixture.name, passed: failures.length === 0, failures };
@@ -313,12 +375,19 @@ export async function runFixtureDir(dir: string): Promise<FixtureResult[]> {
   return results;
 }
 
-export function printResults(results: FixtureResult[]): { passed: number; failed: number } {
-  let passed = 0, failed = 0;
+export function printResults(results: FixtureResult[]): {
+  passed: number;
+  failed: number;
+} {
+  let passed = 0,
+    failed = 0;
   for (const r of results) {
-    if (r.passed) { console.log(`  ✓ ${r.name}`); passed++; }
-    else {
-      console.log(`  ✗ ${r.name}`); failed++;
+    if (r.passed) {
+      console.log(`  ✓ ${r.name}`);
+      passed++;
+    } else {
+      console.log(`  ✗ ${r.name}`);
+      failed++;
       for (const f of r.failures) {
         console.log(`    step ${f.step}: ${f.check}`);
         console.log(`      expected: ${JSON.stringify(f.expected)}`);
@@ -379,7 +448,8 @@ function summarizeEntry(e: TapEntry): string {
 
 function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
-  if ((a === null || a === undefined) && (b === null || b === undefined)) return true;
+  if ((a === null || a === undefined) && (b === null || b === undefined))
+    return true;
   if (a === null || b === null) return false;
   if (typeof a !== typeof b) return false;
   if (typeof a !== 'object') return false;

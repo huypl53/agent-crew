@@ -37,7 +37,10 @@ export function logServer(level: string, msg: string): void {
     const dedupeKey = `${level}|${msg}`;
     const lastAt = recentLogMap.get(dedupeKey) ?? 0;
     if (now - lastAt < RECENT_LOG_WINDOW_MS) {
-      suppressedLogCount.set(dedupeKey, (suppressedLogCount.get(dedupeKey) ?? 0) + 1);
+      suppressedLogCount.set(
+        dedupeKey,
+        (suppressedLogCount.get(dedupeKey) ?? 0) + 1,
+      );
       return;
     }
 

@@ -131,9 +131,10 @@ export async function createTestSession(
 
   // Let the fresh /bin/sh pane settle to its first prompt before tests start
   // sending markers or relying on queued deliveries.
-  await waitForPaneToContain(pane, '$', { timeoutMs: 2000, intervalMs: 50 }).catch(
-    () => {},
-  );
+  await waitForPaneToContain(pane, '$', {
+    timeoutMs: 2000,
+    intervalMs: 50,
+  }).catch(() => {});
 
   return { session, pane };
 }
@@ -154,7 +155,10 @@ function escapeSingleQuotedShell(value: string): string {
   return value.replace(/'/g, `'"'"'`);
 }
 
-export async function sendPaneMarker(target: string, marker: string): Promise<void> {
+export async function sendPaneMarker(
+  target: string,
+  marker: string,
+): Promise<void> {
   const escaped = escapeSingleQuotedShell(marker);
   await sendToPane(target, `printf '%s\\n' '${escaped}'`);
 }
@@ -162,7 +166,16 @@ export async function sendPaneMarker(target: string, marker: string): Promise<vo
 export async function captureFromPane(target: string): Promise<string> {
   ensureTestTmuxSocketEnv();
   const proc = Bun.spawn(
-    ['tmux', ...getSocketArgs(), 'capture-pane', '-t', target, '-p', '-S', '-200'],
+    [
+      'tmux',
+      ...getSocketArgs(),
+      'capture-pane',
+      '-t',
+      target,
+      '-p',
+      '-S',
+      '-200',
+    ],
     {
       stdout: 'pipe',
       stderr: 'pipe',
@@ -274,9 +287,11 @@ export function expectTextInOrder(haystack: string, parts: string[]): void {
     const idx = haystack.indexOf(part, cursor + 1);
     if (idx === -1) {
       throw new Error(
-        [`Expected text not found in order: ${part}`, '--- haystack ---', haystack].join(
-          '\n',
-        ),
+        [
+          `Expected text not found in order: ${part}`,
+          '--- haystack ---',
+          haystack,
+        ].join('\n'),
       );
     }
     cursor = idx;

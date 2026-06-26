@@ -3,9 +3,7 @@
   "description": "No-pane PermissionRequest resolves a unique worker by session + cwd fallback and persists the hook event",
   "seed": {
     "room": { "name": "codex-room", "path": "/tmp/codex-room" },
-    "agents": [
-      { "name": "codex-1", "pane": "%42", "role": "worker" }
-    ]
+    "agents": [{ "name": "codex-1", "pane": "%42", "role": "worker" }]
   },
   "steps": [
     {
@@ -19,7 +17,10 @@
       "expect": {
         "stdout": { "ok": true },
         "stdout_path": [
-          { "path": "hookSpecificOutput.hookEventName", "value": "PermissionRequest" },
+          {
+            "path": "hookSpecificOutput.hookEventName",
+            "value": "PermissionRequest"
+          },
           { "path": "hookSpecificOutput.decision.behavior", "value": "allow" }
         ],
         "hook_event": {
@@ -29,9 +30,7 @@
           "payload_contains": "codex-session-1"
         },
         "hook_events_count": 1,
-        "tmux_absent": [
-          { "op": "sendKeys", "target": "%42" }
-        ]
+        "tmux_absent": [{ "op": "sendKeys", "target": "%42" }]
       }
     }
   ]

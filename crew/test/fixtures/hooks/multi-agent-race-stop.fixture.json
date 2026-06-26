@@ -22,9 +22,7 @@
         "tmux": [
           { "op": "sendKeys", "target": "%11", "contains": "Fix login bug" }
         ],
-        "tmux_absent": [
-          { "op": "sendKeys", "target": "%12" }
-        ]
+        "tmux_absent": [{ "op": "sendKeys", "target": "%12" }]
       }
     },
     {
@@ -36,9 +34,7 @@
         "tmux": [
           { "op": "sendKeys", "target": "%12", "contains": "Add rate limiter" }
         ],
-        "tmux_absent": [
-          { "op": "sendKeys", "target": "%11" }
-        ]
+        "tmux_absent": [{ "op": "sendKeys", "target": "%11" }]
       }
     }
   ]

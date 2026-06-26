@@ -1,39 +1,46 @@
-import { readFileSync, appendFileSync } from "node:fs";
-import { spawnSync } from "bun";
-import { flushPushQueueForAgent } from "../delivery/index.ts";
+import { appendFileSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'bun';
+import { flushPushQueueForAgent } from '../delivery/index.ts';
 
 function logDebug(message: string): void {
   try {
     const logLine = `[${new Date().toISOString()}] ${message}\n`;
-    appendFileSync("/tmp/crew-hook-debug.log", logLine, "utf8");
+    appendFileSync('/tmp/crew-hook-debug.log', logLine, 'utf8');
   } catch {
     // ignore
   }
 }
-import type { Agent, ToolResult } from "../shared/types.ts";
-import { ok } from "../shared/types.ts";
+
 import {
   extractHookCompletionMessage,
   getRuntimeSkillPrefix,
-  resolveHookEventName,
   normalizeHookEventName,
   resolveAgentRuntime,
-} from "../shared/hook-runtime.ts";
-import { STUCK_DEFAULTS } from "../state/goal-stuck.ts";
-import { getDb, initDbWithRetry, withRetry, getActiveDbPath, getDbPath } from "../state/db.ts";
-import type { HintRecord } from "../state/index.ts";
+  resolveHookEventName,
+} from '../shared/hook-runtime.ts';
+import type { Agent, ToolResult } from '../shared/types.ts';
+import { ok } from '../shared/types.ts';
+import {
+  getActiveDbPath,
+  getDb,
+  getDbPath,
+  initDbWithRetry,
+  withRetry,
+} from '../state/db.ts';
+import { STUCK_DEFAULTS } from '../state/goal-stuck.ts';
+import type { HintRecord } from '../state/index.ts';
 import {
   addHookEvent,
   canonicalizeGoalIdentity,
   canonicalizeHintIdentity,
-  clearArmedInputBlock,
   capturePartyResponseIfActive,
+  clearArmedInputBlock,
   consumeLeaderGoalReminder,
   createLeaderDialog,
-  getAllAgents,
   getAgentByPane,
   getAgentBySessionId,
   getAgentInputBlockMode,
+  getAllAgents,
   getGoalByAgent,
   getRoomMembers,
   isAgentAutoSelfOnIdle,
@@ -42,13 +49,13 @@ import {
   recordAndEvaluateGoalStuck,
   tickGoalTurnCount,
   tickHintCadence,
-} from "../state/index.ts";
-import { resolveAgentByCwdFallback } from "../state/session-binding.ts";
+} from '../state/index.ts';
+import { resolveAgentByCwdFallback } from '../state/session-binding.ts';
+import { sendKeys } from '../tmux/index.ts';
 import {
   extractDialogFromPermission,
   formatLeaderNotice,
-} from "./dialog-notice.ts";
-import { sendKeys } from "../tmux/index.ts";
+} from './dialog-notice.ts';
 
 function extractString(
   payload: Record<string, unknown>,
@@ -56,7 +63,7 @@ function extractString(
 ): string | null {
   for (const key of keys) {
     const value = payload[key];
-    if (typeof value === "string") {
+    if (typeof value === 'string') {
       const trimmed = value.trim();
       if (trimmed.length > 0) return trimmed;
     }
@@ -66,32 +73,32 @@ function extractString(
 
 function extractSessionId(payload: Record<string, unknown>): string | null {
   return extractString(payload, [
-    "session_id",
-    "sessionId",
-    "conversationId",   // agy (Antigravity)
-    "turn_id",
-    "turnId",
+    'session_id',
+    'sessionId',
+    'conversationId', // agy (Antigravity)
+    'turn_id',
+    'turnId',
   ]);
 }
 
 function extractCwd(payload: Record<string, unknown>): string | null {
-  const cwd = extractString(payload, ["cwd"]);
+  const cwd = extractString(payload, ['cwd']);
   if (cwd) return cwd;
 
   const workspacePaths = payload.workspacePaths;
-  if (Array.isArray(workspacePaths) && typeof workspacePaths[0] === "string") {
+  if (Array.isArray(workspacePaths) && typeof workspacePaths[0] === 'string') {
     return workspacePaths[0].trim();
   }
   return null;
 }
 
 function okResult(
-  payload: Record<string, unknown> = { ok: true, decision: "allow" },
+  payload: Record<string, unknown> = { ok: true, decision: 'allow' },
 ): ToolResult {
   if (payload.decision === undefined) {
-    payload.decision = "allow";
+    payload.decision = 'allow';
   }
-  return { content: [{ type: "text", text: JSON.stringify(payload) }] };
+  return { content: [{ type: 'text', text: JSON.stringify(payload) }] };
 }
 
 /**
@@ -100,14 +107,14 @@ function okResult(
  */
 function permissionAllowResult(input: Record<string, unknown>): ToolResult {
   const hookSpecificOutput = {
-    hookEventName: "PermissionRequest",
+    hookEventName: 'PermissionRequest',
     decision: {
-      behavior: "allow",
+      behavior: 'allow',
       updatedPermissions: [
         {
-          type: "setMode",
-          mode: "bypassPermissions",
-          destination: "session",
+          type: 'setMode',
+          mode: 'bypassPermissions',
+          destination: 'session',
         },
       ],
     },
@@ -128,7 +135,7 @@ function permissionAllowResult(input: Record<string, unknown>): ToolResult {
     ];
   }
 
-  return { content: [{ type: "text", text: JSON.stringify(payload) }] };
+  return { content: [{ type: 'text', text: JSON.stringify(payload) }] };
 }
 
 export async function processHookEventInput(
@@ -141,7 +148,9 @@ export async function processHookEventInput(
   try {
     payload = JSON.parse(input);
   } catch (err) {
-    logDebug(`[hook-event] JSON parse error: ${err instanceof Error ? err.message : String(err)}`);
+    logDebug(
+      `[hook-event] JSON parse error: ${err instanceof Error ? err.message : String(err)}`,
+    );
     // Malformed JSON — silently exit
     return okResult();
   }
@@ -157,7 +166,7 @@ export async function processHookEventInput(
   try {
     getDb();
     const activePath = getActiveDbPath();
-    if (activePath === ":memory:" || activePath === targetDbPath) {
+    if (activePath === ':memory:' || activePath === targetDbPath) {
       dbInitialized = true;
     }
   } catch {
@@ -170,7 +179,9 @@ export async function processHookEventInput(
   const eventType = eventOverride
     ? normalizeHookEventName(eventOverride)
     : resolveHookEventName(payload);
-  logDebug(`[hook-event] Event: ${eventType}, sessionId: ${sessionId}, cwd: ${cwd}`);
+  logDebug(
+    `[hook-event] Event: ${eventType}, sessionId: ${sessionId}, cwd: ${cwd}`,
+  );
 
   let agent =
     (pane ? getAgentByPane(pane) : undefined) ??
@@ -180,23 +191,29 @@ export async function processHookEventInput(
   }
   if (!agent) {
     if (sessionId) {
-      logDebug(`[hook-event] Agent not found for pane ${pane} session ${sessionId} event ${eventType}`);
+      logDebug(
+        `[hook-event] Agent not found for pane ${pane} session ${sessionId} event ${eventType}`,
+      );
       console.error(
         `[crew hook-event] could not resolve agent for pane ${pane} session ${sessionId} event ${eventType}`,
       );
     } else {
-      logDebug(`[hook-event] Agent not found and no sessionId. Pane: ${pane}, event: ${eventType}`);
+      logDebug(
+        `[hook-event] Agent not found and no sessionId. Pane: ${pane}, event: ${eventType}`,
+      );
     }
     return okResult();
   }
 
-  logDebug(`[hook-event] Agent found: ${agent.name} (role: ${agent.role}, room: ${agent.room_id})`);
+  logDebug(
+    `[hook-event] Agent found: ${agent.name} (role: ${agent.role}, room: ${agent.room_id})`,
+  );
 
   if (!pane) {
     const hookEventId = withRetry(() =>
       addHookEvent(agent.name, eventType, sessionId, input, agent.room_id),
     );
-    if (eventType === "PermissionRequest") {
+    if (eventType === 'PermissionRequest') {
       // No-pane hooks are valid for Codex; keep behavior permissive and
       // still persist the event for postmortem/audit consistency.
       return permissionAllowResult(payload);
@@ -217,7 +234,7 @@ export async function processHookEventInput(
 
   // PermissionRequest: auto-allow all permission dialogs for crew agents.
   // This prevents agents from getting stuck waiting for user approval.
-  if (eventType === "PermissionRequest") {
+  if (eventType === 'PermissionRequest') {
     // Record the event for audit trail
     try {
       getDb();
@@ -225,9 +242,9 @@ export async function processHookEventInput(
       initDbWithRetry();
     }
     const sessionId =
-      typeof payload.session_id === "string"
+      typeof payload.session_id === 'string'
         ? payload.session_id
-        : typeof payload.sessionId === "string"
+        : typeof payload.sessionId === 'string'
           ? payload.sessionId
           : null;
     const hookEventId = withRetry(() =>
@@ -242,7 +259,7 @@ export async function processHookEventInput(
     if (extracted) {
       try {
         const leader = getRoomMembers(agent.room_id).find(
-          (m) => m.role === "leader" && m.tmux_target,
+          (m) => m.role === 'leader' && m.tmux_target,
         );
         const dialog = createLeaderDialog({
           roomId: agent.room_id,
@@ -268,7 +285,7 @@ export async function processHookEventInput(
               sendKeys(
                 leader.tmux_target!,
                 `(dialog #${dialog.id}) ${notice}`,
-              ).catch(() => { }),
+              ).catch(() => {}),
             1500,
           );
         }
@@ -310,7 +327,7 @@ export async function processHookEventInput(
   // Hint injection: on every Nth UserPromptSubmit (where N = cadence),
   // emit the user-defined message to stdout. Claude Code injects hook
   // stdout into the conversation, providing custom context reminders.
-  if (eventType === "UserPromptSubmit" || eventType === "PreInvocation") {
+  if (eventType === 'UserPromptSubmit' || eventType === 'PreInvocation') {
     const wasBlocked = clearArmedInputBlock(agent.name);
 
     // Flush pending push messages that accumulated while blocked
@@ -338,10 +355,10 @@ export async function processHookEventInput(
       return {
         content: [
           {
-            type: "text",
+            type: 'text',
             text: JSON.stringify({
               ok: true,
-              decision: "allow",
+              decision: 'allow',
               hint: {
                 agent_name: cadenceResult.hint.agent_name,
                 message: cadenceResult.hint.message,
@@ -394,11 +411,11 @@ export async function processHookEventInput(
   if (isStopLikeEvent(eventType)) {
     try {
       const goal =
-        agent.role === "leader"
+        agent.role === 'leader'
           ? consumeLeaderGoalReminder(pane, sessionId, agent.room_id)
           : tickGoalTurnCount(pane, sessionId, agent.room_id);
 
-      if (goal && goal.status === "active" && agent.tmux_target) {
+      if (goal && goal.status === 'active' && agent.tmux_target) {
         if (goal.reminder_paused === 1) {
           // Already tripped by stuck-detector → stay silent (no nag, no record).
         } else {
@@ -421,11 +438,11 @@ export async function processHookEventInput(
                 await resolveAgentRuntime(agent.agent_type, agent.tmux_target),
               );
               const latestGoal = getGoalByAgent(agent.name, agent.room_id);
-              if (!latestGoal || latestGoal.status !== "active") return;
+              if (!latestGoal || latestGoal.status !== 'active') return;
 
               const latestDesc =
                 latestGoal.description.length > 500
-                  ? latestGoal.description.slice(0, 497) + "…"
+                  ? latestGoal.description.slice(0, 497) + '…'
                   : latestGoal.description;
 
               // Stuck-notice: hand the decision to the agent itself, exactly once.
@@ -438,18 +455,21 @@ export async function processHookEventInput(
                   `📝 crew goal update "..."    — to redirect\n` +
                   `❌ crew goal unset           — if unreachable\n` +
                   `(No more auto-reminders after this notice.)`;
-                await sendKeys(agent.tmux_target!, notice).catch(() => { });
+                await sendKeys(agent.tmux_target!, notice).catch(() => {});
                 return;
               }
 
               // `crew:leader`/`crew:worker` are SKILL invocations → runtime prefix ($ for codex).
               // `crew goal done`/`crew goal unset` are CLI subcommands → `!` prefix (both runtimes).
-              const latestReminder = `🎯 Goal: ${latestDesc} (turn ${latestGoal.turn_count})\n✅ If done, ${agent.role === "leader"
+              const latestReminder = `🎯 Goal: ${latestDesc} (turn ${latestGoal.turn_count})\n✅ If done, ${
+                agent.role === 'leader'
                   ? `${skillPrefix}crew:leader`
                   : `${skillPrefix}crew:worker`
-                } run bash command: crew goal done\n❌ If unreachable, run bash command: crew goal unset\n📝 Edit: crew goal update "new description"`;
+              } run bash command: crew goal done\n❌ If unreachable, run bash command: crew goal unset\n📝 Edit: crew goal update "new description"`;
 
-              await sendKeys(agent.tmux_target!, latestReminder).catch(() => { });
+              await sendKeys(agent.tmux_target!, latestReminder).catch(
+                () => {},
+              );
             } catch {
               // fail-open: skip reminder if anything goes wrong in re-check
             }
@@ -465,7 +485,7 @@ export async function processHookEventInput(
 
   return ok({
     ok: true,
-    decision: "allow",
+    decision: 'allow',
     ...(statusDashboard ? { statusDashboard } : {}),
   });
 }
@@ -484,7 +504,7 @@ function checkAutoSelfTransition(
   const db = getDb();
   const prevEvent = db
     .query(
-      "SELECT event_type FROM hook_events WHERE agent_name = ? AND id < ? ORDER BY id DESC LIMIT 1",
+      'SELECT event_type FROM hook_events WHERE agent_name = ? AND id < ? ORDER BY id DESC LIMIT 1',
     )
     .get(agentName, currentEventId) as { event_type: string } | null;
 
@@ -495,7 +515,7 @@ function checkAutoSelfTransition(
 }
 
 function isStopLikeEvent(eventType: string): boolean {
-  return eventType === "Stop" || eventType === "StopFailure";
+  return eventType === 'Stop' || eventType === 'StopFailure';
 }
 
 /**
@@ -514,9 +534,9 @@ function buildWorkerSummary(
   let dead = 0;
   let unknown = 0;
   for (const m of members) {
-    if (m.status === "idle") idle++;
-    else if (m.status === "busy") busy++;
-    else if (m.status === "dead") dead++;
+    if (m.status === 'idle') idle++;
+    else if (m.status === 'busy') busy++;
+    else if (m.status === 'dead') dead++;
     else unknown++;
   }
   return { idle, busy, dead, unknown };
@@ -524,8 +544,8 @@ function buildWorkerSummary(
 
 function getParentPid(pid: number): number | null {
   try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-    const parts = stat.split(" ");
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+    const parts = stat.split(' ');
     const parentPid = parts[3];
     if (!parentPid) return null;
     return parseInt(parentPid, 10);
@@ -548,18 +568,18 @@ function getTmuxPanes(): Map<number, string> {
   const map = new Map<number, string>();
   try {
     const socket = process.env.CREW_TMUX_SOCKET;
-    const args = socket ? ["-L", socket] : [];
+    const args = socket ? ['-L', socket] : [];
     const res = spawnSync([
-      "tmux",
+      'tmux',
       ...args,
-      "list-panes",
-      "-a",
-      "-F",
-      "#{pane_pid} #{pane_id}",
+      'list-panes',
+      '-a',
+      '-F',
+      '#{pane_pid} #{pane_id}',
     ]);
     if (res.success) {
       const output = res.stdout.toString().trim();
-      for (const line of output.split("\n")) {
+      for (const line of output.split('\n')) {
         const [pidStr, paneId] = line.trim().split(/\s+/);
         if (pidStr && paneId) {
           const pid = parseInt(pidStr, 10);
@@ -592,7 +612,9 @@ export function resolvePaneId(): string | undefined {
   return undefined;
 }
 
-export async function handleHookEvent(params?: { event?: string }): Promise<ToolResult> {
+export async function handleHookEvent(params?: {
+  event?: string;
+}): Promise<ToolResult> {
   const input = await Bun.stdin.text();
   return processHookEventInput(input, resolvePaneId(), params?.event);
 }

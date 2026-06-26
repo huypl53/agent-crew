@@ -3,8 +3,8 @@
  * Calls processHookEventInput directly with the same JSON contract.
  */
 
-import { processHookEventInput } from '../../src/tools/hook-event.ts';
 import type { ToolResult } from '../../src/shared/types.ts';
+import { processHookEventInput } from '../../src/tools/hook-event.ts';
 
 export interface HookEventPayload {
   hook_event_name?: string;
@@ -113,7 +113,9 @@ export class MockHook {
       ok: json.ok === true,
       decision: json.decision as string | undefined,
       hint: json.hint as { agent_name: string; message: string } | undefined,
-      hookSpecificOutput: json.hookSpecificOutput as Record<string, unknown> | undefined,
+      hookSpecificOutput: json.hookSpecificOutput as
+        | Record<string, unknown>
+        | undefined,
     };
   }
 }

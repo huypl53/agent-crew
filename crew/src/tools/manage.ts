@@ -77,7 +77,10 @@ function getOrRegisterLeader(roomId: number): string {
   const existingOperator = roomMembers.find((m) => m.name === operatorName);
   if (existingOperator) {
     if (existingOperator.role !== 'leader') {
-      db.run('UPDATE agents SET role = ? WHERE id = ?', ['leader', existingOperator.agent_id]);
+      db.run('UPDATE agents SET role = ? WHERE id = ?', [
+        'leader',
+        existingOperator.agent_id,
+      ]);
     }
     return operatorName;
   }
@@ -87,7 +90,7 @@ function getOrRegisterLeader(roomId: number): string {
   db.run(
     `INSERT INTO agents (room_id, name, role, agent_type, registered_at, status)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [roomId, operatorName, 'leader', 'unknown', ts, 'idle']
+    [roomId, operatorName, 'leader', 'unknown', ts, 'idle'],
   );
   return operatorName;
 }
@@ -129,9 +132,7 @@ export async function handleManage(params: ManageParams): Promise<ToolResult> {
           `Agent "${name}" is not a member of any active rooms. Join a room first.\n`,
         );
       } else {
-        stdout.write(
-          'No active rooms found. Create/join a room first.\n',
-        );
+        stdout.write('No active rooms found. Create/join a room first.\n');
       }
       break;
     }
@@ -260,9 +261,21 @@ async function manageRoomMenu(
     } else if (action === 'goals') {
       await viewRoomGoals(room, stdin, stdout);
     } else if (action === 'members') {
-      await manageMembersMenu(room, effectiveCallerName, stdin, stdout, isOperator);
+      await manageMembersMenu(
+        room,
+        effectiveCallerName,
+        stdin,
+        stdout,
+        isOperator,
+      );
     } else if (action === 'bulk-members') {
-      await manageBulkMembersMenu(room, effectiveCallerName, stdin, stdout, isOperator);
+      await manageBulkMembersMenu(
+        room,
+        effectiveCallerName,
+        stdin,
+        stdout,
+        isOperator,
+      );
     }
   }
 }
@@ -281,7 +294,9 @@ async function viewRoomGoals(
   }
   for (const { goal: g } of overview) {
     const mark = g.status === 'active' ? '🎯' : '  ';
-    stdout.write(`  ${mark} ${g.agent_name}: "${g.description}" (${g.status}, turn ${g.turn_count})\n`);
+    stdout.write(
+      `  ${mark} ${g.agent_name}: "${g.description}" (${g.status}, turn ${g.turn_count})\n`,
+    );
   }
   stdout.write('\n');
 }
@@ -294,8 +309,8 @@ async function manageMembersMenu(
   isOperator: boolean,
 ): Promise<void> {
   while (true) {
-    const members = getRoomMembers(room.id).filter(
-      (m) => isOperator ? true : m.name !== callerName,
+    const members = getRoomMembers(room.id).filter((m) =>
+      isOperator ? true : m.name !== callerName,
     );
     if (members.length === 0) {
       stdout.write('No other members in this room.\n');
@@ -412,7 +427,10 @@ async function manageMembersMenu(
         }
       }
     } else if (action === 'view-goal') {
-      const r = await handleGoalLookup({ agent: selectedMember.name, room: room.name });
+      const r = await handleGoalLookup({
+        agent: selectedMember.name,
+        room: room.name,
+      });
       const d = JSON.parse(r.content[0]?.text ?? '{}');
       stdout.write(
         d.goal
@@ -422,17 +440,39 @@ async function manageMembersMenu(
     } else if (action === 'set-goal') {
       const desc = await promptText(stdin, stdout, 'Enter goal description: ');
       if (desc !== null) {
-        const r = await handleGoalSet({ agent: selectedMember.name, room: room.name, message: desc });
-        stdout.write(r.isError ? `Error: ${resultError(r, 'set goal failed')}\n` : `Goal set for ${selectedMember.name}\n`);
+        const r = await handleGoalSet({
+          agent: selectedMember.name,
+          room: room.name,
+          message: desc,
+        });
+        stdout.write(
+          r.isError
+            ? `Error: ${resultError(r, 'set goal failed')}\n`
+            : `Goal set for ${selectedMember.name}\n`,
+        );
       }
     } else if (action === 'redo-goal') {
       await reactivateGoalMenu(room, selectedMember.name, stdin, stdout);
     } else if (action === 'done-goal') {
-      const r = await handleGoalDone({ agent: selectedMember.name, room: room.name });
-      stdout.write(r.isError ? `Error: ${resultError(r, 'done goal failed')}\n` : `Goal marked done for ${selectedMember.name}\n`);
+      const r = await handleGoalDone({
+        agent: selectedMember.name,
+        room: room.name,
+      });
+      stdout.write(
+        r.isError
+          ? `Error: ${resultError(r, 'done goal failed')}\n`
+          : `Goal marked done for ${selectedMember.name}\n`,
+      );
     } else if (action === 'unset-goal') {
-      const r = await handleGoalUnset({ agent: selectedMember.name, room: room.name });
-      stdout.write(r.isError ? `Error: ${resultError(r, 'unset goal failed')}\n` : `Goal removed for ${selectedMember.name}\n`);
+      const r = await handleGoalUnset({
+        agent: selectedMember.name,
+        room: room.name,
+      });
+      stdout.write(
+        r.isError
+          ? `Error: ${resultError(r, 'unset goal failed')}\n`
+          : `Goal removed for ${selectedMember.name}\n`,
+      );
     }
   }
 }
@@ -450,10 +490,12 @@ async function reactivateGoalMenu(
     return;
   }
   type GoalRow = (typeof history)[number];
-  const items: Array<{ value: GoalRow | null; label: string }> = history.map((g) => ({
-    value: g as GoalRow,
-    label: `[${g.id}] "${g.description}" (${g.status}, turn ${g.turn_count ?? 0})`,
-  }));
+  const items: Array<{ value: GoalRow | null; label: string }> = history.map(
+    (g) => ({
+      value: g as GoalRow,
+      label: `[${g.id}] "${g.description}" (${g.status}, turn ${g.turn_count ?? 0})`,
+    }),
+  );
   items.push({ value: null, label: 'Cancel' });
 
   const picked = await selectOne<GoalRow | null>({
@@ -484,8 +526,8 @@ async function manageBulkMembersMenu(
   isOperator: boolean,
 ): Promise<void> {
   while (true) {
-    const members = getRoomMembers(room.id).filter(
-      (m) => isOperator ? true : m.name !== callerName,
+    const members = getRoomMembers(room.id).filter((m) =>
+      isOperator ? true : m.name !== callerName,
     );
     if (members.length === 0) {
       stdout.write('No other members in this room.\n');
@@ -599,7 +641,9 @@ async function manageBulkMembersMenu(
             const errMsg = result.content[0]?.text || 'Error';
             stdout.write(`Error removing ${name}: ${errMsg}\n`);
           } else {
-            stdout.write(`Successfully removed ${name} from room ${room.name}\n`);
+            stdout.write(
+              `Successfully removed ${name} from room ${room.name}\n`,
+            );
           }
         }
       }

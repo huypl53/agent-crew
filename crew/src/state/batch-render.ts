@@ -7,6 +7,9 @@ export function renderBatchFinalMessage(
   workers: BatchRenderableWorker[],
 ): string {
   return workers
-    .map(({ worker_name, final_message }) => `## ${worker_name}\n${final_message ?? ''}`)
+    .map(
+      ({ worker_name, final_message }) =>
+        `## ${worker_name}\n${final_message ?? ''}`,
+    )
     .join('\n\n');
 }

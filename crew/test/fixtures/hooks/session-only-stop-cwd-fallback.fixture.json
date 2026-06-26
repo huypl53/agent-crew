@@ -3,12 +3,8 @@
   "description": "No-pane Stop resolves a unique worker by session + cwd fallback, persists the event, and does not send tmux reminders",
   "seed": {
     "room": { "name": "codex-room", "path": "/tmp/session-only-stop" },
-    "agents": [
-      { "name": "worker-1", "pane": "%52", "role": "worker" }
-    ],
-    "goals": [
-      { "agent": "worker-1", "description": "Still no pane" }
-    ]
+    "agents": [{ "name": "worker-1", "pane": "%52", "role": "worker" }],
+    "goals": [{ "agent": "worker-1", "description": "Still no pane" }]
   },
   "steps": [
     {
@@ -27,9 +23,7 @@
           "payload_contains": "stop-session-1"
         },
         "hook_events_count": 1,
-        "tmux_absent": [
-          { "op": "sendKeys", "target": "%52" }
-        ]
+        "tmux_absent": [{ "op": "sendKeys", "target": "%52" }]
       }
     }
   ]

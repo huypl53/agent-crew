@@ -20,7 +20,11 @@
       "expect": {
         "stdout": { "ok": true, "decision": "allow" },
         "tmux": [
-          { "op": "sendKeys", "target": "%11", "contains": "Implement auth module" }
+          {
+            "op": "sendKeys",
+            "target": "%11",
+            "contains": "Implement auth module"
+          }
         ],
         "tmux_absent": [
           { "op": "sendKeys", "target": "%12" },

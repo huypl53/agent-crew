@@ -216,7 +216,11 @@ export class PaneQueue {
   }
 
   private async applyLeaderPacing(item: QueueItem): Promise<void> {
-    if (this.role !== 'leader' || item.type !== 'paste' || item.skipLeaderPacing)
+    if (
+      this.role !== 'leader' ||
+      item.type !== 'paste' ||
+      item.skipLeaderPacing
+    )
       return;
     const paceMs = this.leaderPaceMs ?? config.leaderPaceMs;
     const elapsed = Date.now() - this.lastPasteDeliveredAt;

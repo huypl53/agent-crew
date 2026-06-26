@@ -3,11 +3,13 @@
   "description": "Leader with armed goal receives reminder via sendKeys on Stop",
   "seed": {
     "room": { "name": "dev", "path": "/tmp/armed-leader" },
-    "agents": [
-      { "name": "lead", "pane": "%10", "role": "leader" }
-    ],
+    "agents": [{ "name": "lead", "pane": "%10", "role": "leader" }],
     "goals": [
-      { "agent": "lead", "description": "Coordinate worker tasks", "armed": true }
+      {
+        "agent": "lead",
+        "description": "Coordinate worker tasks",
+        "armed": true
+      }
     ]
   },
   "steps": [
@@ -18,7 +20,11 @@
         "stdout": { "ok": true, "decision": "allow" },
         "tmux": [
           { "op": "sendKeys", "target": "%10", "contains": "Goal" },
-          { "op": "sendKeys", "target": "%10", "contains": "Coordinate worker tasks" },
+          {
+            "op": "sendKeys",
+            "target": "%10",
+            "contains": "Coordinate worker tasks"
+          },
           { "op": "sendKeys", "target": "%10", "contains": "(turn 1)" }
         ]
       }
@@ -28,9 +34,7 @@
       "pane": "%10",
       "expect": {
         "stdout": { "ok": true },
-        "tmux_absent": [
-          { "op": "sendKeys", "target": "%10" }
-        ]
+        "tmux_absent": [{ "op": "sendKeys", "target": "%10" }]
       }
     }
   ]

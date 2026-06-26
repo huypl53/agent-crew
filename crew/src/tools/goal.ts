@@ -1,7 +1,10 @@
+import { logServer } from '../shared/server-log.ts';
+import type { Agent, ToolResult } from '../shared/types.ts';
+import { err, ok } from '../shared/types.ts';
 import { initDb } from '../state/db.ts';
 import {
-  completeGoal,
   clearGoalOutputs,
+  completeGoal,
   flushGoalCompletionIfReady,
   getAgentByPane,
   getAgentByRoomAndName,
@@ -12,20 +15,27 @@ import {
   getRoom,
   getRoomGoalOverview,
   setGoal,
-  unsetGoal,
   unpauseGoalReminder,
+  unsetGoal,
   updateGoalDescription,
 } from '../state/index.ts';
-import { logServer } from '../shared/server-log.ts';
-import type { Agent, ToolResult } from '../shared/types.ts';
-import { err, ok } from '../shared/types.ts';
+import { getContextWindowForPane } from '../tokens/claude-code.ts';
 
 type GoalTarget =
-  | { agentName: string; roomName: string; roomId: number; agent: Agent; pane: string | null }
+  | {
+      agentName: string;
+      roomName: string;
+      roomId: number;
+      agent: Agent;
+      pane: string | null;
+    }
   | { error: string };
 
 /** Resolve target agent/room for goal operations. Auto-detects from TMUX_PANE. */
-function resolveGoalTarget(params: { agent?: string; room?: string }): GoalTarget & { callerName?: string } {
+function resolveGoalTarget(params: {
+  agent?: string;
+  room?: string;
+}): GoalTarget & { callerName?: string } {
   const explicitAgentName = params.agent;
   const explicitRoomName = params.room;
   const pane = process.env.TMUX_PANE ?? null;
@@ -35,8 +45,18 @@ function resolveGoalTarget(params: { agent?: string; room?: string }): GoalTarge
     const room = getRoom(explicitRoomName);
     if (!room) return { error: `Room not found: ${explicitRoomName}` };
     const agent = getAgentByRoomAndName(room.id, explicitAgentName);
-    if (!agent) return { error: `Agent ${explicitAgentName} is not in room ${explicitRoomName}` };
-    return { agentName: explicitAgentName, roomName: explicitRoomName, roomId: room.id, agent, pane, callerName: paneAgent?.name };
+    if (!agent)
+      return {
+        error: `Agent ${explicitAgentName} is not in room ${explicitRoomName}`,
+      };
+    return {
+      agentName: explicitAgentName,
+      roomName: explicitRoomName,
+      roomId: room.id,
+      agent,
+      pane,
+      callerName: paneAgent?.name,
+    };
   }
 
   if (paneAgent) {
@@ -68,7 +88,8 @@ function resolveGoalTarget(params: { agent?: string; room?: string }): GoalTarge
   }
 
   return {
-    error: 'No registered agent found for current pane. Run from a registered agent pane or pass both --agent and --room explicitly.',
+    error:
+      'No registered agent found for current pane. Run from a registered agent pane or pass both --agent and --room explicitly.',
   };
 }
 
@@ -81,7 +102,9 @@ export async function handleGoalSet(params: {
   initDb();
 
   if (!params.message?.trim()) {
-    return err('Message is required. Example: crew goal set "Implement auth module"');
+    return err(
+      'Message is required. Example: crew goal set "Implement auth module"',
+    );
   }
 
   const target = resolveGoalTarget(params);
@@ -91,16 +114,28 @@ export async function handleGoalSet(params: {
   }
 
   // If caller differs from target agent, setBy = caller name; otherwise 'self'
-  const setBy = target.callerName && target.callerName !== target.agentName
-    ? target.callerName
-    : 'self';
+  const setBy =
+    target.callerName && target.callerName !== target.agentName
+      ? target.callerName
+      : 'self';
 
-  logServer('INFO', `[goal:handleGoalSet] caller=${target.callerName ?? '?'} target=${target.agentName} setBy=${setBy}`);
+  logServer(
+    'INFO',
+    `[goal:handleGoalSet] caller=${target.callerName ?? '?'} target=${target.agentName} setBy=${setBy}`,
+  );
 
   const goal = setGoal(target.agentName, target.roomId, params.message.trim(), {
     pane: target.agent.tmux_target ?? target.pane ?? undefined,
     setBy,
   });
+
+  let ctx_pct: number | null = null;
+  if (target.agent.tmux_target) {
+    try {
+      const cw = await getContextWindowForPane(target.agent.tmux_target);
+      if (cw) ctx_pct = cw.context_pct;
+    } catch {}
+  }
 
   return ok({
     ok: true,
@@ -110,6 +145,7 @@ export async function handleGoalSet(params: {
       description: goal.description,
       status: goal.status,
       turn_count: goal.turn_count,
+      ctx_pct,
     },
   });
 }
@@ -129,16 +165,30 @@ export async function handleGoalDone(params: {
 
   const done = completeGoal(target.agentName, target.roomId);
   if (!done) {
-    logServer('DEBUG', `[goal:handleGoalDone] no active goal for ${target.agentName} in ${target.roomName}`);
-    return err(`No active goal found for ${target.agentName} in ${target.roomName}`);
+    logServer(
+      'DEBUG',
+      `[goal:handleGoalDone] no active goal for ${target.agentName} in ${target.roomName}`,
+    );
+    return err(
+      `No active goal found for ${target.agentName} in ${target.roomName}`,
+    );
   }
 
   flushGoalCompletionIfReady(target.agentName, target.roomId);
+
+  let ctx_pct: number | null = null;
+  if (target.agent.tmux_target) {
+    try {
+      const cw = await getContextWindowForPane(target.agent.tmux_target);
+      if (cw) ctx_pct = cw.context_pct;
+    } catch {}
+  }
 
   return ok({
     ok: true,
     goal_status: 'done',
     message: `Goal completed for ${target.agentName} in ${target.roomName}`,
+    ctx_pct,
   });
 }
 
@@ -151,29 +201,53 @@ export async function handleGoalUpdate(params: {
   initDb();
 
   if (!params.message?.trim()) {
-    return err('Message is required. Example: crew goal update "New description"');
+    return err(
+      'Message is required. Example: crew goal update "New description"',
+    );
   }
 
   const target = resolveGoalTarget(params);
   if ('error' in target) {
-    logServer('WARN', `[goal:handleGoalUpdate] resolve failed: ${target.error}`);
+    logServer(
+      'WARN',
+      `[goal:handleGoalUpdate] resolve failed: ${target.error}`,
+    );
     return err(target.error);
   }
 
-  const updated = updateGoalDescription(target.agentName, target.roomId, params.message.trim());
+  const updated = updateGoalDescription(
+    target.agentName,
+    target.roomId,
+    params.message.trim(),
+  );
   if (!updated) {
-    logServer('DEBUG', `[goal:handleGoalUpdate] no active goal for ${target.agentName} in ${target.roomName}`);
-    return err(`No active goal found for ${target.agentName} in ${target.roomName}`);
+    logServer(
+      'DEBUG',
+      `[goal:handleGoalUpdate] no active goal for ${target.agentName} in ${target.roomName}`,
+    );
+    return err(
+      `No active goal found for ${target.agentName} in ${target.roomName}`,
+    );
   }
 
   // New description = new context. Reset the stuck-detector window and resume
   // reminders in case the loop was paused.
   const goal = getGoalByAgent(target.agentName, target.roomId);
   if (!goal) {
-    return err(`Goal updated but could not reload the active goal for ${target.agentName} in ${target.roomName}`);
+    return err(
+      `Goal updated but could not reload the active goal for ${target.agentName} in ${target.roomName}`,
+    );
   }
   clearGoalOutputs(goal.id);
   unpauseGoalReminder(goal.id);
+
+  let ctx_pct: number | null = null;
+  if (target.agent.tmux_target) {
+    try {
+      const cw = await getContextWindowForPane(target.agent.tmux_target);
+      if (cw) ctx_pct = cw.context_pct;
+    } catch {}
+  }
 
   return ok({
     ok: true,
@@ -183,6 +257,7 @@ export async function handleGoalUpdate(params: {
       description: goal.description,
       status: goal.status,
       turn_count: goal.turn_count,
+      ctx_pct,
     },
     message: `Goal updated for ${target.agentName} in ${target.roomName}`,
   });
@@ -203,14 +278,27 @@ export async function handleGoalUnset(params: {
 
   const removed = unsetGoal(target.agentName, target.roomId);
   if (!removed) {
-    logServer('DEBUG', `[goal:handleGoalUnset] no goal for ${target.agentName} in ${target.roomName}`);
+    logServer(
+      'DEBUG',
+      `[goal:handleGoalUnset] no goal for ${target.agentName} in ${target.roomName}`,
+    );
     return err(`No goal found for ${target.agentName} in ${target.roomName}`);
+  }
+
+  let ctx_pct: number | null = null;
+  if (target.agent.tmux_target) {
+    try {
+      const cw = await getContextWindowForPane(target.agent.tmux_target);
+      if (cw) ctx_pct = cw.context_pct;
+    } catch {}
   }
 
   return ok({
     ok: true,
     removed: true,
+    goal_status: 'unset',
     message: `Goal removed for ${target.agentName} in ${target.roomName}`,
+    ctx_pct,
   });
 }
 
@@ -229,23 +317,64 @@ export async function handleGoalLookup(params: {
   // Explicit session/pane lookup (hook context)
   if (sessionId || pane) {
     const goal = getGoal(pane, sessionId);
-    logServer('DEBUG', `[goal:handleGoalLookup] session=${sessionId} pane=${pane} → ${goal ? goal.agent_name : 'null'}`);
-    return ok({ ok: true, goal: goal ?? null });
+    logServer(
+      'DEBUG',
+      `[goal:handleGoalLookup] session=${sessionId} pane=${pane} → ${goal ? goal.agent_name : 'null'}`,
+    );
+    if (goal) {
+      let ctx_pct: number | null = null;
+      const agent = getAgentByRoomAndName(goal.room_id, goal.agent_name);
+      if (agent && agent.tmux_target) {
+        try {
+          const cw = await getContextWindowForPane(agent.tmux_target);
+          if (cw) ctx_pct = cw.context_pct;
+        } catch {}
+      }
+      return ok({
+        ok: true,
+        goal: {
+          ...goal,
+          ctx_pct,
+        },
+      });
+    }
+    return ok({ ok: true, goal: null });
   }
 
   // Agent-based lookup
   const target = resolveGoalTarget(params);
   if ('error' in target) {
-    logServer('WARN', `[goal:handleGoalLookup] resolve failed: ${target.error}`);
+    logServer(
+      'WARN',
+      `[goal:handleGoalLookup] resolve failed: ${target.error}`,
+    );
     return err(target.error);
   }
 
   const goal = getGoalByAgent(target.agentName, target.roomId);
-  return ok({ ok: true, goal: goal ?? null });
+  if (goal) {
+    let ctx_pct: number | null = null;
+    if (target.agent.tmux_target) {
+      try {
+        const cw = await getContextWindowForPane(target.agent.tmux_target);
+        if (cw) ctx_pct = cw.context_pct;
+      } catch {}
+    }
+    return ok({
+      ok: true,
+      goal: {
+        ...goal,
+        ctx_pct,
+      },
+    });
+  }
+  return ok({ ok: true, goal: null });
 }
 
 /** Resolve a room from --room or the caller's pane. Used by room-scoped goal ops. */
-function resolveRoom(params: { room?: string }): { roomName: string; roomId: number } | { error: string } {
+function resolveRoom(params: {
+  room?: string;
+}): { roomName: string; roomId: number } | { error: string } {
   const explicitRoomName = params.room;
   if (explicitRoomName) {
     const room = getRoom(explicitRoomName);
@@ -259,7 +388,8 @@ function resolveRoom(params: { room?: string }): { roomName: string; roomId: num
     return { roomName: paneAgent.room_name, roomId: paneAgent.room_id };
   }
   return {
-    error: 'No registered agent found for current pane. Pass --room explicitly (or run from a registered agent pane).',
+    error:
+      'No registered agent found for current pane. Pass --room explicitly (or run from a registered agent pane).',
   };
 }
 
@@ -271,22 +401,40 @@ export async function handleGoalOverview(params: {
 
   const room = resolveRoom(params);
   if ('error' in room) {
-    logServer('WARN', `[goal:handleGoalOverview] resolve failed: ${room.error}`);
+    logServer(
+      'WARN',
+      `[goal:handleGoalOverview] resolve failed: ${room.error}`,
+    );
     return err(room.error);
   }
 
   const overview = getRoomGoalOverview(room.roomId);
+  const goals = await Promise.all(
+    overview.map(async (o) => {
+      let ctx_pct: number | null = null;
+      const agent = getAgentByRoomAndName(room.roomId, o.goal.agent_name);
+      if (agent && agent.tmux_target) {
+        try {
+          const cw = await getContextWindowForPane(agent.tmux_target);
+          if (cw) ctx_pct = cw.context_pct;
+        } catch {}
+      }
+      return {
+        agent_name: o.goal.agent_name,
+        description: o.goal.description,
+        status: o.goal.status,
+        turn_count: o.goal.turn_count,
+        updated_at: o.goal.updated_at,
+        ctx_pct,
+      };
+    }),
+  );
+
   return ok({
     ok: true,
     overview: true,
     room: room.roomName,
-    goals: overview.map((o) => ({
-      agent_name: o.goal.agent_name,
-      description: o.goal.description,
-      status: o.goal.status,
-      turn_count: o.goal.turn_count,
-      updated_at: o.goal.updated_at,
-    })),
+    goals,
   });
 }
 
@@ -329,7 +477,9 @@ export async function handleGoalRedo(params: {
 
   const idNum = params.id ? parseInt(params.id, 10) : NaN;
   if (!Number.isInteger(idNum) || idNum <= 0) {
-    return err('Goal id is required. Example: crew goal redo 5 (see `crew goal history` for ids)');
+    return err(
+      'Goal id is required. Example: crew goal redo 5 (see `crew goal history` for ids)',
+    );
   }
 
   const room = resolveRoom(params);
@@ -344,9 +494,21 @@ export async function handleGoalRedo(params: {
   }
   // Ownership guard: the goal must belong to the resolved room
   if (goal.room_id !== room.roomId) {
-    logServer('WARN', `[goal:handleGoalRedo] id ${idNum} room ${goal.room_id} != ${room.roomId}`);
+    logServer(
+      'WARN',
+      `[goal:handleGoalRedo] id ${idNum} room ${goal.room_id} != ${room.roomId}`,
+    );
     return err(`Goal ${idNum} does not belong to room ${room.roomName}`);
   }
+  const targetAgent = getAgentByRoomAndName(goal.room_id, goal.agent_name);
+  let ctx_pct: number | null = null;
+  if (targetAgent?.tmux_target) {
+    try {
+      const cw = await getContextWindowForPane(targetAgent.tmux_target);
+      if (cw) ctx_pct = cw.context_pct;
+    } catch {}
+  }
+
   // No-op if this goal is already active — avoid retiring+re-inserting a duplicate.
   if (goal.status === 'active') {
     return ok({
@@ -358,6 +520,7 @@ export async function handleGoalRedo(params: {
         status: goal.status,
         turn_count: goal.turn_count,
         redone_from: idNum,
+        ctx_pct,
       },
       message: `Goal ${idNum} is already active for ${goal.agent_name} in ${room.roomName}`,
     });
@@ -365,12 +528,12 @@ export async function handleGoalRedo(params: {
 
   const pane = process.env.TMUX_PANE ?? null;
   const paneAgent = pane ? getAgentByPane(pane) : undefined;
-  const setBy = paneAgent && paneAgent.name !== goal.agent_name ? paneAgent.name : 'self';
+  const setBy =
+    paneAgent && paneAgent.name !== goal.agent_name ? paneAgent.name : 'self';
 
   // Bind the reactivated goal to the TARGET agent's pane (not the caller's),
   // so pane-driven lookups (getGoal, tickGoalTurnCount) resolve correctly.
   // Mirrors handleGoalSet's `agent.tmux_target ?? pane` precedence.
-  const targetAgent = getAgentByRoomAndName(goal.room_id, goal.agent_name);
   const goalPane = targetAgent?.tmux_target ?? pane ?? undefined;
 
   const reactivated = setGoal(goal.agent_name, goal.room_id, goal.description, {
@@ -378,7 +541,10 @@ export async function handleGoalRedo(params: {
     setBy,
   });
 
-  logServer('INFO', `[goal:handleGoalRedo] reactivated id=${idNum} agent=${goal.agent_name} room=${room.roomName} setBy=${setBy}`);
+  logServer(
+    'INFO',
+    `[goal:handleGoalRedo] reactivated id=${idNum} agent=${goal.agent_name} room=${room.roomName} setBy=${setBy}`,
+  );
   return ok({
     ok: true,
     goal: {
@@ -388,6 +554,7 @@ export async function handleGoalRedo(params: {
       status: reactivated.status,
       turn_count: reactivated.turn_count,
       redone_from: idNum,
+      ctx_pct,
     },
     message: `Reactivated goal ${idNum} for ${reactivated.agent_name} in ${room.roomName}`,
   });

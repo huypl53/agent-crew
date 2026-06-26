@@ -1,16 +1,16 @@
+import { logServer } from '../shared/server-log.ts';
 import { getDb } from './db.ts';
+import {
+  type GoalOutputEntry,
+  isGoalStuck,
+  STUCK_DEFAULTS,
+} from './goal-stuck.ts';
 import {
   bumpChangeLog,
   getAgentByPane,
   getAgentByRoomAndName,
   getRoomMembers,
 } from './index.ts';
-import { logServer } from '../shared/server-log.ts';
-import {
-  isGoalStuck,
-  STUCK_DEFAULTS,
-  type GoalOutputEntry,
-} from './goal-stuck.ts';
 
 // --- Types ---
 
@@ -55,8 +55,10 @@ function rowToGoal(row: Record<string, unknown>): GoalRecord {
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
     completed_at: (row.completed_at as string | null) ?? null,
-    pending_completion_message: (row.pending_completion_message as string | null) ?? null,
-    pending_completion_batch_id: (row.pending_completion_batch_id as string | null) ?? null,
+    pending_completion_message:
+      (row.pending_completion_message as string | null) ?? null,
+    pending_completion_batch_id:
+      (row.pending_completion_batch_id as string | null) ?? null,
     pending_completion_created_at:
       (row.pending_completion_created_at as string | null) ?? null,
     reminder_paused: (row.reminder_paused as number) ?? 0,
@@ -86,14 +88,7 @@ export function setGoalPendingCompletion(
          pending_completion_created_at = ?,
          updated_at = ?
      WHERE agent_name = ? AND room_id = ? AND status = 'active'`,
-    [
-      trimmed,
-      batchId?.trim() || null,
-      ts,
-      ts,
-      agentName,
-      roomId,
-    ],
+    [trimmed, batchId?.trim() || null, ts, ts, agentName, roomId],
   );
   if (result.changes > 0) {
     bumpChangeLog('goals');
@@ -118,9 +113,11 @@ export function consumeGoalPendingCompletion(
          AND pending_completion_message IS NOT NULL
        ORDER BY id DESC LIMIT 1`,
     )
-    .get(agentName, roomId) as
-    | { id: number; pending_completion_message: string; pending_completion_batch_id: string | null }
-    | null;
+    .get(agentName, roomId) as {
+    id: number;
+    pending_completion_message: string;
+    pending_completion_batch_id: string | null;
+  } | null;
   if (!row) return null;
 
   db.run(
@@ -150,7 +147,8 @@ export function setGoal(
   const db = getDb();
   const ts = now();
   const agent = getAgentByRoomAndName(roomId, agentName);
-  if (!agent) throw new Error(`Agent not found: ${agentName} in room ${roomId}`);
+  if (!agent)
+    throw new Error(`Agent not found: ${agentName} in room ${roomId}`);
 
   const pane = options?.pane ?? agent.tmux_target ?? null;
   const setBy = options?.setBy ?? 'self';
@@ -185,7 +183,10 @@ export function setGoal(
     .query('SELECT * FROM agent_goals WHERE id = ?')
     .get(id) as Record<string, unknown>;
   bumpChangeLog('goals');
-  logServer('INFO', `[goal] set: ${agentName} room=${roomId} setBy=${setBy} desc="${description.slice(0, 60)}"`);
+  logServer(
+    'INFO',
+    `[goal] set: ${agentName} room=${roomId} setBy=${setBy} desc="${description.slice(0, 60)}"`,
+  );
   return rowToGoal(row);
 }
 
@@ -336,7 +337,10 @@ export function updateGoalDescription(
   );
   if (result.changes > 0) {
     bumpChangeLog('goals');
-    logServer('INFO', `[goal] update: ${agentName} room=${roomId} desc="${newDescription.slice(0, 60)}"`);
+    logServer(
+      'INFO',
+      `[goal] update: ${agentName} room=${roomId} desc="${newDescription.slice(0, 60)}"`,
+    );
   }
   return result.changes > 0;
 }
@@ -371,7 +375,10 @@ export function tickGoalTurnCount(
     > | null;
     if (row) {
       const goal = rowToGoal(row);
-      logServer('DEBUG', `[goal] tick: ${goal.agent_name} turn=${goal.turn_count} session=${sessionId}`);
+      logServer(
+        'DEBUG',
+        `[goal] tick: ${goal.agent_name} turn=${goal.turn_count} session=${sessionId}`,
+      );
       return goal;
     }
     return null;
@@ -387,7 +394,10 @@ export function tickGoalTurnCount(
     .get(ts, pane, ...roomArgs) as Record<string, unknown> | null;
   if (row) {
     const goal = rowToGoal(row);
-    logServer('DEBUG', `[goal] tick: ${goal.agent_name} turn=${goal.turn_count} pane=${pane}`);
+    logServer(
+      'DEBUG',
+      `[goal] tick: ${goal.agent_name} turn=${goal.turn_count} pane=${pane}`,
+    );
     return goal;
   }
   return null;
@@ -408,7 +418,10 @@ export function armLeaderGoalReminder(
   );
   if (result.changes > 0) {
     bumpChangeLog('goals');
-    logServer('DEBUG', `[goal] arm-leader-reminder: ${agentName} room=${roomId}`);
+    logServer(
+      'DEBUG',
+      `[goal] arm-leader-reminder: ${agentName} room=${roomId}`,
+    );
   }
   return result.changes > 0;
 }
@@ -441,7 +454,10 @@ export function consumeLeaderGoalReminder(
     > | null;
     if (row) {
       const goal = rowToGoal(row);
-      logServer('DEBUG', `[goal] consume-leader-reminder: ${goal.agent_name} turn=${goal.turn_count} session=${sessionId}`);
+      logServer(
+        'DEBUG',
+        `[goal] consume-leader-reminder: ${goal.agent_name} turn=${goal.turn_count} session=${sessionId}`,
+      );
       return goal;
     }
     return null;
@@ -457,7 +473,10 @@ export function consumeLeaderGoalReminder(
     .get(ts, pane, ...roomArgs) as Record<string, unknown> | null;
   if (row) {
     const goal = rowToGoal(row);
-    logServer('DEBUG', `[goal] consume-leader-reminder: ${goal.agent_name} turn=${goal.turn_count} pane=${pane}`);
+    logServer(
+      'DEBUG',
+      `[goal] consume-leader-reminder: ${goal.agent_name} turn=${goal.turn_count} pane=${pane}`,
+    );
     return goal;
   }
   return null;
@@ -504,7 +523,10 @@ export function canonicalizeGoalIdentity(
     prior.id,
   ]);
   bumpChangeLog('goals');
-  logServer('INFO', `[goal] canonicalize: ${agentName} pane=${pane} → session=${sessionId}`);
+  logServer(
+    'INFO',
+    `[goal] canonicalize: ${agentName} pane=${pane} → session=${sessionId}`,
+  );
 }
 
 // --- Stuck-detector state ---
@@ -558,7 +580,10 @@ export function getRecentGoalOutputs(
        WHERE goal_id = ?
        ORDER BY id ASC LIMIT ?`,
     )
-    .all(goalId, Math.max(1, limit)) as Array<{ message: string; tsMs: number }>;
+    .all(goalId, Math.max(1, limit)) as Array<{
+    message: string;
+    tsMs: number;
+  }>;
   return rows.map((r) => ({ message: r.message ?? '', tsMs: r.tsMs }));
 }
 

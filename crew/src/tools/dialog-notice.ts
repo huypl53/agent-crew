@@ -52,8 +52,7 @@ function parseQuestions(toolInput: unknown): DialogQuestion[] | null {
           label: String(opt.label ?? ''),
           description:
             typeof opt.description === 'string' ? opt.description : undefined,
-          preview:
-            typeof opt.preview === 'string' ? opt.preview : undefined,
+          preview: typeof opt.preview === 'string' ? opt.preview : undefined,
         };
       }),
     });
@@ -96,7 +95,8 @@ export function formatLeaderNotice(args: {
 
   const mode = q.multiSelect ? 'multi-select' : 'single-select';
   const header = q.header || 'Question';
-  const step = totalQuestions > 0 ? ` [${questionIndex + 1}/${totalQuestions}]` : '';
+  const step =
+    totalQuestions > 0 ? ` [${questionIndex + 1}/${totalQuestions}]` : '';
   const lines = [
     `🔔 ${workerName} asks ${step} (${header}, ${mode}):`,
     q.question,

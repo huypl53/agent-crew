@@ -54,7 +54,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
     }
 
     const shortKey =
-      arg.startsWith('-') && arg.length === 2 ? SHORT_FLAGS[arg[1] ?? ''] : undefined;
+      arg.startsWith('-') && arg.length === 2
+        ? SHORT_FLAGS[arg[1] ?? '']
+        : undefined;
     if (shortKey) {
       if (BOOLEAN_FLAGS.has(shortKey)) {
         flags[shortKey] = true;

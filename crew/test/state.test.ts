@@ -86,7 +86,12 @@ describe('state module', () => {
       const roomB = mkRoom('frontend');
       const boundAgent = addAgent('shared-name', 'worker', roomA.id, '%101');
       addAgent('shared-name', 'worker', roomB.id, '%102');
-      upsertAgentSessionBinding('sess-shared', roomA.id, boundAgent.name, boundAgent.tmux_target);
+      upsertAgentSessionBinding(
+        'sess-shared',
+        roomA.id,
+        boundAgent.name,
+        boundAgent.tmux_target,
+      );
       removeAgent('shared-name', 'company');
       const resolved = getAgentBySessionId('sess-shared');
       expect(resolved).toBeUndefined();

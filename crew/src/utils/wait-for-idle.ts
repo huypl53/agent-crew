@@ -1,6 +1,6 @@
-import { capturePane } from '../tmux/index.ts';
 import { extractHookCompletionMessage } from '../shared/hook-runtime.ts';
 import { getAgentByPane, getLatestHookEvent } from '../state/index.ts';
+import { capturePane } from '../tmux/index.ts';
 
 export interface WaitForIdleOptions {
   target: string;
@@ -51,7 +51,11 @@ export async function waitForIdle(
   let agentName: string | null = null;
   try {
     const { getDb, initDb } = await import('../state/db.ts');
-    try { getDb(); } catch { initDb(); }
+    try {
+      getDb();
+    } catch {
+      initDb();
+    }
     const agent = getAgentByPane(target);
     if (agent) {
       agentName = agent.name;

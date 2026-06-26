@@ -1,12 +1,12 @@
+import { flushPushQueue } from '../delivery/index.ts';
 import {
   getQueue,
   PaneDeliveryError,
   removeQueue,
 } from '../delivery/pane-queue.ts';
-import { flushPushQueue } from '../delivery/index.ts';
+import { extractHookCompletionMessage } from '../shared/hook-runtime.ts';
 import { getPaneStatus } from '../shared/pane-status.ts';
 import { logServer } from '../shared/server-log.ts';
-import { extractHookCompletionMessage } from '../shared/hook-runtime.ts';
 import type { SweepBusyMode } from '../shared/types.ts';
 import {
   getActivePartyRooms,
@@ -348,7 +348,8 @@ async function runBatchHintCheck(
     if (!leader?.tmux_target) continue;
 
     const target = leader.tmux_target;
-    const messages = notificationsByLeader.get(target) ?? new Map<string, string>();
+    const messages =
+      notificationsByLeader.get(target) ?? new Map<string, string>();
     const key = `batch:${batch.batch_id}`;
     if (messages.has(key)) continue;
 
@@ -378,10 +379,7 @@ async function runIdleDetection(): Promise<void> {
     const submitEvent = getLatestHookEvent(w.name, 'UserPromptSubmit');
 
     // If most recent event is UserPromptSubmit (agent is busy), reset idle tracking
-    if (
-      submitEvent &&
-      (!stopEvent || submitEvent.id > stopEvent.id)
-    ) {
+    if (submitEvent && (!stopEvent || submitEvent.id > stopEvent.id)) {
       lastNotified.delete(w.name);
       resetIdleTransition(w.name);
       continue;

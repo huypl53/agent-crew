@@ -149,7 +149,8 @@ export function selectOne<T>(options: PromptOptions<T>): Promise<T | null> {
         const item = items[i];
         if (!item) continue;
         const prefix = i === cursor ? '\x1b[36m❯\x1b[0m ' : '  ';
-        const label = i === cursor ? `\x1b[36m${item.label}\x1b[0m` : item.label;
+        const label =
+          i === cursor ? `\x1b[36m${item.label}\x1b[0m` : item.label;
         lines += `${prefix}${label}\n`;
       }
       return lines;
@@ -205,7 +206,8 @@ export function selectMultiple<T>(
         const checkbox = selected.has(i) ? '\x1b[32m[x]\x1b[0m' : '[ ]';
         const prefix =
           i === cursor ? `\x1b[36m❯\x1b[0m ${checkbox}` : `  ${checkbox}`;
-        const label = i === cursor ? `\x1b[36m${item.label}\x1b[0m` : item.label;
+        const label =
+          i === cursor ? `\x1b[36m${item.label}\x1b[0m` : item.label;
         lines += `${prefix} ${label}\n`;
       }
       return lines;

@@ -298,4 +298,96 @@ describe('CLI formatter', () => {
     expect(out).toContain('mode=manual_busy');
     expect(out).toContain('reason:test pause');
   });
+
+  test('formats send result with members status, context window and recommendation', () => {
+    const data = {
+      message_id: '42',
+      delivered: true,
+      queued: true,
+      members: [
+        {
+          name: 'wk-01',
+          role: 'worker',
+          status: 'idle',
+          input_block_mode: 'persist',
+          ctx_pct: 85.5,
+        },
+        {
+          name: 'lead',
+          role: 'leader',
+          status: 'idle',
+          input_block_mode: 'off',
+          ctx_pct: 42.0,
+        },
+      ],
+    };
+    const out = formatResult('send', data);
+    expect(out).toContain('msg:42 delivered');
+    expect(out).toContain('Members:');
+    expect(out).toContain(
+      '  wk-01 worker idle pane:(none) input-block:persist context-window:85.5% ⚠ compact/clear encouraged',
+    );
+    expect(out).toContain(
+      '  lead leader idle pane:(none) input-block:off context-window:42%',
+    );
+  });
+
+  test('formats send-batch result with context window and recommendation', () => {
+    const data = {
+      batch_id: 'batch_123',
+      workers: [
+        { name: 'wk-01', dispatch_status: 'sent', ctx_pct: 80 },
+        { name: 'wk-02', dispatch_status: 'sent', ctx_pct: 12 },
+      ],
+    };
+    const out = formatResult('send-batch', data);
+    expect(out).toContain('batch:batch_123');
+    expect(out).toContain(
+      '  wk-01: sent context-window:80% ⚠ compact/clear encouraged',
+    );
+    expect(out).toContain('  wk-02: sent context-window:12%');
+  });
+
+  test('formats goal overview with context window and recommendation', () => {
+    const data = {
+      overview: true,
+      room: 'crew',
+      goals: [
+        {
+          agent_name: 'wk-01',
+          description: 'Do task',
+          status: 'active',
+          turn_count: 5,
+          ctx_pct: 90.1,
+        },
+      ],
+    };
+    const out = formatResult('goal', data);
+    expect(out).toContain('Goals in room "crew":');
+    expect(out).toContain(
+      '🎯 wk-01: "Do task" (active, turn 5) context-window:90.1% ⚠ compact/clear encouraged',
+    );
+  });
+
+  test('formats goal done/unset with context window and recommendation', () => {
+    const doneData = {
+      goal_status: 'done',
+      message: 'Goal completed for wk-01',
+      ctx_pct: 82.3,
+    };
+    const doneOut = formatResult('goal', doneData);
+    expect(doneOut).toContain(
+      'Goal done — Goal completed for wk-01 context-window:82.3% ⚠ compact/clear encouraged',
+    );
+
+    const unsetData = {
+      removed: true,
+      message: 'Goal removed for wk-01',
+      ctx_pct: 85.0,
+    };
+    const unsetOut = formatResult('goal', unsetData);
+    expect(unsetOut).toContain(
+      'Goal removed for wk-01 context-window:85% ⚠ compact/clear encouraged',
+    );
+  });
 });
