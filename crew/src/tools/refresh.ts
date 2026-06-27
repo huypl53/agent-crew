@@ -2,7 +2,7 @@ import { normalizePath } from '../shared/path-utils.ts';
 import type { ToolResult } from '../shared/types.ts';
 import { err, ok, randomSuffix } from '../shared/types.ts';
 import {
-  getAgent,
+  getAgentByPane,
   getAgentByRoomAndName,
   getRoom,
   getRoomByPath,
@@ -49,10 +49,14 @@ export async function handleRefresh(
 
   const normalizedPath = normalizePath(cwd);
 
-  // Try lookup by existing agent globally first (so we know their old room)
-  const existingAgent = getAgent(name);
-  const room = existingAgent
-    ? getRoom(existingAgent.room_id)
+  // Resolve via the pane binding first: a pane maps 1:1 to an agent and yields
+  // its room_id directly, so this is unambiguous under the global shared DB
+  // (unlike a global lookup by name, which can collide across rooms). Fall back
+  // to the cwd path when the pane binding is gone (e.g. pane id changed after a
+  // tmux restart).
+  const paneAgent = getAgentByPane(target);
+  const room = paneAgent
+    ? getRoom(paneAgent.room_id)
     : getRoomByPath(normalizedPath);
 
   if (!room) {
@@ -61,7 +65,7 @@ export async function handleRefresh(
     );
   }
 
-  const oldAgent = existingAgent || getAgentByRoomAndName(room.id, name);
+  const oldAgent = paneAgent || getAgentByRoomAndName(room.id, name);
   const oldPane = oldAgent?.tmux_target ?? null;
 
   const agent = await refreshAgent(room.id, name, target);

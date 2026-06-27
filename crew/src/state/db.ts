@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite';
 import { existsSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 let _db: Database | null = null;
@@ -220,19 +221,17 @@ const SCHEMA = `
 `;
 
 export function getDbPath(cwd?: string): string {
+  // Explicit override always wins — used by tests and per-project isolation.
   if (process.env.CREW_STATE_DIR) {
     return `${process.env.CREW_STATE_DIR}/crew.db`;
   }
-  if (cwd) {
-    const projectDb = join(cwd, '.agents', 'state', 'crew.db');
-    if (existsSync(join(cwd, '.agents'))) {
-      return projectDb;
-    }
-  }
-  if (existsSync('.agents')) {
-    return '.agents/state/crew.db';
-  }
-  return '/tmp/crew/state/crew.db';
+  // Global DB by default so agents across different cwds share one state
+  // and can collaborate in the same room. `cwd` is accepted for API compat
+  // but no longer scopes the DB per project.
+  void cwd;
+  const stateBase =
+    process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state');
+  return join(stateBase, 'crew', 'crew.db');
 }
 
 // Track which DB path the current handle is connected to.
