@@ -1,5 +1,6 @@
 import { getQueue } from '../delivery/pane-queue.ts';
 import { assertRole } from '../shared/role-guard.ts';
+import { resolveAgentRuntime } from '../shared/hook-runtime.ts';
 import type { ToolResult } from '../shared/types.ts';
 import { err, ok } from '../shared/types.ts';
 import { getAgent } from '../state/index.ts';
@@ -44,7 +45,19 @@ export async function handleCompactWorker(
     return err(`Worker "${worker_name}" has no tmux target`);
   }
 
-  const commandText = message ? `/compact ${message}` : `/compact`;
+  const agentRuntime = await resolveAgentRuntime(
+    worker.agent_type,
+    worker.tmux_target,
+  );
+
+  // Codex does not accept a compact message parameter right now; send only
+  // the bare /compact command there.
+  const commandText =
+    agentRuntime === 'codex'
+      ? '/compact'
+      : message
+        ? `/compact ${message}`
+        : '/compact';
   try {
     await getQueue(worker.tmux_target).enqueue({
       type: 'command',
